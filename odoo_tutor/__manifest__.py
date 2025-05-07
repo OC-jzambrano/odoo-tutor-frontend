@@ -10,7 +10,21 @@
         "sale_management",
         "stock",
         "crm",
+        "sale",
+        "web",
+        "web_tour",
+        "bus",
     ],
+    "data": [
+        "views/res_config_settings_views.xml",
+    ],
+    "assets": {
+        "web.assets_backend": [
+            "odoo_tutor/static/lib/nlux/theme/nova.css",
+            "odoo_tutor/static/lib/nlux/umd/nlux-core.js",
+            "odoo_tutor/static/src/**/*",
+        ],
+    },
     "installable": True,
     "application": True,
     "auto_install": False,

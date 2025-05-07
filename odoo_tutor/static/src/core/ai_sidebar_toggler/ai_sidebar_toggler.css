@@ -1,0 +1,41 @@
+.ai-floating-button {
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    z-index: 2 !important;
+}
+
+.ai-floating-button .btn {
+    font-size: 24px !important;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+    width: 70px !important;
+    height: 70px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    box-shadow: none !important;
+}
+
+/* Imagen que cubre todo el botón */
+.ai-floating-button img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    transition: transform 0.3s ease;
+}
+
+/* Efecto hover sutil */
+.ai-floating-button:hover img {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 8px rgba(0, 159, 227, 0.6));
+}
+
+/* Eliminar estilos activos/focus */
+.ai-floating-button:active,
+.ai-floating-button:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}

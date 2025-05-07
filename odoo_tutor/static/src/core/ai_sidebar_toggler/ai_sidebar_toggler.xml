@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+    <t t-name="ai_chat.AiFloatingButton">
+        <t t-if="state.showButton">
+            <div class="ai-floating-button">
+                <button
+                    class="btn btn-primary rounded-circle p-3 shadow"
+                    type="button"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#offcanvasAiSidebar"
+                    aria-controls="offcanvasAiSidebar"
+                >
+                    <img src="/odoo_tutor/static/images/iabot.png" alt="Asistente IA" />
+                </button>
+            </div>
+        </t>
+    </t>
+</templates>

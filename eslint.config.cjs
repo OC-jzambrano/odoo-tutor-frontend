@@ -19,7 +19,7 @@ const config = [{
         },
 
         ecmaVersion: 2024,
-        sourceType: "script",
+        sourceType: "module",
     },
 
     rules: {
@@ -165,6 +165,7 @@ const config = [{
 
     settings: {
         jsdoc: {
+            mode: "typescript",
             tagNamePreference: {
                 arg: "param",
                 argument: "param",
@@ -177,6 +178,7 @@ const config = [{
                 return: "returns",
                 virtual: "abstract",
                 yield: "yields",
+                odoo_module: "odoo_module",
             },
             preferredTypes: {
                 array: "Array",
