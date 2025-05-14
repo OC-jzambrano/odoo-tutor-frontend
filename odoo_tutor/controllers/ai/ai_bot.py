@@ -11,16 +11,16 @@ class AiBot:
     def __init__(self, env: Environment):
         self.env = env
         # Obtener configuración de parámetros del sistema
-        self.base_url = self.env['ir.config_parameter'].sudo().get_param(
-            'odoo_tutor.chatbot_base_url',
-            'http://0.0.0.0:8001/chat'
+        self.base_url = (
+            self.env["ir.config_parameter"]
+            .sudo()
+            .get_param("odoo_tutor.chatbot_base_url", "http://0.0.0.0:8001/chat")
         )
         self.headers = {
-            'Content-Type': 'application/json',
-            'X-API-KEY': self.env['ir.config_parameter'].sudo().get_param(
-                'odoo_tutor.chatbot_api_key',
-                'your_super_secret_key_123'
-            )
+            "Content-Type": "application/json",
+            "X-API-KEY": self.env["ir.config_parameter"]
+            .sudo()
+            .get_param("odoo_tutor.chatbot_api_key", "your_super_secret_key_123"),
         }
         self.chat_history = []
 

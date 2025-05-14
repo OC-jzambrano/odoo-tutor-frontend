@@ -1,19 +1,28 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <odoo>
     <record id="res_config_settings_view_form_inherit_chatbot" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.inherit.chatbot</field>
         <field name="model">res.config.settings</field>
-        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="inherit_id" ref="base.res_config_settings_view_form" />
         <field name="arch" type="xml">
             <xpath expr="//block[@id='user_default_rights']" position="inside">
-                <setting string="Chatbot API" help="Configure chatbot connection settings">
+                <setting
+                    string="Chatbot API"
+                    help="Configure chatbot connection settings"
+                >
                     <div class="content-group mt16">
-                        <label for="chatbot_base_url" class="o_light_label mr8">API URL</label>
-                        <field name="chatbot_base_url"/>
+                        <label
+                            for="chatbot_base_url"
+                            class="o_light_label mr8"
+                        >API URL</label>
+                        <field name="chatbot_base_url" />
                     </div>
                     <div class="content-group mt16">
-                        <label for="chatbot_api_key" class="o_light_label mr8">API Key</label>
-                        <field name="chatbot_api_key" password="True"/>
+                        <label
+                            for="chatbot_api_key"
+                            class="o_light_label mr8"
+                        >API Key</label>
+                        <field name="chatbot_api_key" password="True" />
                     </div>
                 </setting>
             </xpath>
