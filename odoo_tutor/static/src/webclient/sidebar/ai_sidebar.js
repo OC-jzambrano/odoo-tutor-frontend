@@ -1,4 +1,3 @@
-/* eslint-disable */
 /** @odoo-module **/
 import {
     Component,
