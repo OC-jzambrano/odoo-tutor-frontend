@@ -10,8 +10,7 @@ class AiChatController(http.Controller):
     @http.route("/ai_chat/chat", type="json", auth="user", methods=["POST"])
     def get_quickboard_item(self, **kwargs):
         """Endpoint principal para el chatbot AI"""
-        env = request.env
-        bot = AiBot(env)
+        bot = AiBot(request.env)
         response = {"error": None, "result": None}
 
         try:
