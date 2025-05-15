@@ -76,10 +76,6 @@ class AiBot:
         """Interfaz principal para el chat"""
         try:
             context = context or {}
-
-            # if streaming:
-            #    return self._stream_chat(message, context)
-            # else:
             return self._chat(message, context)
 
         except Exception as e:
