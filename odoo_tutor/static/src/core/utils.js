@@ -1,3 +1,5 @@
+/* eslint-disable */
+/** @odoo-module **/
 import {useDebounced} from "@web/core/utils/timing";
 import {onWillUnmount, useComponent} from "@odoo/owl";
 

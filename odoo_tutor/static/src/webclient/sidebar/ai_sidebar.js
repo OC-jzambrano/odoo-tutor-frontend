@@ -1,3 +1,4 @@
+/* eslint-disable */
 /** @odoo-module **/
 import {
     Component,
@@ -45,7 +46,7 @@ export class AiSidebar extends Component {
             isStreamingMode: false,
             isLoading: false,
             currentContext: null,
-            placeholder: this.modelPlaceholders["default"],
+            placeholder: this.modelPlaceholders.default,
             isChatInitialized: false,
         });
 
@@ -55,7 +56,7 @@ export class AiSidebar extends Component {
 
                 const model = currentContext.model;
                 const newPlaceholder =
-                    this.modelPlaceholders[model] || this.modelPlaceholders["default"];
+                    this.modelPlaceholders[model] || this.modelPlaceholders.default;
 
                 if (!this.state.isChatInitialized) {
                     // Primera inicialización

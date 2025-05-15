@@ -11,7 +11,6 @@ class AiChatController(http.Controller):
     def get_quickboard_item(self, **kwargs):
         """Endpoint principal para el chatbot AI"""
         bot = AiBot(request.env)
-        response = {"error": None, "result": None}
 
         try:
             # Obtener datos del cuerpo de la solicitud
@@ -28,11 +27,9 @@ class AiChatController(http.Controller):
             if not message or not isinstance(message, str):
                 raise ValueError("El parámetro 'message' es requerido y debe ser texto")
 
-            response["result"] = bot.chat(
+            return bot.chat(
                 message=message, context=context, streaming=False, history=history
             )
-
-            return response["result"]
 
         except Exception as e:
             return f"Error: {e}"
