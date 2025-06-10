@@ -43,7 +43,6 @@ class AiBot:
         """Maneja el chat en modo normal"""
         try:
             payload = {"message": message, "context": context}
-
             response = self._send_request(payload)
             response_data = response.json()
 

@@ -15,11 +15,13 @@ export class AiFloatingButton extends Component {
             "stock.picking": ["/inventory/", "/inventory"],
         };
 
+
         this._interval = setInterval(() => {
+            const currentPath2 = window.location.pathname;
+            const isCreatingSaleOrder = currentPath2 === "/odoo/sales/new";
             const currentPath = window.location.href;
             let detectedModel = null;
 
-            // Verificar todos los módulos en un solo loop
             for (const [model, routes] of Object.entries(this.modules)) {
                 if (routes.some((route) => currentPath.includes(route))) {
                     detectedModel = model;
@@ -27,10 +29,9 @@ export class AiFloatingButton extends Component {
                 }
             }
 
-            // Actualizar estado y mostrar en consola
-            if (detectedModel) {
-                this.contextService.setContext(detectedModel);
-                // Console.log(detectedModel);
+            if (isCreatingSaleOrder) {
+                this.contextService.setContext("sale.order", "form", "create");
+
                 this.state.showButton = true;
             } else {
                 this.state.showButton = false;

@@ -8,16 +8,24 @@ export const contextService = {
     start() {
         const state = reactive({
             currentModel: null,
+            view: null,
+            mode: null,
             isReady: false,
         });
 
         // Retorna la API del servicio (NO registrar aquí)
         return {
-            setContext: (model) => {
+            setContext: (model, view, mode) => {
                 state.currentModel = model;
+                state.view = view;
+                state.mode = mode;
                 state.isReady = true;
             },
-            getContext: () => ({model: state.currentModel}),
+            getContext: () => ({
+                model: state.currentModel,
+                view: state.view,
+                mode: state.mode,
+            }),
             waitForReady: () =>
                 new Promise((resolve) => {
                     const check = () =>
