@@ -56,6 +56,7 @@ export class AiSidebar extends Component {
             timerSeconds: 0,
             showButtons: false,
             showResultModal: false,
+            exerciseId: null,
             result: "failed",
         });
 
@@ -164,27 +165,31 @@ export class AiSidebar extends Component {
 
         this.state.showButtons = false;
         this.state.processActive = false;
+        this.state.exerciseId = null;
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
     }
 
     // Method for showing the result modal
     async showResultModal() {
-        this.state.showResultModal = true;
         //iniciar verficacion del ejercicio fetch
 
         //this.state.isLoading = true;
         try {
-            const response = await fetch("https://a45a-89-187-173-180.ngrok-free.app/validate_exercise?exercise_id=1&session_token=6e556544a3f04cd6b029528cb6fe4b8886d203c3&user_login=admin&db=odooconcept-at-18-0-odoo-tutor-tests-21531377", {
-                method: "GET",
+            const response = await fetch("/ai_chat/validate_exercise", {
+                method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
                 credentials: "include",
+                body: JSON.stringify({
+                    exercise_id: this.state.exerciseId,
+                }),
             });
             console.log(response);
-            //return await response.json();
+            //this.state.result = result.success ? "passed" : "failed";
+            //this.state.showResultModal = true;
         } catch (error) {
             console.error("Error sending result:", error);
             throw error;
@@ -330,6 +335,7 @@ export class AiSidebar extends Component {
             if (exercise_id) {
                 setTimeout(() => {
                     this.state.showButtons = true;
+                    this.state.exerciseId = exercise_id;
                 }, 0);
             }
 

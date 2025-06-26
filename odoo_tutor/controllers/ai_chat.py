@@ -33,3 +33,26 @@ class AiChatController(http.Controller):
 
         except Exception as e:
             return f"Error: {e}"
+
+    @http.route('/ai_chat/validate_exercise', type='json', auth='user')
+    def validate_exercise(self, **kwargs):
+        data = json.loads(http.request.httprequest.data)
+        exercise_id = data.get('exercise_id')
+
+        if not exercise_id:
+            return {"error": "Missing exercise_id"}
+
+        url = "https://a45a-89-187-173-180.ngrok-free.app/validate_exercise"
+        params = {
+            'exercise_id': exercise_id,
+            'session_token': http.request.session.sid,
+            'user_login': http.request.env.user.login,
+            'db': http.request.env.cr.dbname
+        }
+
+        try:
+            response = request.get(url, params=params, timeout=10)
+            print(response.json())
+            return response.json()
+        except Exception as e:
+            return {"error": str(e)}
