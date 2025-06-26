@@ -19,10 +19,25 @@
                 <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo tutor</h5>
                 <button
                     type="button"
-                    class="btn"
+                    class="btn rounded-circle p-1 btn-refresh"
                     aria-label="Reset"
                     t-on-click.stop.prevent="reset"
-                >Reset</button>
+                    style="
+                    width: 25px;
+                    height: 25px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 5px 5px 5px 5px;"
+                >
+                    <i class="fa fa-repeat"/>
+                </button>
+                <div t-if="state.processActive" class="d-flex align-items-center">
+                    <div class="timer-display me-2">
+                        <t t-esc="state.timerValue" t-if="state.timerValue"/>
+                        <t t-else="">00:00:00</t>
+                    </div>
+                </div>
                 <button
                     type="button"
                     class="btn-close text-reset"
@@ -32,7 +47,292 @@
             </div>
             <div class="offcanvas-body ms-2">
                 <div t-ref="chat-ui" id="chat-ui-container" class="h-100" />
+                <div class="ai-buttons-container"
+                     t-att-class="{'visible': state.showButtons}"
+                     t-attf-style="bottom: {{ state.composerHeight + 25 }}px;">
+
+                    <!-- Botón Start - visible cuando el proceso NO está activo -->
+                    <button
+                        t-if="!state.processActive and state.showButtons"
+                        class="deepseek-btn deepseek-btn-primary"
+                        t-on-click.stop.prevent="startProcess">
+                        Start
+                    </button>
+
+                    <!-- Contenedor para temporizador y botones - visible cuando el proceso está activo -->
+                    <div t-if="state.processActive" class="d-flex align-items-center">
+                        <!-- Botón Cancel -->
+                        <button
+                            class="deepseek-btn deepseek-btn-secondary me-2"
+                            t-on-click.stop.prevent="cancelProcess">
+                            Cancel
+                        </button>
+
+                        <!-- Botón Finish -->
+                        <button
+                            class="deepseek-btn deepseek-btn-accent"
+                            t-on-click.stop.prevent="showResultModal">
+                            Finish
+                        </button>
+                    </div>
+                </div>
             </div>
+
+            <!-- Result Modal - Usando t-if en lugar de clases para ocultar -->
+            <t t-if="state.showResultModal">
+                <div class="result-modal-overlay">
+                    <div class="result-modal-content">
+                        <h3 class="result-title">Process Result</h3>
+                        <div class="result-options">
+                            <button class="result-option passed">
+                                <div class="result-icon">✓</div>
+                                <div class="result-label">Passed</div>
+                            </button>
+                            <button class="result-option failed">
+                                <div class="result-icon">✗</div>
+                                <div class="result-label">Failed</div>
+                            </button>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" t-on-click="closeResultModal">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </t>
         </div>
+
+
+        <style>
+            /* Animación de giro al hacer clic */
+            .btn-refresh:active i {
+                animation: spin 0.6s linear;
+            }
+
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+
+            /* Nuevos estilos para el temporizador */
+            .timer-display {
+                background: rgba(0, 0, 0, 0.7);
+                color: white;
+                padding: 0px 15px;
+                border-radius: 20px;
+                font-family: monospace;
+                font-size: 15px;
+            }
+
+            /* Ajustes para alinear elementos */
+            .d-flex {
+                display: flex;
+            }
+            .align-items-center {
+                align-items: center;
+            }
+            .me-2 {
+                margin-right: 0.5rem;
+            }
+
+            /* Style Result Modal */
+            .result-modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 2000;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease;
+            }
+
+            .result-modal-overlay:not(.d-none) {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            .result-modal-content {
+                background: white;
+                width: 90%;
+                max-width: 500px;
+                border-radius: 15px;
+                overflow: hidden;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+                transform: translateY(20px);
+                transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            }
+
+            .result-modal-overlay:not(.d-none) .result-modal-content {
+                transform: translateY(0);
+            }
+
+            .result-title {
+                background: #3498db;
+                color: white;
+                margin: 0;
+                padding: 20px;
+                text-align: center;
+                font-size: 1.4rem;
+            }
+
+            .result-options {
+                display: flex;
+                padding: 30px 20px;
+                gap: 30px;
+                justify-content: center;
+            }
+
+            .result-option {
+                width: 140px;
+                height: 140px;
+                border-radius: 70px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                border: none;
+                transition: all 0.3s ease;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            }
+
+            .result-option:hover {
+                transform: scale(1.05);
+                box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            }
+
+            .result-option.passed {
+                background: linear-gradient(135deg, #00b09b, #96c93d);
+                color: white;
+            }
+
+            .result-option.failed {
+                background: linear-gradient(135deg, #ff416c, #ff4b2b);
+                color: white;
+            }
+
+            .result-icon {
+                font-size: 3.5rem;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }
+
+            .result-label {
+                font-size: 1.2rem;
+                font-weight: 600;
+            }
+
+            .modal-footer {
+                padding: 15px;
+                text-align: center;
+                background: #f8f9fa;
+            }
+
+            /* Style IA */
+            .ai-buttons-container {
+                position: absolute;
+                right: 45px;
+                display: flex;
+                gap: 15px;
+                z-index: 1000;
+                transform: translateY(100%);
+                opacity: 0;
+                pointer-events: none;
+                transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+            }
+
+            .ai-buttons-container.visible {
+                transform: translateY(0);
+                opacity: 0.75;
+                pointer-events: auto;
+            }
+
+            /* Nuevo estilo de botones tipo DeepSeek */
+            .deepseek-btn {
+                height: 35px;
+                padding: 0 15px;
+                border-radius: 24px; /* Mitad de la altura para bordes redondeados perfectos */
+                font-weight: 600;
+                font-size: 15px;
+                letter-spacing: 0.5px;
+                border: none;
+                cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                overflow: hidden;
+            }
+
+            /* Efecto hover para todos los botones */
+            .deepseek-btn:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
+            }
+
+            /* Efecto activo */
+            .deepseek-btn:active {
+                transform: translateY(1px);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            /* Estilos específicos para cada tipo de botón */
+            .deepseek-btn-primary {
+                background: linear-gradient(135deg, #3498db, #2c3e50);
+                color: white;
+                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+            }
+
+            .deepseek-btn-secondary {
+                background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+                color: #495057;
+                border: 1px solid #dee2e6;
+            }
+
+            .deepseek-btn-accent {
+                background: linear-gradient(135deg, #00c853, #1e88e5);
+                color: white;
+                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+            }
+
+            /* Efecto de onda al hacer clic (opcional) */
+            .deepseek-btn::after {
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 5px;
+                height: 5px;
+                background: rgba(255, 255, 255, 0.5);
+                opacity: 0;
+                border-radius: 100%;
+                transform: scale(1, 1) translate(-50%);
+                transform-origin: 50% 50%;
+            }
+
+            .deepseek-btn:focus:not(:active)::after {
+                animation: ripple 1s ease-out;
+            }
+
+            @keyframes ripple {
+                0% {
+                    transform: scale(0, 0);
+                    opacity: 0.5;
+                }
+                100% {
+                    transform: scale(25, 25);
+                    opacity: 0;
+                }
+            }
+        </style>
     </t>
 </templates>

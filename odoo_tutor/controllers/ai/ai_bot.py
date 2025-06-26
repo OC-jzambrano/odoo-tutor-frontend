@@ -45,10 +45,15 @@ class AiBot:
             payload = {"message": message, "context": context}
             response = self._send_request(payload)
             response_data = response.json()
+            exercise_id = response_data.get('exercise_id', None)
 
-            return response_data.get(
-                "response", "Error: Respuesta inválida del backend"
-            )
+            return {
+                "response": response_data.get(
+                    "response", "Error: Response does not contain 'response' key"
+                ),
+                "exercise_id": exercise_id
+            }
+
 
         except Exception as e:
             _logger.error("Error en chat: %s", str(e), exc_info=True)

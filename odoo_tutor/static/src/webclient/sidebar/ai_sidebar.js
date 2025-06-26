@@ -47,7 +47,16 @@ export class AiSidebar extends Component {
             isLoading: false,
             currentContext: null,
             placeholder: this.modelPlaceholders.default,
+            composerHeight: 0,
+            composerWidth: 0,
             isChatInitialized: false,
+            processActive: false,
+            timerValue: "00:00:00",
+            timerInterval: null,
+            timerSeconds: 0,
+            showButtons: false,
+            showResultModal: false,
+            result: "failed",
         });
 
         useEffect(
@@ -85,6 +94,17 @@ export class AiSidebar extends Component {
                     this.state.currentContext = newContext;
                 }
             }, 200);
+            this.observer = new MutationObserver(() => {
+            const composer = this.chatUiRef.el.querySelector('.nlux-composer-container');
+                if (composer) {
+                    const height = composer.offsetHeight;
+                    const width = composer.offsetWidth;
+                    this.state.composerWidth = width;
+                    this.state.composerHeight = height;
+                }
+            });
+
+            this.observer.observe(this.chatUiRef.el, { childList: true, subtree: true });
         });
 
         const aiBotStreamListener = ({message, stop}) => {
@@ -100,6 +120,9 @@ export class AiSidebar extends Component {
         onWillUnmount(() => {
             clearInterval(this.contextInterval);
             this.busService.unsubscribe("ai_bot_stream", aiBotStreamListener);
+            if (this.state.timerInterval) {
+                clearInterval(this.state.timerInterval);
+            }
         });
 
         // #region Mouse Events
@@ -109,6 +132,91 @@ export class AiSidebar extends Component {
             onMouseUp: this.onMouseUp,
         });
         // #endregion
+    }
+
+    // Métodos
+    startProcess() {
+        // Activar el proceso
+        this.state.processActive = true;
+        this.state.timerSeconds = 0;
+        this.state.timerValue = "00:00:00";
+
+        // Iniciar temporizador
+        this.state.timerInterval = setInterval(() => {
+            this.state.timerSeconds++;
+
+            const hours = Math.floor(this.state.timerSeconds / 3600);
+            const minutes = Math.floor((this.state.timerSeconds % 3600) / 60);
+            const seconds = this.state.timerSeconds % 60;
+
+            this.state.timerValue =
+                `${hours.toString().padStart(2, '0')}:` +
+                `${minutes.toString().padStart(2, '0')}:` +
+                `${seconds.toString().padStart(2, '0')}`;
+        }, 1000);
+    }
+
+    cancelProcess() {
+        // Detener temporizador
+        clearInterval(this.state.timerInterval);
+
+        // Resetear estado
+
+        this.state.showButtons = false;
+        this.state.processActive = false;
+        this.state.timerSeconds = 0;
+        this.state.timerValue = "00:00:00";
+    }
+
+    // Method for showing the result modal
+    async showResultModal() {
+        this.state.showResultModal = true;
+        //iniciar verficacion del ejercicio fetch
+
+        //this.state.isLoading = true;
+        try {
+            const response = await fetch("https://a45a-89-187-173-180.ngrok-free.app/validate_exercise?exercise_id=1&session_token=6e556544a3f04cd6b029528cb6fe4b8886d203c3&user_login=admin&db=odooconcept-at-18-0-odoo-tutor-tests-21531377", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                credentials: "include",
+            });
+            console.log(response);
+            //return await response.json();
+        } catch (error) {
+            console.error("Error sending result:", error);
+            throw error;
+        }
+
+        //Seleccionar cual modal mostrar
+
+    }
+
+    // Method for closing the result modal
+    closeResultModal() {
+        this.state.showResultModal = false;
+    }
+
+    // method for selecting the result
+    selectResult(result) {
+        console.log("aun me veo");
+        if (result === "null") {
+            this.state.result = result;
+
+            console.log("Resultado seleccionado:", result);
+
+            setTimeout(() => {
+                this.closeResultModal();
+            }, 10000);
+        }
+
+
+    }
+
+    toggleButtons() {
+        this.state.showButtons = !this.state.showButtons;
     }
 
     updateChatPlaceholder(newPlaceholder) {
@@ -128,7 +236,7 @@ export class AiSidebar extends Component {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Accept: "application/json",
+                    "Accept": "application/json",
                 },
                 credentials: "include",
                 body: JSON.stringify({
@@ -200,12 +308,32 @@ export class AiSidebar extends Component {
 
     reset() {
         this.createAiChat();
+        if (this.state.timerInterval) {
+            clearInterval(this.state.timerInterval);
+        }
+        this.state.showButtons = false;
+        this.state.processActive = false;
+        this.state.timerValue = "00:00:00";
     }
 
     async batchText(message, extras) {
         try {
             const response = await this.sendMessage(message, extras);
-            return new String(response.result);
+            const messageText = response.result.response;
+            var exercise_id = response.result.exercise_id;
+
+//            console.log(response);
+//            console.log(messageText);
+//            console.log(exercise_id);
+
+            // Mostrar botones si existe exercise_id
+            if (exercise_id) {
+                setTimeout(() => {
+                    this.state.showButtons = true;
+                }, 0);
+            }
+
+            return new String(messageText);
         } catch (error) {
             return `Error: ${error.message}`;
         }
