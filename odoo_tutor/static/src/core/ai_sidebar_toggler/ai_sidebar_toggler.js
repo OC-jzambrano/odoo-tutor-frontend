@@ -33,6 +33,8 @@ export class AiFloatingButton extends Component {
                 this.contextService.setContext("sale.order", "form", "create");
 
                 this.state.showButton = true;
+            } else if (detectedModel) {
+                this.state.showButton = true;
             } else {
                 this.state.showButton = false;
             }
