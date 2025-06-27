@@ -42,16 +42,16 @@ class AiChatController(http.Controller):
         if not exercise_id:
             return {"error": "Missing exercise_id"}
 
-        url = "https://a45a-89-187-173-180.ngrok-free.app/validate_exercise"
+        url = http.request.env['ir.config_parameter'].get_param('chatbot_base_url') + "/validate_exercise"
         params = {
             'exercise_id': exercise_id,
             'session_token': '6e556544a3f04cd6b029528cb6fe4b8886d203c3',
             'user_login': http.request.env.user.login,
-            'db': 'odooconcept-at-18-0-odoo-tutor-tests-21531377'
+            'db': http.request.env.cr.dbname
         }
 
         try:
-            response = requests.get(url, params=params, timeout=60)
+            response = requests.get(url, params=params, timeout=20)
             return {"result": response.text}
         except Exception as e:
             return {"error": str(e)}
