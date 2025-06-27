@@ -14,7 +14,7 @@ class AiBot:
         self.base_url = (
             self.env["ir.config_parameter"]
             .sudo()
-            .get_param("odoo_tutor.chatbot_base_url", "http://0.0.0.0:8001/chat")
+            .get_param("odoo_tutor.chatbot_base_url", "http://0.0.0.0:8001")
         )
         self.headers = {
             "Content-Type": "application/json",
@@ -28,7 +28,7 @@ class AiBot:
         """Envía la solicitud al backend personalizado"""
         try:
             response = requests.post(
-                self.base_url,
+                self.base_url + "/chat",
                 headers=self.headers,
                 json=payload,
                 stream=stream,
