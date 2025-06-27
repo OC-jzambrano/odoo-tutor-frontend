@@ -46,12 +46,12 @@ class AiChatController(http.Controller):
 
         session_token = config_params.get_param(
             "odoo_tutor.chatbot_session_token",
-            "0"  # Valor por defecto
+            "0"
         )
 
         base_url = config_params.get_param(
             "odoo_tutor.chatbot_base_url",
-            "http://0.0.0.0:8001/chat"  # Valor por defecto
+            "http://0.0.0.0:8001"
         )
 
         url = base_url + "/validate_exercise"
@@ -59,7 +59,7 @@ class AiChatController(http.Controller):
         params = {
             'exercise_id': exercise_id,
             'session_token': session_token,
-            'user_login': http.request.env.user.login,
+            'user_login': 'admin',
             'db': http.request.env.cr.dbname
         }
 
