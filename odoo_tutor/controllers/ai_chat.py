@@ -1,5 +1,5 @@
 import json
-
+import requests
 from odoo import http
 from odoo.http import request
 
@@ -45,14 +45,13 @@ class AiChatController(http.Controller):
         url = "https://a45a-89-187-173-180.ngrok-free.app/validate_exercise"
         params = {
             'exercise_id': exercise_id,
-            'session_token': http.request.session.sid,
+            'session_token': '6e556544a3f04cd6b029528cb6fe4b8886d203c3',
             'user_login': http.request.env.user.login,
-            'db': http.request.env.cr.dbname
+            'db': 'odooconcept-at-18-0-odoo-tutor-tests-21531377'
         }
 
         try:
-            response = request.get(url, params=params, timeout=10)
-            print(response.json())
-            return response.json()
+            response = requests.get(url, params=params, timeout=60)
+            return {"result": response.text}
         except Exception as e:
             return {"error": str(e)}

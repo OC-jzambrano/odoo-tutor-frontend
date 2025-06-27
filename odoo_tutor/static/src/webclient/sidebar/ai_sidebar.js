@@ -57,6 +57,8 @@ export class AiSidebar extends Component {
             showButtons: false,
             showResultModal: false,
             exerciseId: null,
+            firstFailedStep: null,
+            finishLoading: false,
             result: "failed",
         });
 
@@ -172,9 +174,8 @@ export class AiSidebar extends Component {
 
     // Method for showing the result modal
     async showResultModal() {
-        //iniciar verficacion del ejercicio fetch
+        this.state.finishLoading = true;
 
-        //this.state.isLoading = true;
         try {
             const response = await fetch("/ai_chat/validate_exercise", {
                 method: "POST",
@@ -182,26 +183,62 @@ export class AiSidebar extends Component {
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
-                credentials: "include",
                 body: JSON.stringify({
                     exercise_id: this.state.exerciseId,
                 }),
             });
-            console.log(response);
-            //this.state.result = result.success ? "passed" : "failed";
-            //this.state.showResultModal = true;
+
+            const responseText = await response.text();
+            console.log("Raw response text:", responseText);
+
+            try {
+                // Parsear la respuesta JSON-RPC
+                const jsonRpcResponse = JSON.parse(responseText);
+
+                // Verificar si la respuesta contiene un resultado
+                if (jsonRpcResponse.result && jsonRpcResponse.result.result) {
+                    // Parsear el string JSON interno
+                    const actualResult = JSON.parse(jsonRpcResponse.result.result);
+                    console.log("Actual validation result:", actualResult);
+
+                    if (actualResult.details && actualResult.details.results) {
+                        const results = actualResult.details.results;
+
+                        // Buscar el primer resultado fallido
+                        const firstFailure = results.find(r => r.status === "failed");
+
+                        if (firstFailure) {
+                            this.state.firstFailedStep = {
+                                description: firstFailure.description,
+                                details: firstFailure.details
+                            };
+                            this.state.result = "failed";
+                        } else {
+                            console.log("All steps passed!");
+                            this.state.result = "passed";
+                            this.state.firstFailedStep = null;
+                            this.cancelProcess();
+                        }
+                        this.state.finishLoading = false;
+                        this.state.showResultModal = true;
+                    }
+                } else {
+                    console.error("Invalid response structure:", jsonRpcResponse);
+                }
+            } catch (e) {
+                console.error("Failed to parse JSON:", e);
+                console.log("Response was:", responseText);
+            }
         } catch (error) {
-            console.error("Error sending result:", error);
-            throw error;
+            console.error("Network error:", error);
         }
-
-        //Seleccionar cual modal mostrar
-
     }
 
     // Method for closing the result modal
     closeResultModal() {
         this.state.showResultModal = false;
+        this.state.result = null;
+        this.state.firstFailedStep = null;
     }
 
     // method for selecting the result
@@ -236,6 +273,9 @@ export class AiSidebar extends Component {
 
     async sendMessage(message, extras) {
         this.state.isLoading = true;
+        if (this.state.processActive == false) {
+            this.state.showButtons = false;
+        }
         try {
             const response = await fetch("/ai_chat/chat", {
                 method: "POST",
@@ -326,10 +366,6 @@ export class AiSidebar extends Component {
             const response = await this.sendMessage(message, extras);
             const messageText = response.result.response;
             var exercise_id = response.result.exercise_id;
-
-//            console.log(response);
-//            console.log(messageText);
-//            console.log(exercise_id);
 
             // Mostrar botones si existe exercise_id
             if (exercise_id) {

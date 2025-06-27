@@ -54,7 +54,7 @@
                     <!-- Botón Start - visible cuando el proceso NO está activo -->
                     <button
                         t-if="!state.processActive and state.showButtons"
-                        class="deepseek-btn deepseek-btn-primary"
+                        class="dk-btn dk-btn-primary"
                         t-on-click.stop.prevent="startProcess">
                         Start
                     </button>
@@ -63,38 +63,65 @@
                     <div t-if="state.processActive" class="d-flex align-items-center">
                         <!-- Botón Cancel -->
                         <button
-                            class="deepseek-btn deepseek-btn-secondary me-2"
+                            class="dk-btn dk-btn-secondary me-2"
                             t-on-click.stop.prevent="cancelProcess">
                             Cancel
                         </button>
 
                         <!-- Botón Finish -->
-                        <button
-                            class="deepseek-btn deepseek-btn-accent"
-                            t-on-click.stop.prevent="showResultModal">
-                            Finish
+                        <button class="dk-btn dk-btn-accent"
+                                t-on-click.stop.prevent="showResultModal"
+                                t-att-disabled="state.finishLoading">
+                            <t t-if="state.finishLoading">
+                                <i class="fa fa-spinner fa-spin mr-2"/>
+                            </t>
+                            <t t-else="">
+                                Finish
+                            </t>
                         </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Result Modal - Usando t-if en lugar de clases para ocultar -->
+            <!-- Result Modal -->
             <t t-if="state.showResultModal">
-                <div class="result-modal-overlay">
+                <div class="result-modal-overlay" t-on-click.self="closeResultModal">
                     <div class="result-modal-content">
-                        <h3 class="result-title">Process Result</h3>
-                        <div class="result-options">
-                            <button class="result-option passed">
-                                <div class="result-icon">✓</div>
-                                <div class="result-label">Passed</div>
-                            </button>
-                            <button class="result-option failed">
-                                <div class="result-icon">✗</div>
-                                <div class="result-label">Failed</div>
-                            </button>
+                        <h3 class="result-title">
+                            <t t-if="state.result === 'passed'">¡Success!</t>
+                            <t t-else="">Exercise Validation</t>
+                        </h3>
+
+                        <div class="result-details">
+                            <t t-if="state.result === 'passed'">
+                                <div class="passed-message alert alert-success">
+                                    <i class="fa fa-check-circle mr-2"/>
+                                    Congratulations! All steps passed successfully.
+                                </div>
+                            </t>
+                            <t t-else="">
+                                <div class="failed-message">
+                                    <div class="alert alert-danger">
+                                        <i class="fa fa-exclamation-circle mr-2"/>
+                                        <strong>Failed:</strong>
+                                    </div>
+
+                                    <t t-if="state.firstFailedStep">
+                                        <div class="step-description alert alert-warning">
+                                            <t t-esc="state.firstFailedStep.description"/>
+                                        </div>
+                                    </t>
+                                    <t t-else="">
+                                        <div class="alert alert-info">
+                                            No validation details available
+                                        </div>
+                                    </t>
+                                </div>
+                            </t>
                         </div>
+
                         <div class="modal-footer">
-                            <button class="btn btn-secondary" t-on-click="closeResultModal">
+                            <button class="btn btn-primary" t-on-click="closeResultModal">
                                 Close
                             </button>
                         </div>
@@ -103,8 +130,25 @@
             </t>
         </div>
 
-
         <style>
+            .btn:disabled {
+                opacity: 0.7;
+                cursor: not-allowed;
+            }
+
+            .fa-spinner {
+                animation: fa-spin 1s infinite linear;
+            }
+
+            @keyframes fa-spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+                100% {
+                    transform: rotate(359deg);
+                }
+            }
+
             /* Animación de giro al hacer clic */
             .btn-refresh:active i {
                 animation: spin 0.6s linear;
@@ -143,96 +187,50 @@
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background: rgba(0, 0, 0, 0.7);
+                background-color: rgba(0, 0, 0, 0.5);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                z-index: 2000;
-                opacity: 0;
-                pointer-events: none;
-                transition: opacity 0.3s ease;
-            }
-
-            .result-modal-overlay:not(.d-none) {
-                opacity: 1;
-                pointer-events: auto;
+                z-index: 1000;
             }
 
             .result-modal-content {
                 background: white;
-                width: 90%;
-                max-width: 500px;
-                border-radius: 15px;
-                overflow: hidden;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-                transform: translateY(20px);
-                transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            }
-
-            .result-modal-overlay:not(.d-none) .result-modal-content {
-                transform: translateY(0);
+                padding: 20px;
+                border-radius: 8px;
+                width: 600px;
+                max-width: 90%;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             }
 
             .result-title {
-                background: #3498db;
-                color: white;
-                margin: 0;
-                padding: 20px;
-                text-align: center;
-                font-size: 1.4rem;
+                margin-top: 0;
+                border-bottom: 1px solid #eee;
+                padding-bottom: 10px;
             }
 
-            .result-options {
-                display: flex;
-                padding: 30px 20px;
-                gap: 30px;
-                justify-content: center;
+            .step-description {
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-left: 4px solid #dc3545;
+                border-radius: 4px;
+                margin: 15px 0;
             }
 
-            .result-option {
-                width: 140px;
-                height: 140px;
-                border-radius: 70px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                border: none;
-                transition: all 0.3s ease;
-                box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            }
-
-            .result-option:hover {
-                transform: scale(1.05);
-                box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-            }
-
-            .result-option.passed {
-                background: linear-gradient(135deg, #00b09b, #96c93d);
-                color: white;
-            }
-
-            .result-option.failed {
-                background: linear-gradient(135deg, #ff416c, #ff4b2b);
-                color: white;
-            }
-
-            .result-icon {
-                font-size: 3.5rem;
-                font-weight: bold;
-                margin-bottom: 10px;
-            }
-
-            .result-label {
-                font-size: 1.2rem;
-                font-weight: 600;
+            .step-details pre {
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 4px;
+                max-height: 200px;
+                overflow-y: auto;
+                font-size: 13px;
             }
 
             .modal-footer {
-                padding: 15px;
-                text-align: center;
-                background: #f8f9fa;
+                margin-top: 20px;
+                text-align: right;
             }
 
             /* Style IA */
@@ -254,8 +252,8 @@
                 pointer-events: auto;
             }
 
-            /* Nuevo estilo de botones tipo DeepSeek */
-            .deepseek-btn {
+            /* Nuevo estilo de botones */
+            .dk-btn {
                 height: 35px;
                 padding: 0 15px;
                 border-radius: 24px; /* Mitad de la altura para bordes redondeados perfectos */
@@ -274,38 +272,38 @@
             }
 
             /* Efecto hover para todos los botones */
-            .deepseek-btn:hover {
+            .dk-btn:hover {
                 transform: translateY(-3px);
                 box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
             }
 
             /* Efecto activo */
-            .deepseek-btn:active {
+            .dk-btn:active {
                 transform: translateY(1px);
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             }
 
             /* Estilos específicos para cada tipo de botón */
-            .deepseek-btn-primary {
+            .dk-btn-primary {
                 background: linear-gradient(135deg, #3498db, #2c3e50);
                 color: white;
                 text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
             }
 
-            .deepseek-btn-secondary {
+            .dk-btn-secondary {
                 background: linear-gradient(135deg, #f8f9fa, #e9ecef);
                 color: #495057;
                 border: 1px solid #dee2e6;
             }
 
-            .deepseek-btn-accent {
+            .dk-btn-accent {
                 background: linear-gradient(135deg, #00c853, #1e88e5);
                 color: white;
                 text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
             }
 
             /* Efecto de onda al hacer clic (opcional) */
-            .deepseek-btn::after {
+            .dk-btn::after {
                 content: '';
                 position: absolute;
                 top: 50%;
@@ -319,7 +317,7 @@
                 transform-origin: 50% 50%;
             }
 
-            .deepseek-btn:focus:not(:active)::after {
+            .dk-btn:focus:not(:active)::after {
                 animation: ripple 1s ease-out;
             }
 
