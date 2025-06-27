@@ -42,7 +42,7 @@ class AiChatController(http.Controller):
         if not exercise_id:
             return {"error": "Missing exercise_id"}
 
-        url = http.request.env['ir.config_parameter'].get_param('chatbot_base_url') + "/validate_exercise"
+        url = "https://4029-89-187-173-180.ngrok-free.app/validate_exercise"
         params = {
             'exercise_id': exercise_id,
             'session_token': '6e556544a3f04cd6b029528cb6fe4b8886d203c3',
