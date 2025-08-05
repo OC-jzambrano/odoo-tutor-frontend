@@ -64,7 +64,7 @@ class AiChatController(http.Controller):
         }
 
         try:
-            response = requests.get(url, params=params, timeout=20)
+            response = requests.get(url, params=params, timeout=10)
             return {"result": response.text}
         except Exception as e:
             return {"error": str(e)}

@@ -302,7 +302,7 @@ export class AiSidebar extends Component {
     createAiChat() {
         if (this.aiChat) {
             this.aiChat.unmount();
-            delete this.aiChat;
+            //delete this.aiChat;
         }
 
         const adapter = this.state.isStreamingMode
