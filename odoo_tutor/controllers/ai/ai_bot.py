@@ -39,25 +39,19 @@ class AiBot:
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Error comunicándose con el backend: {str(e)}") from e
 
-    def _chat(self, message: str, context: dict) -> str:
-        """Maneja el chat en modo normal"""
+    def _chat(self, message: str, context: dict) -> dict:
+        """Modo batch: pide la respuesta y la devuelve siempre en un dict {'response': ...}."""
         try:
             payload = {"message": message, "context": context}
-            response = self._send_request(payload)
-            response_data = response.json()
-            exercise_id = response_data.get('exercise_id', None)
-
+            resp = self._send_request(payload, stream=False)
+            data = resp.json() if resp else {}
             return {
-                "response": response_data.get(
-                    "response", "Error: Response does not contain 'response' key"
-                ),
-                "exercise_id": exercise_id
+                "response": data.get("response") or "¡Vaya! Estoy teniendo problemas técnicos. No puedo acceder a mis recursos en este instante.",
+                "exercise_id": data.get("exercise_id"),
             }
-
-
         except Exception as e:
-            _logger.error("Error en chat: %s", str(e), exc_info=True)
-            return f"Error: {str(e)}"
+            _logger.error("Error en _chat: %s", e, exc_info=True)
+            return {"response": "¡Vaya! Estoy teniendo problemas técnicos. No puedo acceder a mis recursos en este instante."}
 
     def _send_stream(self, content: dict) -> bool:
         """Envía mensajes a través del bus de Odoo"""
