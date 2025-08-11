@@ -96,14 +96,13 @@ export class AiFloatingButton extends Component {
         });
 
         this._interval = setInterval(() => {
-            let detectedModel = null;
+            let currentModel = null;
             let model = null;
             let showButton = false;
             const currentAction = this.actionService.currentController?.props;
 
             if (currentAction) {
-                const currentModel = currentAction.resModel;
-                //console.log("currentModel", currentModel);
+                currentModel = currentAction.resModel;
 
                 if (this.modules.includes(currentModel)) {
                     showButton = true;
@@ -124,9 +123,9 @@ export class AiFloatingButton extends Component {
             console.log("detectedModel", detectedModel);
 */
             if (isCreatingSaleOrder) {
-                this.contextService.setContext("sale.order", "form", "create");
-            } else if (detectedModel) {
-                this.contextService.setContext(detectedModel, "form", "create");
+                this.contextService.setContext(currentModel, "form", "create");
+            } else if (currentModel) {
+                this.contextService.setContext(currentModel, "form", "list");
             }
         }, 500);
 

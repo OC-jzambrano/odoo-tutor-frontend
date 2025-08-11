@@ -43,7 +43,7 @@ class AiBot:
         """Modo batch: pide la respuesta y la devuelve siempre en un dict {'response': ...}."""
         try:
             payload = {"message": message, "context": context}
-            resp = self._send_request(payload, stream=False)
+            resp = self._send_request(payload)
             data = resp.json() if resp else {}
             return {
                 "response": data.get("response") or "¡Vaya! Estoy teniendo problemas técnicos. No puedo acceder a mis recursos en este instante.",
