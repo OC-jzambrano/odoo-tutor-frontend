@@ -1,6 +1,6 @@
 /* eslint-disable */
 /** @odoo-module **/
-import {Component, useState} from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
 import {registry} from "@web/core/registry";
 import {useService} from "@web/core/utils/hooks";
 
@@ -10,7 +10,11 @@ export class AiFloatingButton extends Component {
     setup() {
         this.actionService = useService("action");
         this.contextService = useService("context_service");
-        this.state = useState({showButton: false});
+        this.state = useState({
+                        showButton: false,
+                        logs: [],
+                     });
+
         this.modules = [
             "sale.order",
             "sale,report",
@@ -47,6 +51,50 @@ export class AiFloatingButton extends Component {
             "purchase.order",
         ];
 
+        // intervalo para mostrar datos
+        this.intervalId = null;
+
+        if (this.router?.bus) {
+            this.router.bus.addEventListener("ROUTE_CHANGE", (ev) => {
+                console.log("Ruta cambiada", ev.detail.to);
+            });
+        }
+
+        if (this.actionService?.bus) {
+            this.actionService.bus.addEventListener("ACTION_EXECUTED", (ev) => {
+                console.log("Acción ejecutada", ev.detail.action);
+            });
+        }
+        // Detectar clicks en cualquier parte de la interfaz
+        document.addEventListener("click", (ev) => {
+            if (ev.target && ev.target.tagName) {
+                this.addLog("click", {
+                    tag: ev.target.tagName,
+                    text: ev.target.innerText?.trim()?.slice(0, 50) || "",
+                    className: ev.target.className
+                });
+            }
+        }, true);
+
+        // Detectar cambios en inputs y textareas
+        document.addEventListener("input", (ev) => {
+            if (["INPUT", "TEXTAREA"].includes(ev.target.tagName)) {
+                this.addLog("input", {
+                    name: ev.target.name,
+                    value: ev.target.value?.slice(0, 50) || ""
+                });
+            }
+        }, true);
+
+        // Iniciar intervalo para mostrar logs cada 10s
+        onMounted(() => {
+            this.intervalId = setInterval(() => {
+                if (this.state.logs.length) {
+                    console.log("User activity logs:", this.state.logs);
+                }
+            }, 10000);
+        });
+
         this._interval = setInterval(() => {
             let detectedModel = null;
             let model = null;
@@ -55,7 +103,7 @@ export class AiFloatingButton extends Component {
 
             if (currentAction) {
                 const currentModel = currentAction.resModel;
-                console.log("currentModel", currentModel);
+                //console.log("currentModel", currentModel);
 
                 if (this.modules.includes(currentModel)) {
                     showButton = true;
@@ -70,17 +118,33 @@ export class AiFloatingButton extends Component {
             const isCreatingSaleOrder = currentPath2 === "/odoo/sales/new";
             const currentPath = window.location.href;
 
-            console.log("currentPath2", currentPath2);
+            /*console.log("currentPath2", currentPath2);
             console.log("isCreatingSaleOrder", isCreatingSaleOrder);
             console.log("currentPath", currentPath);
             console.log("detectedModel", detectedModel);
-
+*/
             if (isCreatingSaleOrder) {
                 this.contextService.setContext("sale.order", "form", "create");
             } else if (detectedModel) {
                 this.contextService.setContext(detectedModel, "form", "create");
             }
         }, 500);
+
+        // Limpiar intervalo al desmontar componente
+        onWillUnmount(() => {
+            if (this.intervalId) {
+                clearInterval(this.intervalId);
+            }
+        });
+    }
+
+    //user_activity_tracker test
+    addLog(type, data) {
+        this.state.logs.push({
+            type,
+            data,
+            timestamp: new Date().toISOString()
+        });
     }
 
     willUnmount() {

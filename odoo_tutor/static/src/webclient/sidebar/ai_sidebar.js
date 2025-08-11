@@ -243,7 +243,6 @@ export class AiSidebar extends Component {
 
     // method for selecting the result
     selectResult(result) {
-        console.log("aun me veo");
         if (result === "null") {
             this.state.result = result;
 
