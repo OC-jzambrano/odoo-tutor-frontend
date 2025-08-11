@@ -266,7 +266,7 @@ export class AiSidebar extends Component {
                 placeholder: newPlaceholder,
             });
         } else {
-            this.createAiChat();
+            //this.createAiChat();
         }
     }
 
@@ -301,7 +301,7 @@ export class AiSidebar extends Component {
     createAiChat() {
         if (this.aiChat) {
             this.aiChat.unmount();
-            //delete this.aiChat;
+            delete this.aiChat;
         }
 
         const adapter = this.state.isStreamingMode
@@ -401,7 +401,6 @@ export class AiSidebar extends Component {
 
     toggleStreamingMode() {
         this.state.isStreamingMode = !this.state.isStreamingMode;
-        this.reset();
     }
 
     get isStreamingMode() {
