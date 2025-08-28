@@ -49,6 +49,7 @@ export class AiFloatingButton extends Component {
             "account.move",
             "account.invoice",
             "purchase.order",
+            "res.config.settings",
         ];
 
         // intervalo para mostrar datos
