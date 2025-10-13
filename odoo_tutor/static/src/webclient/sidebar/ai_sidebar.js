@@ -9,12 +9,12 @@ import {
     useState,
 } from "@odoo/owl";
 
-import {registry} from "@web/core/registry";
-import {cookie} from "@web/core/browser/cookie";
-import {useService} from "@web/core/utils/hooks";
-import {user} from "@web/core/user";
-import {imageUrl} from "@web/core/utils/urls";
-import {useMouseListeners} from "../../core/utils";
+import { registry } from "@web/core/registry";
+import { cookie } from "@web/core/browser/cookie";
+import { useService } from "@web/core/utils/hooks";
+import { user } from "@web/core/user";
+import { imageUrl } from "@web/core/utils/urls";
+import { useMouseListeners } from "../../core/utils";
 
 export class AiSidebar extends Component {
     static template = "ai_chat.AiSidebar";
@@ -71,12 +71,10 @@ export class AiSidebar extends Component {
                     this.modelPlaceholders[model] || this.modelPlaceholders.default;
 
                 if (!this.state.isChatInitialized) {
-                    // Primera inicialización
                     this.state.placeholder = newPlaceholder;
                     this.createAiChat();
                     this.state.isChatInitialized = true;
                 } else if (this.state.placeholder !== newPlaceholder) {
-                    // Actualización posterior
                     this.state.placeholder = newPlaceholder;
                     this.updateChatPlaceholder(newPlaceholder);
                 }
@@ -84,7 +82,6 @@ export class AiSidebar extends Component {
             () => [this.state.currentContext]
         );
 
-        // Intervalo para obtener contexto
         onMounted(() => {
             this.contextInterval = setInterval(() => {
                 const newContext = this.contextService.getContext();
@@ -97,25 +94,20 @@ export class AiSidebar extends Component {
                     this.state.currentContext = newContext;
                 }
             }, 200);
+
             this.observer = new MutationObserver(() => {
-            const composer = this.chatUiRef.el.querySelector('.nlux-composer-container');
+                const composer = this.chatUiRef.el.querySelector(".nlux-composer-container");
                 if (composer) {
-                    const height = composer.offsetHeight;
-                    const width = composer.offsetWidth;
-                    this.state.composerWidth = width;
-                    this.state.composerHeight = height;
+                    this.state.composerWidth = composer.offsetWidth;
+                    this.state.composerHeight = composer.offsetHeight;
                 }
             });
-
             this.observer.observe(this.chatUiRef.el, { childList: true, subtree: true });
         });
 
-        const aiBotStreamListener = ({message, stop}) => {
-            if (stop && this.onStop) {
-                this.onStop();
-            } else if (!stop && this.onMessage) {
-                this.onMessage(message);
-            }
+        const aiBotStreamListener = ({ message, stop }) => {
+            if (stop && this.onStop) this.onStop();
+            else if (!stop && this.onMessage) this.onMessage(message);
         };
         this.busService = this.env.services.bus_service;
         this.busService.subscribe("ai_bot_stream", aiBotStreamListener);
@@ -123,28 +115,220 @@ export class AiSidebar extends Component {
         onWillUnmount(() => {
             clearInterval(this.contextInterval);
             this.busService.unsubscribe("ai_bot_stream", aiBotStreamListener);
-            if (this.state.timerInterval) {
-                clearInterval(this.state.timerInterval);
-            }
+            if (this.state.timerInterval) clearInterval(this.state.timerInterval);
+            this._teardownAntiAutoScroll();
+            this._disconnectContainerFinder();
         });
 
-        // #region Mouse Events
         this.onHandleMouseDown = useMouseListeners({
             onMouseDown: this.onMouseDown,
             onMouseMove: this.onMouseMove,
             onMouseUp: this.onMouseUp,
         });
-        // #endregion
     }
 
-    // Métodos
+    _waitAndInitAntiAutoScroll() {
+        const root = this.chatUiRef?.el;
+        if (!root) {
+            return;
+        }
+
+        const tryInit = () => {
+            const conv = root.querySelector(".nlux-conversation-container");
+            const segs = root.querySelector(".nlux-chatSegments-container");
+            if (conv && segs) {
+                this._initAntiAutoScroll(conv, segs);
+                this._disconnectContainerFinder();
+                return true;
+            }
+            return false;
+        };
+
+        if (tryInit()) return;
+
+        this._containerFinderObs = new MutationObserver(() => {
+            tryInit();
+        });
+        this._containerFinderObs.observe(root, { childList: true, subtree: true });
+        this._containerFinderTimer = setTimeout(() => {
+            this._disconnectContainerFinder();
+        }, 10000);
+    }
+
+    _disconnectContainerFinder() {
+        if (this._containerFinderObs) {
+            this._containerFinderObs.disconnect();
+            this._containerFinderObs = null;
+        }
+        if (this._containerFinderTimer) {
+            clearTimeout(this._containerFinderTimer);
+            this._containerFinderTimer = null;
+        }
+    }
+
+    _initAntiAutoScroll(conv, segments) {
+        this._conv = conv;
+        this._segments = segments;
+
+        this._conv.style.overflowY = "auto";
+        this._conv.style.maxHeight = "100%";
+        this._conv.style.overflowAnchor = "none";
+        this._conv.style.scrollBehavior = "auto";
+
+        this._observerAA = new MutationObserver((mutations) => {
+            let addedBotMsg = null;
+
+            for (const m of mutations) {
+                if (m.type !== "childList") continue;
+                m.addedNodes.forEach((n) => {
+                    if (!(n instanceof Element)) return;
+
+                    const directBot = n.matches?.(".nlux-comp-chatItem.nlux-comp-chatItem--received") ? n : null;
+                    const nestedBot = !directBot && n.querySelector?.(".nlux-comp-chatItem.nlux-comp-chatItem--received");
+                    const candidate = directBot || nestedBot;
+                    if (candidate) addedBotMsg = candidate;
+                });
+            }
+
+            if (this._expectingAssistant && addedBotMsg) {
+                this._expectingAssistant = false;
+                this._anchorEl = addedBotMsg;
+                this._startLockToAnchor();
+            }
+
+            if (this._lockActive && this._anchorEl) {
+                this._stickToAnchor();
+            }
+        });
+
+        this._observerAA.observe(this._segments, { childList: true, subtree: true });
+
+        this._origScrollTo = this._conv.scrollTo;
+        this._conv.scrollTo = (...args) => {
+            if (this._lockActive) return;
+            return this._origScrollTo?.apply(this._conv, args);
+        };
+
+        const proto = Object.getPrototypeOf(this._conv);
+        this._origScrollTopDesc = Object.getOwnPropertyDescriptor(proto, "scrollTop");
+        if (this._origScrollTopDesc) {
+            Object.defineProperty(this._conv, "scrollTop", {
+                configurable: true,
+                get: () => this._origScrollTopDesc.get.call(this._conv),
+                set: (v) => {
+                    if (this._lockActive) return;
+                    return this._origScrollTopDesc.set.call(this._conv, v);
+                },
+            });
+        }
+    }
+
+    _teardownAntiAutoScroll() {
+        if (this._observerAA) {
+            this._observerAA.disconnect();
+            this._observerAA = null;
+        }
+        this._stopLock();
+
+        if (this._conv) {
+            if (this._origScrollTo) this._conv.scrollTo = this._origScrollTo;
+            if (this._origScrollTopDesc) {
+                try {
+                    Object.defineProperty(this._conv, "scrollTop", this._origScrollTopDesc);
+                } catch {}
+            }
+            this._conv.style.overflowAnchor = "auto";
+            this._conv.style.scrollBehavior = "auto";
+        }
+
+        this._conv = null;
+        this._segments = null;
+        this._origScrollTopDesc = null;
+        this._origScrollTo = null;
+    }
+
+    _topWithin(el, container) {
+        const r1 = el.getBoundingClientRect();
+        const r2 = container.getBoundingClientRect();
+        return r1.top - r2.top + container.scrollTop;
+    }
+
+    _stickToAnchor() {
+        if (!this._conv || !this._anchorEl) return;
+        const target = Math.max(0, this._topWithin(this._anchorEl, this._conv) - 8);
+
+
+        this._conv.scrollTop = target;
+        requestAnimationFrame(() => {
+            this._conv.scrollTop = target;
+            requestAnimationFrame(() => {
+                this._conv.scrollTop = target;
+            });
+        });
+    }
+
+    _startLockToAnchor() {
+        if (!this._anchorEl || !this._conv) return;
+        this._lockActive = true;
+
+        this._origWindowScrollTo = window.scrollTo;
+        window.scrollTo = (...args) => {
+            if (this._lockActive) return;
+            return this._origWindowScrollTo?.apply(window, args);
+        };
+
+        this._origScrollIntoView = Element.prototype.scrollIntoView;
+        const conv = this._conv;
+        Element.prototype.scrollIntoView = function (...args) {
+            try {
+                if (conv && conv.contains(this)) return;
+            } catch (e) {}
+            return AiSidebar.prototype._origScrollIntoView.call(this, ...args);
+        };
+        AiSidebar.prototype._origScrollIntoView = this._origScrollIntoView;
+
+        const lockMs = 3000;
+        const start = performance.now();
+
+        const tick = () => {
+            if (!this._lockActive) return;
+            this._stickToAnchor();
+
+            if (performance.now() - start < lockMs) {
+                this._lockRaf = requestAnimationFrame(tick);
+            } else {
+                this._lockActive = false;
+                if (this._origWindowScrollTo) window.scrollTo = this._origWindowScrollTo;
+                if (AiSidebar.prototype._origScrollIntoView) {
+                    Element.prototype.scrollIntoView = AiSidebar.prototype._origScrollIntoView;
+                    AiSidebar.prototype._origScrollIntoView = null;
+                }
+            }
+        };
+        this._lockRaf = requestAnimationFrame(tick);
+    }
+
+    _stopLock() {
+        this._lockActive = false;
+        if (this._lockRaf) cancelAnimationFrame(this._lockRaf);
+        this._lockRaf = null;
+        this._anchorEl = null;
+
+        if (this._origWindowScrollTo) {
+            window.scrollTo = this._origWindowScrollTo;
+            this._origWindowScrollTo = null;
+        }
+        if (AiSidebar.prototype._origScrollIntoView) {
+            Element.prototype.scrollIntoView = AiSidebar.prototype._origScrollIntoView;
+            AiSidebar.prototype._origScrollIntoView = null;
+        }
+    }
+
     startProcess() {
-        // Activar el proceso
         this.state.processActive = true;
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
 
-        // Iniciar temporizador
         this.state.timerInterval = setInterval(() => {
             this.state.timerSeconds++;
 
@@ -160,11 +344,7 @@ export class AiSidebar extends Component {
     }
 
     cancelProcess() {
-        // Detener temporizador
         clearInterval(this.state.timerInterval);
-
-        // Resetear estado
-
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.exerciseId = null;
@@ -172,7 +352,6 @@ export class AiSidebar extends Component {
         this.state.timerValue = "00:00:00";
     }
 
-    // Method for showing the result modal
     async showResultModal() {
         this.state.finishLoading = true;
 
@@ -189,71 +368,46 @@ export class AiSidebar extends Component {
             });
 
             const responseText = await response.text();
-            console.log("Raw response text:", responseText);
+            const jsonRpcResponse = JSON.parse(responseText);
+            if (jsonRpcResponse.result && jsonRpcResponse.result.result) {
+                const actualResult = JSON.parse(jsonRpcResponse.result.result);
+                if (actualResult.details && actualResult.details.results) {
+                    const results = actualResult.details.results;
+                    const firstFailure = results.find((r) => r.status === "failed");
 
-            try {
-                // Parsear la respuesta JSON-RPC
-                const jsonRpcResponse = JSON.parse(responseText);
-
-                // Verificar si la respuesta contiene un resultado
-                if (jsonRpcResponse.result && jsonRpcResponse.result.result) {
-                    // Parsear el string JSON interno
-                    const actualResult = JSON.parse(jsonRpcResponse.result.result);
-                    console.log("Actual validation result:", actualResult);
-
-                    if (actualResult.details && actualResult.details.results) {
-                        const results = actualResult.details.results;
-
-                        // Buscar el primer resultado fallido
-                        const firstFailure = results.find(r => r.status === "failed");
-
-                        if (firstFailure) {
-                            this.state.firstFailedStep = {
-                                description: firstFailure.description,
-                                details: firstFailure.details
-                            };
-                            this.state.result = "failed";
-                        } else {
-                            console.log("All steps passed!");
-                            this.state.result = "passed";
-                            this.state.firstFailedStep = null;
-                            this.cancelProcess();
-                        }
-                        this.state.finishLoading = false;
-                        this.state.showResultModal = true;
+                    if (firstFailure) {
+                        this.state.firstFailedStep = {
+                            description: firstFailure.description,
+                            details: firstFailure.details,
+                        };
+                        this.state.result = "failed";
+                    } else {
+                        this.state.result = "passed";
+                        this.state.firstFailedStep = null;
+                        this.cancelProcess();
                     }
-                } else {
-                    console.error("Invalid response structure:", jsonRpcResponse);
+                    this.state.finishLoading = false;
+                    this.state.showResultModal = true;
                 }
-            } catch (e) {
-                console.error("Failed to parse JSON:", e);
-                console.log("Response was:", responseText);
             }
         } catch (error) {
             console.error("Network error:", error);
         }
     }
 
-    // Method for closing the result modal
     closeResultModal() {
         this.state.showResultModal = false;
         this.state.result = null;
         this.state.firstFailedStep = null;
     }
 
-    // method for selecting the result
     selectResult(result) {
         if (result === "null") {
             this.state.result = result;
-
-            console.log("Resultado seleccionado:", result);
-
             setTimeout(() => {
                 this.closeResultModal();
             }, 10000);
         }
-
-
     }
 
     toggleButtons() {
@@ -265,16 +419,15 @@ export class AiSidebar extends Component {
             this.aiChat.updateComposerOptions({
                 placeholder: newPlaceholder,
             });
-        } else {
-            //this.createAiChat();
         }
     }
 
     async sendMessage(message, extras) {
         this.state.isLoading = true;
-        if (this.state.processActive == false) {
-            this.state.showButtons = false;
-        }
+        if (!this.state.processActive) this.state.showButtons = false;
+
+        this._expectingAssistant = true;
+
         try {
             const response = await fetch("/ai_chat/chat", {
                 method: "POST",
@@ -305,26 +458,17 @@ export class AiSidebar extends Component {
         }
 
         const adapter = this.state.isStreamingMode
-            ? {
-                  streamText: this.streamText.bind(this),
-              }
-            : {
-                  batchText: this.batchText.bind(this),
-              };
+            ? { streamText: this.streamText.bind(this) }
+            : { batchText: this.batchText.bind(this) };
 
-        const {partnerId, writeDate} = user;
-        const userAvatar = imageUrl("res.partner", partnerId, "avatar_256", {
-            unique: writeDate,
-        });
-
+        const { partnerId, writeDate } = user;
+        const userAvatar = imageUrl("res.partner", partnerId, "avatar_256", { unique: writeDate });
         const theme = cookie.get("color_scheme");
 
         this.aiChat = globalThis["@nlux/core"]
             .createAiChat()
             .withAdapter(adapter)
-            .withDisplayOptions({
-                colorScheme: theme,
-            })
+            .withDisplayOptions({ colorScheme: theme })
             .withConversationOptions({
                 historyPayloadSize: "max",
                 conversationStarters: [],
@@ -347,14 +491,15 @@ export class AiSidebar extends Component {
             .withMessageOptions({
                 waitTimeBeforeStreamCompletion: "never",
             });
+
         this.aiChat.mount(this.chatUiRef.el);
+
+        this._waitAndInitAntiAutoScroll();
     }
 
     reset() {
         this.createAiChat();
-        if (this.state.timerInterval) {
-            clearInterval(this.state.timerInterval);
-        }
+        if (this.state.timerInterval) clearInterval(this.state.timerInterval);
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.timerValue = "00:00:00";
@@ -364,9 +509,8 @@ export class AiSidebar extends Component {
         try {
             const response = await this.sendMessage(message, extras);
             const messageText = response.result.response;
-            var exercise_id = response.result.exercise_id;
+            const exercise_id = response.result.exercise_id;
 
-            // Mostrar botones si existe exercise_id
             if (exercise_id) {
                 setTimeout(() => {
                     this.state.showButtons = true;
@@ -439,10 +583,7 @@ export class AiSidebar extends Component {
         document.documentElement.style.cursor = "default";
         this.handleRef.el.classList.remove("bg-info");
     }
-
     // #endregion
 }
 
-registry.category("main_components").add("AiSidebar", {
-    Component: AiSidebar,
-});
+registry.category("main_components").add("AiSidebar", { Component: AiSidebar });

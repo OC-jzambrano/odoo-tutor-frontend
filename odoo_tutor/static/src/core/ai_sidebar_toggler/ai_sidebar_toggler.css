@@ -39,3 +39,32 @@
     outline: none !important;
     box-shadow: none !important;
 }
+
+
+#chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received.nlux-comp-chatItem--bubblesLayout {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+#chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-comp-chatItem-participantInfo {
+  order: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+}
+
+#chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-comp-message {
+  order: 1;
+}
+
+#chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-comp-avatarPicture {
+  width: 32px;
+  height: 32px;
+  background-size: cover;
+  border-radius: 50%;
+}
+
