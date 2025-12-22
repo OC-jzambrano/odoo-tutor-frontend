@@ -46,12 +46,12 @@ class AiBot:
             resp = self._send_request(payload)
             data = resp.json() if resp else {}
             return {
-                "response": data.get("response") or "¡Vaya! Estoy teniendo problemas técnicos. No puedo acceder a mis recursos en este instante.",
+                "response": data.get("response") or "Oh no! I'm having technical difficulties. I can't access my resources right now.",
                 "exercise_id": data.get("exercise_id"),
             }
         except Exception as e:
             _logger.error("Error en _chat: %s", e, exc_info=True)
-            return {"response": "¡Vaya! Estoy teniendo problemas técnicos. No puedo acceder a mis recursos en este instante."}
+            return {"response": "Oh no! I'm having technical difficulties. I can't access my resources right now."}
 
     def _send_stream(self, content: dict) -> bool:
         """Envía mensajes a través del bus de Odoo"""

@@ -17,7 +17,7 @@ class AiChatController(http.Controller):
             if request.httprequest.data:
                 data = json.loads(request.httprequest.data)
             else:
-                raise ValueError("Cuerpo de la solicitud vacío")
+                raise ValueError("Body is empty")
 
             message = data.get("message")
             context = data.get("context", {})
@@ -68,3 +68,22 @@ class AiChatController(http.Controller):
             return {"result": response.text}
         except Exception as e:
             return {"error": str(e)}
+
+    @http.route("/ai_chat/feedback", type="json", auth="user")
+    def ai_chat_feedback(self, message_uid, vote=None, comment=None, context=None, message_body_html=None,
+                         message_body_text=None, **kw):
+        env = request.env
+        vals = {
+            "user_id": env.user.id,
+            "message_uid": message_uid,
+            "vote": vote,
+            "comment": comment,
+            "context_model": (context or {}).get("model"),
+            "context_res_id": (context or {}).get("res_id"),
+            "context_json": context or {},
+            "message_body_html": message_body_html,
+            "message_body_text": message_body_text,
+        }
+        rec = env["ai.chat.feedback"].sudo().create(vals)
+        return {"id": rec.id}
+

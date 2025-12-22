@@ -16,6 +16,7 @@
         "bus",
     ],
     "data": [
+        "security/ir.model.access.csv",
         "views/res_config_settings_views.xml",
     ],
     "assets": {
@@ -25,8 +26,12 @@
             "odoo_tutor/static/src/**/*",
         ],
     },
+    "i18n": [
+        "i18n/es.po",
+    ],
     "installable": True,
     "application": True,
     "auto_install": False,
+    'images': ['static/images/iabot.png'],
     "license": "OPL-1",
 }
