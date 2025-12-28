@@ -621,7 +621,7 @@ class AiFloatingButton extends Component {
 
     _connectWebSocket() {
         try {
-            const baseUrl = "wss://tutor-backend.odooconcept.com/ws"; #TODO: Use a variable so that it can be modified from settings or parameters
+            const baseUrl = "wss://tutor-backend.odooconcept.com/ws"; //TODO: Use a variable so that it can be modified from settings or parameters
             const params = new URLSearchParams();
 
             const sess = (window.odoo && odoo.session_info) || {};
