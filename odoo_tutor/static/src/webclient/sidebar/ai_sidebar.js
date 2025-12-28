@@ -430,19 +430,59 @@ export class AiSidebar extends Component {
         this._activeFeedbackPopover = null;
     }
 
+    _sendFeedbackToWs(payload, extra = {}) {
+        const wsPayload = {
+            type: "feedback_event",
+            event_name: "ai_feedback",
+            event_data: {
+                ...payload,
+                ...extra,                      // status, error, etc
+                timestamp: new Date().toISOString(),
+            },
+        };
+
+        try {
+            if (window.aiTutorSend) {
+                window.aiTutorSend(wsPayload);
+            } else {
+                window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
+                window.__AI_TUTOR_WS_QUEUE.push(wsPayload);
+            }
+            console.log("[AI tutor] feedback_event sent:", wsPayload);
+        } catch (e) {
+            console.error("[AI tutor] feedback_event send failed:", e);
+        }
+    }
+
     async _submitAiFeedback(payload) {
         // payload: {message_uid, vote?, comment?, message_body_html?, message_body_text?}
+        const fullPayload = {
+            ...payload,
+            context: this.state.currentContext,
+        };
+
+        let saved_to_odoo = false;
+        let error = null;
+        let res = null;
+
         try {
-            const res = await rpc("/ai_chat/feedback", {
-                ...payload,
-                context: this.state.currentContext,
-            });
+            res = await rpc("/ai_chat/feedback", fullPayload);
+            saved_to_odoo = true;
 
             this.notification.add(_t("Feedback sent. Thanks 🙌"), { type: "success" });
             return res;
         } catch (e) {
             console.error("Feedback error:", e);
+            error = e?.message || String(e);
             this.notification.add(_t("Could not send the feedback."), { type: "danger" });
+        } finally {
+            // ✅ manda el mismo feedback al websocket con otro event
+            this._sendFeedbackToWs(fullPayload, {
+                saved_to_odoo,
+                error,
+                // opcional: un correlativo si backend lo necesita
+                rpc_result: res || null,
+            });
         }
     }
 

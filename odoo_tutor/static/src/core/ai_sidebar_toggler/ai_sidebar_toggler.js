@@ -581,9 +581,47 @@ class AiFloatingButton extends Component {
         }
     }
 
+    _exposeWsBridge() {
+        // cola global para eventos cuando el ws aún no está listo
+        window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
+
+        // función global para que otros módulos puedan enviar
+        window.aiTutorSend = (payload) => {
+            try {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    const msg = typeof payload === "string" ? payload : JSON.stringify(payload);
+                    this.ws.send(msg);
+                    return true;
+                }
+                // si no está listo, lo encolamos
+                window.__AI_TUTOR_WS_QUEUE.push(payload);
+                return false;
+            } catch (e) {
+                console.error("[AI tutor] aiTutorSend failed:", e);
+                return false;
+            }
+        };
+    }
+
+    _flushWsQueue() {
+        const q = window.__AI_TUTOR_WS_QUEUE || [];
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+        while (q.length) {
+            const payload = q.shift();
+            try {
+                const msg = typeof payload === "string" ? payload : JSON.stringify(payload);
+                this.ws.send(msg);
+            } catch (e) {
+                console.error("[AI tutor] flush ws queue error:", e);
+                break;
+            }
+        }
+    }
+
     _connectWebSocket() {
         try {
-            const baseUrl = "wss://tutor-backend.odooconcept.com/ws";
+            const baseUrl = "wss://tutor-backend.odooconcept.com/ws"; #TODO: Use a variable so that it can be modified from settings or parameters
             const params = new URLSearchParams();
 
             const sess = (window.odoo && odoo.session_info) || {};
@@ -591,17 +629,22 @@ class AiFloatingButton extends Component {
             if (sess.username) params.set("user_login", sess.username);
             if (sess.db) params.set("db", sess.db);
 
-            const fullUrl = params.toString()
-                ? `${baseUrl}?${params.toString()}`
-                : baseUrl;
+            const fullUrl = params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
 
             console.log("[AI tutor] Connecting WebSocket:", fullUrl);
             this.ws = new WebSocket(fullUrl);
 
+            // ✅ Exponer puente global apenas creas el ws
+            this._exposeWsBridge();
+
             this.ws.onopen = () => {
                 this.wsConnected = true;
                 console.log("[AI tutor] WebSocket connected");
+
+                // ✅ flush de lo que se haya intentado enviar antes de conectar
+                this._flushWsQueue();
             };
+
             this.ws.onmessage = (ev) => {
                 console.log("[AI tutor] WebSocket message:", ev.data);
             };
@@ -610,11 +653,14 @@ class AiFloatingButton extends Component {
             };
             this.ws.onclose = (ev) => {
                 this.wsConnected = false;
-                console.warn(
-                    "[AI tutor] WebSocket closed:",
-                    ev.code,
-                    ev.reason
-                );
+                console.warn("[AI tutor] WebSocket closed:", ev.code, ev.reason);
+
+                // deja la función global “viva” pero en modo queue
+                window.aiTutorSend = (payload) => {
+                    window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
+                    window.__AI_TUTOR_WS_QUEUE.push(payload);
+                    return false;
+                };
             };
         } catch (err) {
             console.error("[AI tutor] WebSocket connection failed:", err);
