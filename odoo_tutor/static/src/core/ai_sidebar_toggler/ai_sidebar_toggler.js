@@ -626,7 +626,7 @@ class AiFloatingButton extends Component {
 
             const sess = (window.odoo && odoo.session_info) || {};
             if (sess.session_id) params.set("session_id", sess.session_id);
-            if (sess.username) params.set("user_login", sess.username);
+            if (sess.username) params.set("user_login", "admin");
             if (sess.db) params.set("db", sess.db);
 
             const fullUrl = params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
@@ -655,7 +655,7 @@ class AiFloatingButton extends Component {
                 this.wsConnected = false;
                 console.warn("[AI tutor] WebSocket closed:", ev.code, ev.reason);
 
-                // deja la función global “viva” pero en modo queue
+                //Parameter queue
                 window.aiTutorSend = (payload) => {
                     window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
                     window.__AI_TUTOR_WS_QUEUE.push(payload);
