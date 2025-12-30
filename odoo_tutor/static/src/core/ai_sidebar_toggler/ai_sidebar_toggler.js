@@ -626,7 +626,7 @@ class AiFloatingButton extends Component {
 
             const sess = (window.odoo && odoo.session_info) || {};
             if (sess.session_id) params.set("session_id", sess.session_id);
-            if (sess.username) params.set("user_login", "admin");
+            params.set("user_login", "admin");
             if (sess.db) params.set("db", sess.db);
 
             const fullUrl = params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
