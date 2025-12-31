@@ -5,6 +5,19 @@ import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 
+import { rpc } from "@web/core/network/rpc";
+
+
+async function getUserLogin() {
+    const info = await rpc("/web/session/get_session_info", {});
+    return {
+        uid: info.uid,
+        user_login: info.username,
+        name: info.name,
+        db: info.db,
+    };
+}
+
 function parseHashParams(hash) {
     const h = (hash || window.location.hash || "").replace(/^#/, "");
     const out = {};
@@ -619,14 +632,25 @@ class AiFloatingButton extends Component {
         }
     }
 
-    _connectWebSocket() {
+    async _connectWebSocket() {
         try {
             const baseUrl = "wss://tutor-backend.odooconcept.com/ws"; //TODO: Use a variable so that it can be modified from settings or parameters
             const params = new URLSearchParams();
 
             const sess = (window.odoo && odoo.session_info) || {};
             if (sess.session_id) params.set("session_id", sess.session_id);
-            params.set("user_login", "admin");
+
+            let login = null;
+            try {
+              const session = await getUserLogin();
+              login = session?.user_login || session?.login || session?.username || null;
+            } catch (e) {
+              console.warn("[ws] getUserLogin() falló:", e);
+            }
+
+            login = login || "user_not_found";
+
+            params.set("user_login", login);
             if (sess.db) params.set("db", sess.db);
 
             const fullUrl = params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
