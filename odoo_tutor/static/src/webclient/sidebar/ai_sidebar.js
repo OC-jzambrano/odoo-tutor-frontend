@@ -247,6 +247,7 @@ export class AiSidebar extends Component {
                 this._submitAiFeedback({
                     message_uid: messageUid,
                     vote: "up",
+                    comment: "",
                     message_body_html: html,
                     message_body_text: text,
                 });
@@ -255,6 +256,7 @@ export class AiSidebar extends Component {
                 this._submitAiFeedback({
                     message_uid: messageUid,
                     vote: "down",
+                    comment: "",
                     message_body_html: html,
                     message_body_text: text,
                 });
@@ -263,7 +265,6 @@ export class AiSidebar extends Component {
                     chatItemEl,
                     anchorBtn: btn,
                     messageUid,
-                    // también le pasamos el cuerpo por si quieres guardarlo con comment
                     messageHtml: html,
                     messageText: text,
                 });
@@ -369,6 +370,7 @@ export class AiSidebar extends Component {
             this._submitAiFeedback({
                 message_uid: messageUid,
                 comment: text,
+                vote: "",
                 message_body_html: messageHtml,
                 message_body_text: messageText,
             });

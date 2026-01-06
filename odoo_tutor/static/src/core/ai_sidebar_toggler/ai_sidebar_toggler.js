@@ -700,11 +700,11 @@ class AiFloatingButton extends Component {
         this.state.logs.push(ev);
 
         if (ev.type === "click" && ev.uiType === "Button") {
-            this._sendButtonEvent(ev);
+            //this._sendButtonEvent(ev);
         }
 
         if (ev.type === "input_final") {
-            this._sendInputEvent(ev);
+            //this._sendInputEvent(ev);
         }
 
         return ev;
