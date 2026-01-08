@@ -281,6 +281,7 @@ class AiFloatingButton extends Component {
     setup() {
         this.actionService = useService("action");
         this.contextService = useService("context_service");
+        this.aiWs = useService("ai_ws");
 
         this.state = useState({
             showButton: false,
@@ -334,15 +335,7 @@ class AiFloatingButton extends Component {
         ];
 
         onMounted(() => {
-            this._connectWebSocket();
-
-            this.intervalId = setInterval(() => {
-                if (this.state.logs.length) {
-                    const c = this.state.ctx || {};
-                    //console.log("User activity logs:", this.state.logs);
-                    //console.log(`[ctx] view=${c.viewType || "-"} id=${c.resId || "-"}`);
-                }
-            }, 10000);
+            this.aiWs.ensureConnected();
         });
 
         this._interval = setInterval(() => {
@@ -700,11 +693,21 @@ class AiFloatingButton extends Component {
         this.state.logs.push(ev);
 
         if (ev.type === "click" && ev.uiType === "Button") {
-            //this._sendButtonEvent(ev);
+            //this._sendButtonEvent(ev); //TODO: adaptar
+            //this.aiWs.sendEvent({
+              //type: "ui_event",
+              //event_name: "button_click",
+              //event_data: { button_id: buttonId, raw: ev },
+            //});
         }
 
         if (ev.type === "input_final") {
-            //this._sendInputEvent(ev);
+            //this._sendInputEvent(ev); //TODO: adaptar
+            //this.aiWs.sendEvent({
+              //type: "ui_event",
+              //event_name: "input",
+              //event_data: { raw: ev },
+            //});
         }
 
         return ev;

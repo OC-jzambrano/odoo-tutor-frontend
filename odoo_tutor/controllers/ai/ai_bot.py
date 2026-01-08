@@ -1,81 +1,70 @@
+import json
 import logging
-
-import requests
-
-from odoo.api import Environment
+from odoo.http import request
 
 _logger = logging.getLogger(__name__)
 
+try:
+    from websocket import create_connection
+except Exception:
+    create_connection = None
+
 
 class AiBot:
-    def __init__(self, env: Environment):
+    def __init__(self, env, ws_session_id=None):
         self.env = env
-        # Obtener configuración de parámetros del sistema
-        self.base_url = (
-            self.env["ir.config_parameter"]
-            .sudo()
-            .get_param("odoo_tutor.chatbot_base_url", "http://0.0.0.0:8001")
+        self.ws_session_id = ws_session_id
+        self.ws_base_url = "wss://tutor-backend.odooconcept.com/ws"
+        self.api_key = self.env["ir.config_parameter"].sudo().get_param(
+            "odoo_tutor.chatbot_api_key", "your_super_secret_key_123"
         )
-        self.headers = {
-            "Content-Type": "application/json",
-            "X-API-KEY": self.env["ir.config_parameter"]
-            .sudo()
-            .get_param("odoo_tutor.chatbot_api_key", "your_super_secret_key_123"),
-        }
-        self.chat_history = []
 
-    def _send_request(self, payload: dict, stream: bool = False):
-        """Envía la solicitud al backend personalizado"""
-        try:
-            response = requests.post(
-                self.base_url + "/chat",
-                headers=self.headers,
-                json=payload,
-                stream=stream,
-                timeout=(3.05, 27),
-            )
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Error comunicándose con el backend: {str(e)}") from e
+    def _ws_url(self, *, user_login: str, db: str, session_id: str | None):
+        # mismos params que JS
+        parts = [f"user_login={user_login}", f"db={db}"]
+        if session_id:
+            parts.append(f"session_id={session_id}")
+        return self.ws_base_url + "?" + "&".join(parts)
 
-    def _chat(self, message: str, context: dict) -> dict:
-        """Modo batch: pide la respuesta y la devuelve siempre en un dict {'response': ...}."""
+    def _chat(self, message: str, context: dict):
+        if not create_connection:
+            return {"response": "Missing dependency: websocket-client"}
+
+        user_login = request.env.user.login
+        db = request.env.cr.dbname
+        # en Odoo suele ser request.session.sid; si en tu JS usas odoo.session_info.session_id, suelen coincidir.
+        session_id = self.ws_session_id
+
+        url = self._ws_url(user_login=user_login, db=db, session_id=session_id)
+
+        headers = [
+            f"X-API-KEY: {self.api_key}",
+        ]
+
+        ws = None
         try:
-            payload = {"message": message, "context": context}
-            resp = self._send_request(payload)
-            data = resp.json() if resp else {}
+            ws = create_connection(url, header=headers, timeout=20)
+
+            payload = {
+                "type": "chat",
+                "message": message,
+                "context": context or {},
+            }
+            ws.send(json.dumps(payload))
+
+            raw = ws.recv()  # si tu backend manda JSON final
+            data = json.loads(raw) if raw else {}
+
             return {
-                "response": data.get("response") or "Oh no! I'm having technical difficulties. I can't access my resources right now.",
+                "response": data.get("response"),
                 "exercise_id": data.get("exercise_id"),
             }
         except Exception as e:
-            _logger.error("Error en _chat: %s", e, exc_info=True)
-            return {"response": "Oh no! I'm having technical difficulties. I can't access my resources right now."}
-
-    def _send_stream(self, content: dict) -> bool:
-        """Envía mensajes a través del bus de Odoo"""
-        try:
-            self.env["bus.bus"]._sendone(
-                self.env.user.partner_id, "ai_bot_stream", content
-            )
-            return True
-        except Exception as e:
-            _logger.error("Error enviando stream: %s", str(e), exc_info=True)
-            return False
-
-    def chat(
-        self,
-        message: str,
-        context: dict | None = None,
-        streaming: bool = False,
-        history: list[dict] = None,
-    ) -> str:
-        """Interfaz principal para el chat"""
-        try:
-            context = context or {}
-            return self._chat(message, context)
-
-        except Exception as e:
-            _logger.error("Error en chat: %s", str(e), exc_info=True)
-            return f"Error: {str(e)}"
+            _logger.exception("WS chat failed: %s", e)
+            return {"response": "WS communication error", "error": str(e)}
+        finally:
+            try:
+                if ws:
+                    ws.close()
+            except Exception:
+                pass

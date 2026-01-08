@@ -45,7 +45,7 @@ export class AiSidebar extends Component {
         this.containerRef = useRef("container");
         this.chatUiRef = useRef("chat-ui");
         this.handleRef = useRef("handle");
-        this.aiChatService = useService("ai_chat");
+        this.aiWs = useService("ai_ws");
 
         this.state = useState({
             width: "600px",
@@ -432,60 +432,45 @@ export class AiSidebar extends Component {
         this._activeFeedbackPopover = null;
     }
 
-    _sendFeedbackToWs(payload, extra = {}) {
+    async _sendFeedbackToWs(payload, extra = {}) {
         const wsPayload = {
             type: "feedback_event",
             event_name: "ai_feedback",
             event_data: {
                 ...payload,
-                ...extra,                      // status, error, etc
+                ...extra,
                 timestamp: new Date().toISOString(),
             },
         };
 
         try {
             if (window.aiTutorSend) {
-                window.aiTutorSend(wsPayload);
-            } else {
-                window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
-                window.__AI_TUTOR_WS_QUEUE.push(wsPayload);
+                const sent = window.aiTutorSend(wsPayload);
+                console.log("[AI tutor] feedback_event:", sent ? "sent" : "queued", wsPayload);
+                return sent;
             }
-            console.log("[AI tutor] feedback_event sent:", wsPayload);
+            window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
+            window.__AI_TUTOR_WS_QUEUE.push(wsPayload);
+            console.log("[AI tutor] feedback_event queued (no bridge):", wsPayload);
+            return false;
         } catch (e) {
             console.error("[AI tutor] feedback_event send failed:", e);
+            return false;
         }
     }
 
     async _submitAiFeedback(payload) {
-        // payload: {message_uid, vote?, comment?, message_body_html?, message_body_text?}
-        const fullPayload = {
-            ...payload,
-            context: this.state.currentContext,
-        };
+        const fullPayload = { ...payload, context: this.state.currentContext };
+        const wsOnline = this.aiWs?.isOpen?.() || window.__AI_TUTOR_WS_STATUS?.status === "open";
 
-        let saved_to_odoo = false;
-        let error = null;
-        let res = null;
-
-        try {
-            res = await rpc("/ai_chat/feedback", fullPayload);
-            saved_to_odoo = true;
-
-            this.notification.add(_t("Feedback sent. Thanks 🙌"), { type: "success" });
-            return res;
-        } catch (e) {
-            console.error("Feedback error:", e);
-            error = e?.message || String(e);
-            this.notification.add(_t("Could not send the feedback."), { type: "danger" });
-        } finally {
-            // ✅ manda el mismo feedback al websocket con otro event
-            this._sendFeedbackToWs(fullPayload, {
-                saved_to_odoo,
-                error,
-                // opcional: un correlativo si backend lo necesita
-                rpc_result: res || null,
-            });
+        if (wsOnline) {
+          this.notification.add(_t("Feedback sent via WebSocket ✅"), { type: "success" });
+        } else {
+          this.notification.add(_t("WebSocket offline. Feedback queued ⏳"), { type: "warning" });
         }
+
+        this.aiWs.sendEvent({ type:"feedback_event", event_name:"ai_feedback", event_data: fullPayload })
+          .catch((e) => console.warn("sendEvent failed:", e));
     }
 
     _waitAndInitAntiAutoScroll() {
@@ -784,32 +769,15 @@ export class AiSidebar extends Component {
     }
 
     async sendMessage(message, extras) {
-        this.state.isLoading = true;
-        if (!this.state.processActive) this.state.showButtons = false;
+        const data = await this.aiWs.chat({
+            message,
+            context: this.state.currentContext,
+        });
 
-        this._expectingAssistant = true;
+        console.log("[sidebar] chat response:", data);
 
-        try {
-            const response = await fetch("/ai_chat/chat", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify({
-                    message: message,
-                    context: this.state.currentContext,
-                    streaming: this.state.isStreamingMode,
-                    history: extras.conversationHistory,
-                }),
-            });
-
-            return await response.json();
-        } catch (error) {
-            console.error("Error sending message:", error);
-            throw error;
-        }
+        const text = data?.response || "";
+        return { result: { response: text, exercise_id: data?.exercise_id || null } };
     }
 
     createAiChat() {

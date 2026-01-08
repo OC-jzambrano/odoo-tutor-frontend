@@ -10,7 +10,10 @@ class AiChatController(http.Controller):
     @http.route("/ai_chat/chat", type="json", auth="user", methods=["POST"])
     def get_quickboard_item(self, **kwargs):
         """Endpoint principal para el chatbot AI"""
-        bot = AiBot(request.env)
+        data = json.loads(request.httprequest.data or "{}")
+        ws_session_id = data.get("ws_session_id")
+
+        bot = AiBot(request.env, ws_session_id=ws_session_id)
 
         try:
             # Obtener datos del cuerpo de la solicitud
@@ -27,8 +30,8 @@ class AiChatController(http.Controller):
             if not message or not isinstance(message, str):
                 raise ValueError("El parámetro 'message' es requerido y debe ser texto")
 
-            return bot.chat(
-                message=message, context=context, streaming=False, history=history
+            return bot._chat(
+                message=message, context=context
             )
 
         except Exception as e:
