@@ -299,13 +299,43 @@ export class AiSidebar extends Component {
         pop.dataset.messageUid = messageUid;
 
         pop.innerHTML = `
-            <div class="ai_feedback_popover_title">${_t("Feedback about this answer")}</div>
-            <textarea class="ai_feedback_text" rows="3"
-                placeholder="${_t("Tell us what we can improve...")}"></textarea>
-            <div class="ai_feedback_actions">
-                <button type="button" class="btn btn-primary btn-sm" data-act="send">${_t("Send")}</button>
-                <button type="button" class="btn btn-secondary btn-sm" data-act="cancel">${_t("Cancel")}</button>
+          <div class="ai_feedback_popover_title">${_t("Feedback about this answer")}</div>
+
+          <!-- STEP 1: Quick buttons -->
+          <div class="ai_fb_step ai_fb_step--quick">
+            <div class="ai_fb_quick_grid">
+              <button type="button" class="ai_fb_quick_btn" data-quick="excellent" title="${_t("Excellent")}">
+                <i class="fa fa-star"></i> ${_t("Excellent")}
+              </button>
+
+              <button type="button" class="ai_fb_quick_btn" data-quick="unclear" title="${_t("Unclear")}">
+                <i class="fa fa-question-circle"></i> ${_t("Unclear")}
+              </button>
+
+              <button type="button" class="ai_fb_quick_btn" data-quick="tech" title="${_t("Technical issue")}">
+                <i class="fa fa-wrench"></i> ${_t("Technical issue")}
+              </button>
+
+              <button type="button" class="ai_fb_quick_btn ai_fb_quick_btn--primary" data-quick="comment" title="${_t("Leave a comment")}">
+                <i class="fa fa-comment"></i> ${_t("Comment")}
+              </button>
             </div>
+
+            <div class="ai_fb_quick_hint">
+              ${_t("Pick a quick option or leave a comment.")}
+            </div>
+          </div>
+
+          <!-- STEP 2: Comment -->
+          <div class="ai_fb_step ai_fb_step--comment" style="display:none;">
+            <textarea class="ai_feedback_text" rows="3"
+              placeholder="${_t("Tell us what we can improve...")}"></textarea>
+
+            <div class="ai_feedback_actions">
+              <button type="button" class="btn btn-primary btn-sm" data-act="send">${_t("Send")}</button>
+              <button type="button" class="btn btn-secondary btn-sm" data-act="cancel">${_t("Cancel")}</button>
+            </div>
+          </div>
         `;
 
         // ✅ Evita que NLUX intercepte drag/selection/keys, PERO sin matar click de los botones
@@ -324,6 +354,59 @@ export class AiSidebar extends Component {
 
         // Desactiva autoFocus del composer mientras esté abierto
         this._setComposerAutoFocus(false);
+
+        const quickStep = pop.querySelector(".ai_fb_step--quick");
+        const commentStep = pop.querySelector(".ai_fb_step--comment");
+
+        const goComment = () => {
+          if (quickStep) quickStep.style.display = "none";
+          if (commentStep) commentStep.style.display = "block";
+          setTimeout(() => ta?.focus({ preventScroll: true }), 0);
+        };
+
+        // ✅ Quick buttons behavior
+        pop.addEventListener(
+          "click",
+          (ev) => {
+            const btn = ev.target.closest("button[data-quick]");
+            if (!btn) return;
+
+            ev.preventDefault();
+            ev.stopPropagation();
+
+            const kind = btn.dataset.quick;
+
+            // comment button => open step 2
+            if (kind === "comment") {
+              goComment();
+              return;
+            }
+
+            // Everything else => send immediately + close
+            const base = {
+              message_uid: messageUid,
+              message_body_html: messageHtml,
+              message_body_text: messageText,
+            };
+
+            if (kind === "excellent") {
+              this._submitAiFeedback({ ...base, vote: "up", comment: "" });
+            } else if (kind === "unclear") {
+              this._submitAiFeedback(
+                { ...base, vote: "down", comment: "unclear" },
+                { eventName: "ai_feedback_unclear" } // ✅ solo aquí
+              );
+            } else if (kind === "tech") {
+              this._submitAiFeedback(
+                { ...base, vote: "", comment: "technical_issue" },
+                { eventName: "ai_feedback_technical_issue" } // ✅ solo aquí
+              );
+            }
+
+            this._closeFeedbackPopover();
+          },
+          true
+        );
 
         const place = () => {
             const r = anchorBtn.getBoundingClientRect();
@@ -459,18 +542,25 @@ export class AiSidebar extends Component {
         }
     }
 
-    async _submitAiFeedback(payload) {
+    async _submitAiFeedback(payload, opts = {}) {
         const fullPayload = { ...payload, context: this.state.currentContext };
         const wsOnline = this.aiWs?.isOpen?.() || window.__AI_TUTOR_WS_STATUS?.status === "open";
 
+        const eventName = opts?.eventName || "ai_feedback"; // ✅ default
+
         if (wsOnline) {
-          this.notification.add(_t("Feedback sent via WebSocket ✅"), { type: "success" });
+            this.notification.add(_t("Feedback sent via WebSocket ✅"), { type: "success" });
         } else {
-          this.notification.add(_t("WebSocket offline. Feedback queued ⏳"), { type: "warning" });
+            this.notification.add(_t("WebSocket offline. Feedback queued ⏳"), { type: "warning" });
         }
 
-        this.aiWs.sendEvent({ type:"feedback_event", event_name:"ai_feedback", event_data: fullPayload })
-          .catch((e) => console.warn("sendEvent failed:", e));
+        return this.aiWs
+            .sendEvent({
+                type: "feedback_event",
+                event_name: eventName, // ✅ override aquí
+                event_data: fullPayload,
+            })
+            .catch((e) => console.warn("sendEvent failed:", e));
     }
 
     _waitAndInitAntiAutoScroll() {

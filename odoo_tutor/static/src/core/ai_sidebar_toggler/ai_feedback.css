@@ -54,5 +54,39 @@
   background: rgba(0,0,0,0.10);
 }
 
+.ai_fb_quick_grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ai_fb_quick_btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ai_fb_quick_btn i {
+  opacity: 0.85;
+}
+
+.ai_fb_quick_btn--primary {
+  background: #7a4bff;
+  color: #fff;
+  border-color: transparent;
+}
+
+.ai_fb_quick_hint {
+  margin-top: 12px;
+  font-size: 12px;
+  opacity: 0.7;
+}
 
 
