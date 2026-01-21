@@ -280,17 +280,28 @@ export class AiSidebar extends Component {
         if (target) target.classList.add("is-active");
     }
 
-    _toggleFeedbackPopover({ chatItemEl, anchorBtn, messageUid, messageHtml, messageText }) {
+    _toggleFeedbackPopover({
+    chatItemEl,
+    anchorBtn,
+    messageUid,
+    messageHtml,
+    messageText,
+
+    // ✅ nuevos
+    eventName = "ai_feedback",
+    title = _t("Feedback about this answer"),
+    placeholder = _t("Tell us what we can improve..."),
+    presetVote = "",
+    }) {
         // toggle si es el mismo
         if (this._activeFeedbackPopover) {
             if (this._activeFeedbackPopover.dataset.messageUid === messageUid) {
-                this._closeFeedbackPopover();
-                return;
+              this._closeFeedbackPopover();
+              return;
             }
             this._closeFeedbackPopover();
         }
 
-        // IMPORTANTE: montar dentro del root del chat (evita loops de FocusTrap)
         const portal = this.chatUiRef?.el || this.containerRef?.el;
         if (!portal || !anchorBtn) return;
 
@@ -298,187 +309,104 @@ export class AiSidebar extends Component {
         pop.className = "ai_feedback_popover";
         pop.dataset.messageUid = messageUid;
 
+        // ✅ guarda config para el send
+        pop.dataset.eventName = eventName;
+        pop.dataset.presetVote = presetVote;
+
         pop.innerHTML = `
-          <div class="ai_feedback_popover_title">${_t("Feedback about this answer")}</div>
-
-          <!-- STEP 1: Quick buttons -->
-          <div class="ai_fb_step ai_fb_step--quick">
-            <div class="ai_fb_quick_grid">
-              <button type="button" class="ai_fb_quick_btn" data-quick="excellent" title="${_t("Excellent")}">
-                <i class="fa fa-star"></i> ${_t("Excellent")}
-              </button>
-
-              <button type="button" class="ai_fb_quick_btn" data-quick="unclear" title="${_t("Unclear")}">
-                <i class="fa fa-question-circle"></i> ${_t("Unclear")}
-              </button>
-
-              <button type="button" class="ai_fb_quick_btn" data-quick="tech" title="${_t("Technical issue")}">
-                <i class="fa fa-wrench"></i> ${_t("Technical issue")}
-              </button>
-
-              <button type="button" class="ai_fb_quick_btn ai_fb_quick_btn--primary" data-quick="comment" title="${_t("Leave a comment")}">
-                <i class="fa fa-comment"></i> ${_t("Comment")}
-              </button>
-            </div>
-
-            <div class="ai_fb_quick_hint">
-              ${_t("Pick a quick option or leave a comment.")}
-            </div>
-          </div>
-
-          <!-- STEP 2: Comment -->
-          <div class="ai_fb_step ai_fb_step--comment" style="display:none;">
-            <textarea class="ai_feedback_text" rows="3"
-              placeholder="${_t("Tell us what we can improve...")}"></textarea>
-
-            <div class="ai_feedback_actions">
-              <button type="button" class="btn btn-primary btn-sm" data-act="send">${_t("Send")}</button>
-              <button type="button" class="btn btn-secondary btn-sm" data-act="cancel">${_t("Cancel")}</button>
-            </div>
-          </div>
+        <div class="ai_feedback_popover_title">${title}</div>
+        <textarea class="ai_feedback_text" rows="3"
+          placeholder="${placeholder}"></textarea>
+        <div class="ai_feedback_actions">
+          <button type="button" class="btn btn-primary btn-sm" data-act="send">${_t("Send")}</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-act="cancel">${_t("Cancel")}</button>
+        </div>
         `;
 
-        // ✅ Evita que NLUX intercepte drag/selection/keys, PERO sin matar click de los botones
         const stopOnly = (e) => e.stopPropagation();
         pop.addEventListener("pointerdown", stopOnly, true);
         pop.addEventListener("mousedown", stopOnly, true);
         pop.addEventListener("keydown", stopOnly, true);
 
-        // Monta dentro del portal del chat
         portal.appendChild(pop);
 
-        // Estilo overlay (viewport anchored)
         pop.style.position = "fixed";
         pop.style.zIndex = "10000";
         pop.style.pointerEvents = "auto";
 
-        // Desactiva autoFocus del composer mientras esté abierto
         this._setComposerAutoFocus(false);
 
-        const quickStep = pop.querySelector(".ai_fb_step--quick");
-        const commentStep = pop.querySelector(".ai_fb_step--comment");
-
-        const goComment = () => {
-          if (quickStep) quickStep.style.display = "none";
-          if (commentStep) commentStep.style.display = "block";
-          setTimeout(() => ta?.focus({ preventScroll: true }), 0);
-        };
-
-        // ✅ Quick buttons behavior
-        pop.addEventListener(
-          "click",
-          (ev) => {
-            const btn = ev.target.closest("button[data-quick]");
-            if (!btn) return;
-
-            ev.preventDefault();
-            ev.stopPropagation();
-
-            const kind = btn.dataset.quick;
-
-            // comment button => open step 2
-            if (kind === "comment") {
-              goComment();
-              return;
-            }
-
-            // Everything else => send immediately + close
-            const base = {
-              message_uid: messageUid,
-              message_body_html: messageHtml,
-              message_body_text: messageText,
-            };
-
-            if (kind === "excellent") {
-              this._submitAiFeedback({ ...base, vote: "up", comment: "" });
-            } else if (kind === "unclear") {
-              this._submitAiFeedback(
-                { ...base, vote: "down", comment: "unclear" },
-                { eventName: "ai_feedback_unclear" } // ✅ solo aquí
-              );
-            } else if (kind === "tech") {
-              this._submitAiFeedback(
-                { ...base, vote: "", comment: "technical_issue" },
-                { eventName: "ai_feedback_technical_issue" } // ✅ solo aquí
-              );
-            }
-
-            this._closeFeedbackPopover();
-          },
-          true
-        );
-
         const place = () => {
-            const r = anchorBtn.getBoundingClientRect();
+        const r = anchorBtn.getBoundingClientRect();
+        let left = r.left;
+        let top = r.bottom + 8;
 
-            // posición base: debajo del botón
-            let left = r.left;
-            let top = r.bottom + 8;
+        const pr = pop.getBoundingClientRect();
+        const pad = 8;
 
-            // medir popover
-            const pr = pop.getBoundingClientRect();
-            const pad = 8;
+        if (left + pr.width > window.innerWidth - pad) left = window.innerWidth - pr.width - pad;
+        if (left < pad) left = pad;
 
-            // clamp viewport
-            if (left + pr.width > window.innerWidth - pad) left = window.innerWidth - pr.width - pad;
-            if (left < pad) left = pad;
+        if (top + pr.height > window.innerHeight - pad) top = r.top - pr.height - pad;
+        if (top < pad) top = pad;
 
-            if (top + pr.height > window.innerHeight - pad) top = r.top - pr.height - pad;
-            if (top < pad) top = pad;
-
-            pop.style.left = `${left}px`;
-            pop.style.top = `${top}px`;
+        pop.style.left = `${left}px`;
+        pop.style.top = `${top}px`;
         };
 
-        // Coloca 2 veces por si el tamaño cambia al render
         place();
         requestAnimationFrame(place);
 
-        // Focus al textarea (sin loops)
         const ta = pop.querySelector(".ai_feedback_text");
         if (ta) {
-            ta.tabIndex = 0;
-            ta.style.pointerEvents = "auto";
-            setTimeout(() => ta.focus({ preventScroll: true }), 0);
+        ta.tabIndex = 0;
+        ta.style.pointerEvents = "auto";
+        setTimeout(() => ta.focus({ preventScroll: true }), 0);
         }
 
-        // Botones: handlers directos (evita que se “pierdan” por propagación)
         const btnSend = pop.querySelector('button[data-act="send"]');
         const btnCancel = pop.querySelector('button[data-act="cancel"]');
 
         const onSend = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const text = ta?.value?.trim() || "";
-            this._submitAiFeedback({
-                message_uid: messageUid,
-                comment: text,
-                vote: "",
-                message_body_html: messageHtml,
-                message_body_text: messageText,
-            });
-            this._closeFeedbackPopover();
+        e.preventDefault();
+        e.stopPropagation();
+
+        const text = ta?.value?.trim() || "";
+        const eventNameFinal = pop.dataset.eventName || "ai_feedback";
+        const voteFinal = pop.dataset.presetVote || "";
+
+        // ✅ manda con el eventName correcto
+        this._submitAiFeedback(
+          {
+            message_uid: messageUid,
+            comment: text,
+            vote: voteFinal,
+            message_body_html: messageHtml,
+            message_body_text: messageText,
+          },
+          { eventName: eventNameFinal }
+        );
+
+        this._closeFeedbackPopover();
         };
 
         const onCancel = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            this._closeFeedbackPopover();
+        e.preventDefault();
+        e.stopPropagation();
+        this._closeFeedbackPopover();
         };
 
         btnSend?.addEventListener("click", onSend, true);
         btnCancel?.addEventListener("click", onCancel, true);
 
-        // Cerrar al click fuera
         const onDocMouseDown = (e) => {
-            if (!pop.contains(e.target) && e.target !== anchorBtn) {
-                this._closeFeedbackPopover();
-            }
+        if (!pop.contains(e.target) && e.target !== anchorBtn) {
+          this._closeFeedbackPopover();
+        }
         };
 
-        // Cerrar con ESC
         const onKeyDown = (e) => {
-            if (e.key === "Escape") this._closeFeedbackPopover();
+        if (e.key === "Escape") this._closeFeedbackPopover();
         };
 
         document.addEventListener("mousedown", onDocMouseDown, true);
@@ -486,14 +414,13 @@ export class AiSidebar extends Component {
         window.addEventListener("resize", place, true);
         window.addEventListener("scroll", place, true);
 
-        // guardar refs para teardown
         this._activeFeedbackPopover = pop;
         pop._onDocMouseDown = onDocMouseDown;
         pop._onKeyDown = onKeyDown;
         pop._onReflow = place;
         pop._onSend = onSend;
         pop._onCancel = onCancel;
-    };
+    }
 
     _closeFeedbackPopover() {
         if (!this._activeFeedbackPopover) return;
