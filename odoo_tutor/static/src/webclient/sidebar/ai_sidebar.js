@@ -261,7 +261,7 @@ export class AiSidebar extends Component {
                     message_body_text: text,
                 });
             } else if (action === "comment") {
-                this._toggleFeedbackPopover({
+                this._toggleFeedbackQuickPopover({
                     chatItemEl,
                     anchorBtn: btn,
                     messageUid,
@@ -278,6 +278,179 @@ export class AiSidebar extends Component {
         barEl.querySelectorAll(".ai_feedback_btn").forEach((b) => b.classList.remove("is-active"));
         const target = barEl.querySelector(`.ai_feedback_btn[data-action="${vote}"]`);
         if (target) target.classList.add("is-active");
+    }
+
+    _toggleFeedbackQuickPopover({ chatItemEl, anchorBtn, messageUid, messageHtml, messageText }) {
+        // si ya hay algo abierto, ciérralo primero
+        if (this._activeFeedbackPopover) {
+            this._closeFeedbackPopover();
+        }
+
+        const portal = this.chatUiRef?.el || this.containerRef?.el;
+        if (!portal || !anchorBtn) return;
+
+        const pop = document.createElement("div");
+        pop.className = "ai_feedback_popover ai_feedback_popover--quick";
+        pop.dataset.messageUid = messageUid;
+
+        pop.innerHTML = `
+          <div class="ai_feedback_popover_title">Quick feedback</div>
+
+          <div class="ai_feedback_quick_grid">
+            <button type="button" class="ai_feedback_quick_btn" data-act="excellent">
+              <i class="fa fa-star"></i><span>Excellent</span>
+            </button>
+
+            <button type="button" class="ai_feedback_quick_btn" data-act="unclear">
+              <i class="fa fa-question-circle"></i><span>Unclear</span>
+            </button>
+
+            <button type="button" class="ai_feedback_quick_btn" data-act="technical">
+              <i class="fa fa-wrench"></i><span>Technical issue</span>
+            </button>
+
+            <button type="button" class="ai_feedback_quick_btn" data-act="comment">
+              <i class="fa fa-comment"></i><span>Comment</span>
+            </button>
+          </div>
+
+          <div class="ai_feedback_actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-act="cancel">Cancel</button>
+          </div>
+        `;
+
+        // no romper NLUX
+        const stopOnly = (e) => e.stopPropagation();
+        pop.addEventListener("pointerdown", stopOnly, true);
+        pop.addEventListener("mousedown", stopOnly, true);
+        pop.addEventListener("keydown", stopOnly, true);
+
+        portal.appendChild(pop);
+
+        // mismo comportamiento visual que el popover actual
+        pop.style.position = "fixed";
+        pop.style.zIndex = "10000";
+        pop.style.pointerEvents = "auto";
+
+        this._setComposerAutoFocus(false);
+
+        const place = () => {
+            const r = anchorBtn.getBoundingClientRect();
+            let left = r.left;
+            let top = r.bottom + 8;
+
+            const pr = pop.getBoundingClientRect();
+            const pad = 8;
+
+            if (left + pr.width > window.innerWidth - pad) left = window.innerWidth - pr.width - pad;
+            if (left < pad) left = pad;
+
+            if (top + pr.height > window.innerHeight - pad) top = r.top - pr.height - pad;
+            if (top < pad) top = pad;
+
+            pop.style.left = `${left}px`;
+            pop.style.top = `${top}px`;
+        };
+
+        place();
+        requestAnimationFrame(place);
+
+        // acciones
+        const onClick = (ev) => {
+            const btn = ev.target.closest("button");
+            if (!btn) return;
+
+            const act = btn.dataset.act;
+            if (!act) return;
+
+            // ✅ cerrar el quick popover antes de abrir el textarea
+            const closeAndOpenTextarea = (opts) => {
+                this._closeFeedbackPopover();
+                this._toggleFeedbackPopover({
+                    chatItemEl,
+                    anchorBtn,
+                    messageUid,
+                    messageHtml,
+                    messageText,
+                    ...opts,
+                });
+            };
+
+            if (act === "cancel") {
+                this._closeFeedbackPopover();
+                return;
+            }
+
+            if (act === "excellent") {
+                // enviar directo (sin textarea)
+                this._submitAiFeedback(
+                    {
+                        message_uid: messageUid,
+                        vote: "up",
+                        comment: "",
+                        message_body_html: messageHtml,
+                        message_body_text: messageText,
+                    },
+                    { eventName: "ai_feedback" }
+                );
+
+                this._closeFeedbackPopover();
+                return;
+            }
+
+            if (act === "unclear") {
+                closeAndOpenTextarea({
+                    eventName: "ai_feedback_unclear",
+                    title: "What was unclear?",
+                    placeholder: "Tell us what felt confusing or incomplete...",
+                    presetVote: "down",
+                });
+                return;
+            }
+
+            if (act === "technical") {
+                closeAndOpenTextarea({
+                    eventName: "ai_feedback_technical_issue",
+                    title: "Describe the technical issue",
+                    placeholder: "What went wrong? (error, stuck, wrong output, etc.)",
+                    presetVote: "",
+                });
+                return;
+            }
+
+            if (act === "comment") {
+                closeAndOpenTextarea({
+                    eventName: "ai_feedback",
+                    title: "Feedback about this answer",
+                    placeholder: "Tell us what we can improve...",
+                    presetVote: "",
+                });
+                return;
+            }
+        };
+
+        pop.addEventListener("click", onClick, true);
+
+        // cerrar al click afuera
+        const onDocMouseDown = (e) => {
+            if (!pop.contains(e.target) && e.target !== anchorBtn) {
+                this._closeFeedbackPopover();
+            }
+        };
+        const onKeyDown = (e) => {
+            if (e.key === "Escape") this._closeFeedbackPopover();
+        };
+
+        document.addEventListener("mousedown", onDocMouseDown, true);
+        document.addEventListener("keydown", onKeyDown, true);
+        window.addEventListener("resize", place, true);
+        window.addEventListener("scroll", place, true);
+
+        this._activeFeedbackPopover = pop;
+        pop._onDocMouseDown = onDocMouseDown;
+        pop._onKeyDown = onKeyDown;
+        pop._onReflow = place;
+        pop._onQuickClick = onClick;
     }
 
     _toggleFeedbackPopover({
