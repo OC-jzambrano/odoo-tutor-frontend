@@ -4,10 +4,11 @@
 import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
-
 import { rpc } from "@web/core/network/rpc";
 
-
+// ---------------------
+// Helpers
+// ---------------------
 async function getUserLogin() {
     const info = await rpc("/web/session/get_session_info", {});
     return {
@@ -78,9 +79,7 @@ function classifyElement(el) {
     if (role === "checkbox") return "Checkbox";
     if (role === "button" || role === "menuitem" || role === "tab") return "Button";
 
-    const buttonish = el.closest?.(
-        "button,[role='button'],.o-kanban-button,.o_statusbar_button"
-    );
+    const buttonish = el.closest?.("button,[role='button'],.o-kanban-button,.o_statusbar_button");
     if (buttonish) return "Button";
 
     if (tag === "INPUT") {
@@ -132,9 +131,7 @@ function pickHeaderCellFor(table, cell) {
     if (thead) {
         const rows = Array.from(thead.rows || []);
         const headerRow = rows.length ? rows[rows.length - 1] : null;
-        headerCells = headerRow
-            ? Array.from(headerRow.cells || [])
-            : Array.from(thead.querySelectorAll("th"));
+        headerCells = headerRow ? Array.from(headerRow.cells || []) : Array.from(thead.querySelectorAll("th"));
     } else {
         headerCells = Array.from(table.querySelectorAll("thead th"));
     }
@@ -147,8 +144,7 @@ function pickHeaderCellFor(table, cell) {
     if (idx != null && headerCells[idx]) return headerCells[idx];
 
     const txt = cleanText(cell?.textContent || "").toLowerCase();
-    let best = null,
-        bestScore = -1;
+    let best = null, bestScore = -1;
     for (const th of headerCells) {
         const name = (th.getAttribute?.("data-name") || "").toLowerCase();
         const label = cleanText(th.textContent).toLowerCase();
@@ -177,11 +173,9 @@ function findGridContext(el) {
 
     const row = el.closest?.("tr") || null;
     if (row) {
-        const rid =
-            row.getAttribute?.("data-res-id") ||
-            row.getAttribute?.("data-id") ||
-            row.dataset?.id;
+        const rid = row.getAttribute?.("data-res-id") || row.getAttribute?.("data-id") || row.dataset?.id;
         out.rowId = safeId(rid);
+
         const prodCell =
             row.querySelector?.('td[data-name="product_id"]') ||
             row.querySelector?.("td.o_data_cell a") ||
@@ -212,26 +206,21 @@ function getControlLabel(el) {
     }
 
     if (!labelEl) labelEl = el.closest?.("label") || null;
-    if (!labelEl && el.parentElement)
-        labelEl = el.parentElement.querySelector?.("label") || null;
+    if (!labelEl && el.parentElement) labelEl = el.parentElement.querySelector?.("label") || null;
+
     if (!labelEl) {
-        const wrap = el.closest?.(
-            ".form-check, .custom-control, .o_boolean_toggle, .o_setting_box, .o_form_label"
-        );
+        const wrap = el.closest?.(".form-check, .custom-control, .o_boolean_toggle, .o_setting_box, .o_form_label");
         if (wrap) {
             labelEl =
-                wrap.querySelector?.(
-                    ".form-check-label, .custom-control-label, label, .o_form_label, .o_setting_label"
-                ) || null;
+                wrap.querySelector?.(".form-check-label, .custom-control-label, label, .o_form_label, .o_setting_label") ||
+                null;
         }
     }
-    if (!labelEl && el.nextElementSibling?.tagName === "LABEL")
-        labelEl = el.nextElementSibling;
-    if (!labelEl && el.previousElementSibling?.tagName === "LABEL")
-        labelEl = el.previousElementSibling;
 
-    const txt =
-        cleanText(labelEl?.textContent || el.getAttribute?.("title") || "") || "";
+    if (!labelEl && el.nextElementSibling?.tagName === "LABEL") labelEl = el.nextElementSibling;
+    if (!labelEl && el.previousElementSibling?.tagName === "LABEL") labelEl = el.previousElementSibling;
+
+    const txt = cleanText(labelEl?.textContent || el.getAttribute?.("title") || "") || "";
     return txt || null;
 }
 
@@ -262,11 +251,7 @@ function buildUniqueKey(el, uiType, gctx) {
     if (uiType === "Link") {
         const href = el?.getAttribute?.("href");
         if (href) {
-            const tail =
-                href
-                    .split(/[\/#?]/)
-                    .filter(Boolean)
-                    .slice(-1)[0] || href;
+            const tail = href.split(/[\/#?]/).filter(Boolean).slice(-1)[0] || href;
             return `Link-${tail}`;
         }
     }
@@ -275,13 +260,46 @@ function buildUniqueKey(el, uiType, gctx) {
     return `${uiType}-${uid}`;
 }
 
+/**
+ * "Target element" (MVP) para tu backend:
+ * - Ideal: button.new_lead (si existe name/id/data-name)
+ * - Fallback: uniqueKey
+ */
+function buildTargetElement(el, uiType, uniqueKey, labelKey) {
+    const tag = (el?.tagName || "").toLowerCase() || "el";
+
+    const dataName = el?.getAttribute?.("data-name");
+    if (dataName) return `${tag}.${dataName}`;
+
+    const name = el?.getAttribute?.("name");
+    if (name) return `${tag}.${name}`;
+
+    const id = el?.id;
+    if (id) return `${tag}#${id}`;
+
+    const title = el?.getAttribute?.("title");
+    if (uiType === "Button" && title) return `button.${slugify(title)}`;
+
+    if (labelKey) return `${tag}.${labelKey}`;
+
+    return uniqueKey || `${tag}.unknown`;
+}
+
+// ---------------------
+// Component
+// ---------------------
 class AiFloatingButton extends Component {
     static template = "ai_chat.AiFloatingButton";
 
     setup() {
         this.actionService = useService("action");
         this.contextService = useService("context_service");
+
+        // ✅ WebSocket service (single source of truth)
         this.aiWs = useService("ai_ws");
+
+        // ✅ Recorder service (tu nuevo servicio)
+        this.aiRecorder = useService("ai_recorder"); // si no existe aún, Odoo lanzará error -> asegúrate de registrarlo
 
         this.state = useState({
             showButton: false,
@@ -289,8 +307,9 @@ class AiFloatingButton extends Component {
             ctx: { viewType: null, resId: null },
         });
 
-        this.ws = null;
-        this.wsConnected = false;
+        // dedupe cache: key -> lastTsMs
+        this._dedup = new Map();
+        this.DEDUP_MS = 650;
 
         this.modules = [
             "sale.order",
@@ -335,12 +354,13 @@ class AiFloatingButton extends Component {
         ];
 
         onMounted(() => {
-            this.aiWs.ensureConnected();
+            // abre conexión WS (si ya está abierta, no hace nada)
+            this.aiWs?.ensureConnected?.().catch(() => {});
         });
 
+        // interval de contexto / visibilidad
         this._interval = setInterval(() => {
-            let currentModel = null,
-                showButton = false;
+            let currentModel = null, showButton = false;
             const currentAction = this.actionService.currentController?.props;
             if (currentAction) {
                 currentModel = currentAction.resModel;
@@ -350,138 +370,135 @@ class AiFloatingButton extends Component {
 
             const currentPath2 = window.location.pathname;
             const isCreatingSaleOrder = currentPath2 === "/odoo/sales/new";
-            if (isCreatingSaleOrder)
-                this.contextService.setContext(currentModel, "form", "create");
-            else if (currentModel)
-                this.contextService.setContext(currentModel, "form", "list");
+            if (isCreatingSaleOrder) this.contextService.setContext(currentModel, "form", "create");
+            else if (currentModel) this.contextService.setContext(currentModel, "form", "list");
 
             this.state.ctx = this._getContextSnapshot();
         }, 500);
 
-        onWillUnmount(() => {
-            if (this.intervalId) clearInterval(this.intervalId);
-        });
+        // ---------------------
+        // Document listeners (guardamos refs para cleanup)
+        // ---------------------
+        this._onDocClick = (ev) => {
+            if (!ev.target || !ev.target.tagName) return;
 
-        // CLICK
-        document.addEventListener(
-            "click",
-            (ev) => {
-                if (!ev.target || !ev.target.tagName) return;
-                const base = this._getContextSnapshot();
+            const base = this._getContextSnapshot();
 
-                const link = ev.target.closest?.(
-                    "a, [role='menuitem'], .o_app, .o_menuitem, .dropdown-item"
-                );
-                let href = null,
-                    menuXmlid = null;
-                if (link) {
-                    href = link.getAttribute?.("href") || null;
-                    const ds = link.dataset || {};
-                    menuXmlid = ds.menuXmlid || ds.menuXmlId || ds.xmlid || null;
-                }
+            const link = ev.target.closest?.("a, [role='menuitem'], .o_app, .o_menuitem, .dropdown-item");
+            let href = null, menuXmlid = null;
+            if (link) {
+                href = link.getAttribute?.("href") || null;
+                const ds = link.dataset || {};
+                menuXmlid = ds.menuXmlid || ds.menuXmlId || ds.xmlid || null;
+            }
 
-                const uiType = classifyElement(ev.target);
-                const gctx = findGridContext(ev.target);
-                const label = getControlLabel(ev.target);
-                const labelKey = label ? `${uiType}-${slugify(label)}` : null;
-                const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
+            const uiType = classifyElement(ev.target);
+            const gctx = findGridContext(ev.target);
+            const label = getControlLabel(ev.target);
+            const labelKey = label ? `${uiType}-${slugify(label)}` : null;
+            const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
+            const targetElement = buildTargetElement(ev.target, uiType, uniqueKey, labelKey);
 
-                this.addLog("click", {
-                    tag: ev.target.tagName,
-                    text: cleanText(ev.target.innerText).slice(0, 80),
-                    className: ev.target.className,
-                    idAttr: ev.target.id || null,
-                    nameAttr: ev.target.name || null,
-                    role: ev.target.getAttribute?.("role") || null,
-                    title: ev.target.getAttribute?.("title") || null,
-                    href,
-                    menuXmlid,
-                    uiType,
-                    uniqueKey,
-                    label,
-                    labelKey,
-                    ...gctx,
-                    ...base,
-                });
+            const logEv = this.addLog("click", {
+                tag: ev.target.tagName,
+                text: cleanText(ev.target.innerText).slice(0, 80),
+                className: ev.target.className,
+                idAttr: ev.target.id || null,
+                nameAttr: ev.target.name || null,
+                role: ev.target.getAttribute?.("role") || null,
+                title: ev.target.getAttribute?.("title") || null,
+                href,
+                menuXmlid,
+                uiType,
+                uniqueKey,
+                targetElement,
+                label,
+                labelKey,
+                ...gctx,
+                ...base,
+            });
 
-                setTimeout(() => {
-                    this.addLog("route_after", this._getContextSnapshot());
-                }, 0);
-            },
-            true
-        );
+            // route_after
+            setTimeout(() => {
+                this.addLog("route_after", this._getContextSnapshot());
+            }, 0);
 
-        // INPUT (teclas)
-        document.addEventListener(
-            "input",
-            (ev) => {
-                if (
-                    !ev.target ||
-                    !["INPUT", "TEXTAREA"].includes(ev.target.tagName)
-                )
-                    return;
-                const base = this._getContextSnapshot();
-                const uiType = classifyElement(ev.target);
-                const gctx = findGridContext(ev.target);
-                const label = getControlLabel(ev.target);
-                const labelKey = label ? `${uiType}-${slugify(label)}` : null;
-                const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
+            // ✅ recorder hook (solo si está activo)
+            this._maybeRecordUiEvent(logEv);
+        };
 
-                this.addLog("input", {
-                    name: ev.target.name,
-                    value: (ev.target.value ?? "").toString().slice(0, 80),
-                    tag: ev.target.tagName,
-                    className: ev.target.className,
-                    idAttr: ev.target.id || null,
-                    role: ev.target.getAttribute?.("role") || null,
-                    title: ev.target.getAttribute?.("title") || null,
-                    uiType,
-                    uniqueKey,
-                    label,
-                    labelKey,
-                    ...gctx,
-                    ...base,
-                });
-            },
-            true
-        );
+        this._onDocInput = (ev) => {
+            if (!ev.target || !["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
 
-        // CHANGE (valor final input)
-        document.addEventListener(
-            "change",
-            (ev) => {
-                if (
-                    !ev.target ||
-                    !["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName)
-                )
-                    return;
+            const base = this._getContextSnapshot();
+            const uiType = classifyElement(ev.target);
+            const gctx = findGridContext(ev.target);
+            const label = getControlLabel(ev.target);
+            const labelKey = label ? `${uiType}-${slugify(label)}` : null;
+            const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
+            const targetElement = buildTargetElement(ev.target, uiType, uniqueKey, labelKey);
 
-                const base = this._getContextSnapshot();
-                const uiType = classifyElement(ev.target);
-                const gctx = findGridContext(ev.target);
-                const label = getControlLabel(ev.target);
-                const labelKey = label ? `${uiType}-${slugify(label)}` : null;
-                const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
+            const logEv = this.addLog("input", {
+                name: ev.target.name,
+                value: (ev.target.value ?? "").toString().slice(0, 80),
+                tag: ev.target.tagName,
+                className: ev.target.className,
+                idAttr: ev.target.id || null,
+                role: ev.target.getAttribute?.("role") || null,
+                title: ev.target.getAttribute?.("title") || null,
+                uiType,
+                uniqueKey,
+                targetElement,
+                label,
+                labelKey,
+                ...gctx,
+                ...base,
+            });
 
-                this.addLog("input_final", {
-                    name: ev.target.name,
-                    value: (ev.target.value ?? "").toString().slice(0, 80),
-                    tag: ev.target.tagName,
-                    className: ev.target.className,
-                    idAttr: ev.target.id || null,
-                    role: ev.target.getAttribute?.("role") || null,
-                    title: ev.target.getAttribute?.("title") || null,
-                    uiType,
-                    uniqueKey,
-                    label,
-                    labelKey,
-                    ...gctx,
-                    ...base,
-                });
-            },
-            true
-        );
+            // normalmente NO grabamos cada tecla en recorder MVP (solo input_final),
+            // pero lo dejamos logueado.
+            // this._maybeRecordUiEvent(logEv);
+        };
 
+        this._onDocChange = (ev) => {
+            if (!ev.target || !["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName)) return;
+
+            const base = this._getContextSnapshot();
+            const uiType = classifyElement(ev.target);
+            const gctx = findGridContext(ev.target);
+            const label = getControlLabel(ev.target);
+            const labelKey = label ? `${uiType}-${slugify(label)}` : null;
+            const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
+            const targetElement = buildTargetElement(ev.target, uiType, uniqueKey, labelKey);
+
+            const logEv = this.addLog("input_final", {
+                name: ev.target.name,
+                value: (ev.target.value ?? "").toString().slice(0, 80),
+                tag: ev.target.tagName,
+                className: ev.target.className,
+                idAttr: ev.target.id || null,
+                role: ev.target.getAttribute?.("role") || null,
+                title: ev.target.getAttribute?.("title") || null,
+                uiType,
+                uniqueKey,
+                targetElement,
+                label,
+                labelKey,
+                ...gctx,
+                ...base,
+            });
+
+            // ✅ recorder hook (solo si está activo)
+            this._maybeRecordUiEvent(logEv);
+        };
+
+        document.addEventListener("click", this._onDocClick, true);
+        document.addEventListener("input", this._onDocInput, true);
+        document.addEventListener("change", this._onDocChange, true);
+
+        // ---------------------
+        // Debug helpers (como antes)
+        // ---------------------
         window.filterUIEvents = (opts = {}) => {
             const {
                 uiType,
@@ -510,8 +527,7 @@ class AiFloatingButton extends Component {
 
                 if (rowLabelContains) {
                     const r = (e.rowLabel || "").toLowerCase();
-                    if (!r.includes(String(rowLabelContains).toLowerCase()))
-                        continue;
+                    if (!r.includes(String(rowLabelContains).toLowerCase())) continue;
                 }
                 if (valueEquals !== undefined) {
                     if ((e.value ?? "") !== String(valueEquals)) continue;
@@ -542,24 +558,19 @@ class AiFloatingButton extends Component {
                     if (t.includes(tgt)) score += 3;
                     if (t.startsWith(tgt)) score += 1;
                 }
-                if (
-                    preferTag &&
-                    (e.tag || "").toUpperCase() === String(preferTag).toUpperCase()
-                )
-                    score += 2;
+                if (preferTag && (e.tag || "").toUpperCase() === String(preferTag).toUpperCase()) score += 2;
                 if (preferUiType && e.uiType === preferUiType) score += 1.5;
+
                 const ts = Date.parse(e.timestamp || "") || 0;
                 if (ts) {
                     const ageMs = Date.now() - ts;
-                    const rec = Math.max(
-                        0,
-                        1 - Math.min(ageMs / (5 * 60 * 1000), 1)
-                    );
+                    const rec = Math.max(0, 1 - Math.min(ageMs / (5 * 60 * 1000), 1));
                     score += rec * (recencyBias * 5);
                 }
                 if (e.uniqueKey) score += 0.5;
                 return { e, score, idx };
             });
+
             scored.sort((a, b) => b.score - a.score || b.idx - a.idx);
             return scored.length ? { best: scored[0].e, scored } : { best: null, scored: [] };
         };
@@ -570,117 +581,14 @@ class AiFloatingButton extends Component {
             const props = this.actionService.currentController?.props || {};
             const hash = parseHashParams();
             const query = parseQueryParams();
-            const getNum = (x) =>
-                x != null && x !== "" && !Number.isNaN(Number(x)) ? Number(x) : null;
+            const getNum = (x) => (x != null && x !== "" && !Number.isNaN(Number(x)) ? Number(x) : null);
 
             return {
-                viewType:
-                    props.viewType ||
-                    hash.view_type ||
-                    query.view_type ||
-                    guessViewType(),
-                resId:
-                    getNum(props.resId) || getNum(hash.id) || getNum(query.id),
+                viewType: props.viewType || hash.view_type || query.view_type || guessViewType(),
+                resId: getNum(props.resId) || getNum(hash.id) || getNum(query.id),
             };
         } catch {
             return { viewType: null, resId: null };
-        }
-    }
-
-    _exposeWsBridge() {
-        // cola global para eventos cuando el ws aún no está listo
-        window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
-
-        // función global para que otros módulos puedan enviar
-        window.aiTutorSend = (payload) => {
-            try {
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    const msg = typeof payload === "string" ? payload : JSON.stringify(payload);
-                    this.ws.send(msg);
-                    return true;
-                }
-                // si no está listo, lo encolamos
-                window.__AI_TUTOR_WS_QUEUE.push(payload);
-                return false;
-            } catch (e) {
-                console.error("[AI tutor] aiTutorSend failed:", e);
-                return false;
-            }
-        };
-    }
-
-    _flushWsQueue() {
-        const q = window.__AI_TUTOR_WS_QUEUE || [];
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-        while (q.length) {
-            const payload = q.shift();
-            try {
-                const msg = typeof payload === "string" ? payload : JSON.stringify(payload);
-                this.ws.send(msg);
-            } catch (e) {
-                console.error("[AI tutor] flush ws queue error:", e);
-                break;
-            }
-        }
-    }
-
-    async _connectWebSocket() {
-        try {
-            const baseUrl = "wss://tutor-backend.odooconcept.com/ws"; //TODO: Use a variable so that it can be modified from settings or parameters
-            const params = new URLSearchParams();
-
-            const sess = (window.odoo && odoo.session_info) || {};
-            if (sess.session_id) params.set("session_id", sess.session_id);
-
-            let login = null;
-            try {
-              const session = await getUserLogin();
-              login = session?.user_login || session?.login || session?.username || null;
-            } catch (e) {
-              console.warn("[ws] getUserLogin() falló:", e);
-            }
-
-            login = login || "user_not_found";
-
-            params.set("user_login", login);
-            if (sess.db) params.set("db", sess.db);
-
-            const fullUrl = params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
-
-            console.log("[AI tutor] Connecting WebSocket:", fullUrl);
-            this.ws = new WebSocket(fullUrl);
-
-            // ✅ Exponer puente global apenas creas el ws
-            this._exposeWsBridge();
-
-            this.ws.onopen = () => {
-                this.wsConnected = true;
-                console.log("[AI tutor] WebSocket connected");
-
-                // ✅ flush de lo que se haya intentado enviar antes de conectar
-                this._flushWsQueue();
-            };
-
-            this.ws.onmessage = (ev) => {
-                console.log("[AI tutor] WebSocket message:", ev.data);
-            };
-            this.ws.onerror = (err) => {
-                console.error("[AI tutor] WebSocket error:", err);
-            };
-            this.ws.onclose = (ev) => {
-                this.wsConnected = false;
-                console.warn("[AI tutor] WebSocket closed:", ev.code, ev.reason);
-
-                //Parameter queue
-                window.aiTutorSend = (payload) => {
-                    window.__AI_TUTOR_WS_QUEUE = window.__AI_TUTOR_WS_QUEUE || [];
-                    window.__AI_TUTOR_WS_QUEUE.push(payload);
-                    return false;
-                };
-            };
-        } catch (err) {
-            console.error("[AI tutor] WebSocket connection failed:", err);
         }
     }
 
@@ -691,99 +599,94 @@ class AiFloatingButton extends Component {
             this.state.logs.splice(0, this.state.logs.length - 1000);
         }
         this.state.logs.push(ev);
-
-        if (ev.type === "click" && ev.uiType === "Button") {
-            //this._sendButtonEvent(ev); //TODO: adaptar
-            //this.aiWs.sendEvent({
-              //type: "ui_event",
-              //event_name: "button_click",
-              //event_data: { button_id: buttonId, raw: ev },
-            //});
-        }
-
-        if (ev.type === "input_final") {
-            //this._sendInputEvent(ev); //TODO: adaptar
-            //this.aiWs.sendEvent({
-              //type: "ui_event",
-              //event_name: "input",
-              //event_data: { raw: ev },
-            //});
-        }
-
         return ev;
     }
 
-    _sendButtonEvent(ev) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn(
-                "[AI tutor] WebSocket not ready, cannot send ui_event (button)",
-                ev
-            );
+    /**
+     * Envia evento al backend SOLO si recorder está activo.
+     * - Dedup por (type + targetElement + value?) en ventana corta.
+     * - Además lo pasa al ai_recorder (si tiene método).
+     */
+    _maybeRecordUiEvent(ev) {
+        const isActive =
+            this.aiRecorder?.isActive?.() ??
+            this.aiRecorder?.isRecording?.() ??
+            !!this.aiRecorder?.active;
+
+        if (!isActive) return;
+
+        // dedupe key
+        const target = ev?.targetElement || ev?.uniqueKey || "unknown";
+        const v = ev?.value != null ? String(ev.value) : "";
+        const key = `${ev.type}|${target}|${v}`;
+        const now = Date.now();
+        const last = this._dedup.get(key) || 0;
+
+        if (now - last < this.DEDUP_MS) {
+            // evita duplicado
             return;
         }
+        this._dedup.set(key, now);
 
-        const buttonId =
-            ev.uniqueKey ||
-            ev.nameAttr ||
-            ev.idAttr ||
-            (ev.text && slugify(ev.text)) ||
-            "unknown_button";
-
-        const payload = {
-            type: "ui_event",
-            event_name: "button_click",
-            event_data: {
-                button_id: buttonId,
-                timestamp: ev.timestamp,
-                raw: ev,
-            },
-        };
-
-        this.ws.send(JSON.stringify(payload));
-        console.log("[AI tutor] ui_event sent:", payload);
-    }
-
-    _sendInputEvent(ev) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.warn(
-                "[AI tutor] WebSocket not ready, cannot send ui_event (input)",
-                ev
-            );
-            return;
-        }
-
-        const fieldId =
-            ev.name ||
-            ev.columnField ||
-            ev.labelKey ||
-            ev.uniqueKey ||
-            "unknown_input";
+        // recording id (si tu servicio lo expone)
+        const recordingId =
+            this.aiRecorder?.getRecordingId?.() ||
+            this.aiRecorder?.recordingId ||
+            this.aiRecorder?.id ||
+            null;
 
         const payload = {
-            type: "ui_event",
-            event_name: "input_change",
-            event_data: {
-                field_id: fieldId,
-                value: ev.value,
-                timestamp: ev.timestamp,
-                raw: ev,
+            // lo mínimo que pedía el ticket
+            timestamp: ev.timestamp,
+            event_type: ev.type,           // "click" | "input_final"
+            target_element: target,        // ej: "button.new_lead"
+            // extras útiles y seguros
+            uiType: ev.uiType,
+            label: ev.label || null,
+            value: ev.value ?? null,
+            context: {
+                viewType: ev.viewType || null,
+                resId: ev.resId || null,
+                columnField: ev.columnField || null,
+                rowId: ev.rowId || null,
+                rowLabel: ev.rowLabel || null,
             },
+            recording_id: recordingId,
         };
 
-        this.ws.send(JSON.stringify(payload));
-        console.log("[AI tutor] input_change sent:", payload);
+        // 1) guarda en recorder local (si existe método)
+        this.aiRecorder?.pushEvent?.(payload);
+        this.aiRecorder?.addEvent?.(payload);
+
+        // 2) transmite por WS (real-time feed)
+        // mantenemos compatibilidad con tu backend: type="ui_event"
+        let event_name = ev.type;
+        if (ev.type === "click" && ev.uiType === "Button") event_name = "button_click";
+        if (ev.type === "input_final") event_name = "input_change";
+
+        this.aiWs?.sendEvent?.({
+            type: "ui_event",
+            event_name,
+            event_data: payload,
+        }).catch((e) => {
+            // si WS cae, el recorder puede reintentar luego (según tu servicio)
+            console.warn("[ai_recorder] sendEvent failed:", e);
+            this.aiRecorder?.markPending?.(payload, String(e?.message || e));
+        });
     }
 
     willUnmount() {
         clearInterval(this._interval);
-        if (this.intervalId) clearInterval(this.intervalId);
-        if (this.ws) {
-            try {
-                this.ws.close();
-            } catch (e) {}
-            this.ws = null;
-            this.wsConnected = false;
-        }
+
+        try {
+            document.removeEventListener("click", this._onDocClick, true);
+            document.removeEventListener("input", this._onDocInput, true);
+            document.removeEventListener("change", this._onDocChange, true);
+        } catch {}
+
+        this._onDocClick = null;
+        this._onDocInput = null;
+        this._onDocChange = null;
     }
 }
 

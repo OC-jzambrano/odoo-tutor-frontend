@@ -15,72 +15,196 @@
                 style="height: 100%; width: 5px; float: left; position: absolute; cursor: e-resize;"
                 t-on-mousedown="onHandleMouseDown"
             />
+
             <div class="offcanvas-header">
                 <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo tutor</h5>
+
                 <button
                     type="button"
                     class="btn rounded-circle p-1 btn-refresh"
                     aria-label="Reset"
                     t-on-click.stop.prevent="reset"
-                    style="
-                    width: 25px;
-                    height: 25px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin: 5px 5px 5px 5px;"
+                    style="width:25px;height:25px;display:flex;align-items:center;justify-content:center;margin:5px;"
                 >
                     <i class="fa fa-repeat"/>
                 </button>
-                <div t-if="state.processActive" class="d-flex align-items-center">
+
+                <!-- Toggle Recorder/Chat (solo admin) -->
+                <button
+                    t-if="state.canSeeRecorderToggle"
+                    type="button"
+                    class="btn btn-sm btn-recorder-toggle ms-1"
+                    t-on-click.stop.prevent="toggleRecorderPanel"
+                    t-att-title="state.showRecorderPanel ? 'Switch to Chat' : 'Switch to Recorder'"
+                >
+                    <i t-att-class="state.showRecorderPanel ? 'fa fa-comments me-1' : 'fa fa-dot-circle-o me-1'"/>
+                    <t t-esc="state.showRecorderPanel ? 'Chat' : 'Recorder'"/>
+                </button>
+
+                <div t-if="state.processActive and !state.showRecorderPanel" class="d-flex align-items-center">
                     <div class="timer-display me-2">
                         <t t-esc="state.timerValue" t-if="state.timerValue"/>
                         <t t-else="">00:00:00</t>
                     </div>
                 </div>
+
                 <button
                     type="button"
                     class="btn-close text-reset"
-                    data-bs-dismiss="offcanvas"
                     aria-label="Close"
+                    t-on-click.stop.prevent="onCloseSidebar"
                 />
             </div>
+
             <div class="offcanvas-body ms-2">
-                <div t-ref="chat-ui" id="chat-ui-container" class="h-100" />
-                <div class="ai-buttons-container"
-                     t-att-class="{'visible': state.showButtons}"
-                     t-attf-style="bottom: {{ state.composerHeight + 25 }}px;">
+                <!-- =========================
+                     RECORDER MODE (único panel)
+                     ========================= -->
+                <t t-if="state.showRecorderPanel">
+                    <div class="o_ai_recorder_panel" t-att-class="state.recorderStatus === 'recording' ? 'is-recording' : ''">
+                        <div class="o_ai_recorder_header">
+                            <div class="o_ai_recorder_left">
+                                <span t-if="state.recorderStatus === 'recording'" class="o_ai_rec_badge">
+                                    <i class="fa fa-circle"/>
+                                    RECORDING
+                                </span>
+                                <span class="o_ai_rec_title">Recorder</span>
+                            </div>
 
-                    <!-- Botón Start - visible cuando el proceso NO está activo -->
-                    <button
-                        t-if="!state.processActive and state.showButtons"
-                        class="dk-btn dk-btn-primary"
-                        t-on-click.stop.prevent="startProcess">
-                        Start
-                    </button>
+                            <div class="o_ai_recorder_right">
+                                <button t-if="state.recorderStatus !== 'recording'"
+                                        type="button"
+                                        class="btn btn-sm btn-primary"
+                                        t-on-click.stop.prevent="onRecorderStart">
+                                    <i class="fa fa-play"/> Start
+                                </button>
 
-                    <!-- Contenedor para temporizador y botones - visible cuando el proceso está activo -->
-                    <div t-if="state.processActive" class="d-flex align-items-center">
-                        <!-- Botón Cancel -->
-                        <button
-                            class="dk-btn dk-btn-secondary me-2"
-                            t-on-click.stop.prevent="cancelProcess">
-                            Cancel
-                        </button>
+                                <button t-if="state.recorderStatus === 'recording'"
+                                        type="button"
+                                        class="btn btn-sm btn-secondary"
+                                        t-on-click.stop.prevent="onRecorderPause">
+                                    <i class="fa fa-pause"/> Pause
+                                </button>
 
-                        <!-- Botón Finish -->
-                        <button class="dk-btn dk-btn-accent"
-                                t-on-click.stop.prevent="showResultModal"
-                                t-att-disabled="state.finishLoading">
-                            <t t-if="state.finishLoading">
-                                <i class="fa fa-spinner fa-spin mr-2"/>
-                            </t>
-                            <t t-else="">
-                                Finish
-                            </t>
-                        </button>
+                                <button t-if="state.recorderStatus !== 'idle'"
+                                        type="button"
+                                        class="btn btn-sm btn-danger"
+                                        t-on-click.stop.prevent="onRecorderFinish">
+                                    <i class="fa fa-stop"/> Finish
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="o_ai_recorder_meta">
+                            <div class="o_ai_rec_meta_row">
+                                <span class="lbl">Session ID:</span>
+                                <span class="val" t-esc="state.recorderSessionId || '-'"/>
+                            </div>
+                            <div class="o_ai_rec_meta_row">
+                                <span class="lbl">WebSocket:</span>
+                                <span class="val" t-esc="state.wsStatus || 'unknown'"/>
+                            </div>
+                        </div>
+
+                        <div class="o_ai_recorder_controls">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    t-att-disabled="state.recorderStatus === 'idle' or state.recorderPicking"
+                                    t-on-click.stop.prevent="onRecorderPick">
+                                <t t-if="state.recorderPicking">
+                                    <i class="fa fa-crosshairs fa-spin"/> Picking...
+                                </t>
+                                <t t-else="">
+                                    <i class="fa fa-crosshairs"/> Pick element
+                                </t>
+                            </button>
+
+                            <button t-if="state.recorderPicked"
+                                    type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    t-on-click.stop.prevent="onRecorderClearPick">
+                                <i class="fa fa-times"/> Clear
+                            </button>
+
+                            <div class="o_ai_recorder_pick" t-if="state.recorderPicked">
+                                <i class="fa fa-bullseye"/>
+                                <span t-esc="state.recorderPicked.target_key"/>
+                            </div>
+                        </div>
+
+                        <div class="o_ai_recorder_step">
+                            <textarea class="form-control"
+                                      rows="2"
+                                      t-model="state.recorderNote"
+                                      placeholder="Step instruction (optional)..."></textarea>
+
+                            <div class="o_ai_rec_step_actions">
+                                <button type="button"
+                                        class="btn btn-sm btn-success"
+                                        t-att-disabled="state.recorderStatus === 'idle'"
+                                        t-on-click.stop.prevent="onRecorderSaveStep">
+                                    <i class="fa fa-save"/> Save step
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="o_ai_recorder_feed">
+                            <div class="o_ai_rec_feed_title">REAL-TIME EVENT FEED</div>
+
+                            <div class="o_ai_rec_feed_list">
+                                <t t-foreach="state.recorderFeed" t-as="ev" t-key="ev._id">
+                                    <t t-if="ev.event_type === 'STEP_SAVED'">
+                                        <div class="o_ai_rec_feed_item">
+                                            <div class="line1">
+                                                <span class="typ" t-esc="ev.event_type"/>
+                                                <span class="tgt" t-esc="ev.target"/>
+                                            </div>
+                                            <div class="line2">
+                                                <span class="ts" t-esc="ev.timestamp"/>
+                                            </div>
+                                        </div>
+                                    </t>
+                                </t>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                </t>
+
+                <!-- =========================
+                     CHAT MODE (único panel)
+                     ========================= -->
+                <t t-else="">
+                    <div t-ref="chat-ui" id="chat-ui-container" class="h-100" />
+
+                    <div class="ai-buttons-container"
+                         t-att-class="{'visible': state.showButtons}"
+                         t-attf-style="bottom: {{ state.composerHeight + 25 }}px;">
+
+                        <button
+                            t-if="!state.processActive and state.showButtons"
+                            class="dk-btn dk-btn-primary"
+                            t-on-click.stop.prevent="startProcess">
+                            Start
+                        </button>
+
+                        <div t-if="state.processActive" class="d-flex align-items-center">
+                            <button
+                                class="dk-btn dk-btn-secondary me-2"
+                                t-on-click.stop.prevent="cancelProcess">
+                                Cancel
+                            </button>
+
+                            <button class="dk-btn dk-btn-accent"
+                                    t-on-click.stop.prevent="showResultModal"
+                                    t-att-disabled="state.finishLoading">
+                                <t t-if="state.finishLoading">
+                                    <i class="fa fa-spinner fa-spin mr-2"/>
+                                </t>
+                                <t t-else="">Finish</t>
+                            </button>
+                        </div>
+                    </div>
+                </t>
             </div>
 
             <!-- Result Modal -->
@@ -141,15 +265,10 @@
             }
 
             @keyframes fa-spin {
-                0% {
-                    transform: rotate(0deg);
-                }
-                100% {
-                    transform: rotate(359deg);
-                }
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(359deg); }
             }
 
-            /* Animación de giro al hacer clic */
             .btn-refresh:active i {
                 animation: spin 0.6s linear;
             }
@@ -159,7 +278,6 @@
                 100% { transform: rotate(360deg); }
             }
 
-            /* Nuevos estilos para el temporizador */
             .timer-display {
                 background: rgba(0, 0, 0, 0.7);
                 color: white;
@@ -169,24 +287,30 @@
                 font-size: 15px;
             }
 
-            /* Ajustes para alinear elementos */
-            .d-flex {
-                display: flex;
-            }
-            .align-items-center {
-                align-items: center;
-            }
-            .me-2 {
-                margin-right: 0.5rem;
-            }
+            .d-flex { display: flex; }
+            .align-items-center { align-items: center; }
+            .me-2 { margin-right: 0.5rem; }
 
-            /* Style Result Modal */
+            /* Toggle button */
+            .btn-recorder-toggle {
+                border: 1px solid #d8dadd;
+                background: #fff;
+                color: #374151;
+                border-radius: 999px;
+                font-weight: 600;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 4px 10px;
+                transition: all .2s ease;
+            }
+            .btn-recorder-toggle:hover { background: #f7f7f9; }
+            .btn-recorder-toggle:active { transform: translateY(1px); }
+
+            /* Result modal */
             .result-modal-overlay {
                 position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
+                top: 0; left: 0; right: 0; bottom: 0;
                 background-color: rgba(0, 0, 0, 0.5);
                 display: flex;
                 align-items: center;
@@ -233,7 +357,7 @@
                 text-align: right;
             }
 
-            /* Style IA */
+            /* Chat floating exercise buttons */
             .ai-buttons-container {
                 position: absolute;
                 right: 45px;
@@ -252,11 +376,10 @@
                 pointer-events: auto;
             }
 
-            /* Nuevo estilo de botones */
             .dk-btn {
                 height: 35px;
                 padding: 0 15px;
-                border-radius: 24px; /* Mitad de la altura para bordes redondeados perfectos */
+                border-radius: 24px;
                 font-weight: 600;
                 font-size: 15px;
                 letter-spacing: 0.5px;
@@ -271,19 +394,16 @@
                 overflow: hidden;
             }
 
-            /* Efecto hover para todos los botones */
             .dk-btn:hover {
                 transform: translateY(-3px);
                 box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
             }
 
-            /* Efecto activo */
             .dk-btn:active {
                 transform: translateY(1px);
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             }
 
-            /* Estilos específicos para cada tipo de botón */
             .dk-btn-primary {
                 background: linear-gradient(135deg, #3498db, #2c3e50);
                 color: white;
@@ -302,7 +422,6 @@
                 text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
             }
 
-            /* Efecto de onda al hacer clic (opcional) */
             .dk-btn::after {
                 content: '';
                 position: absolute;
@@ -322,14 +441,221 @@
             }
 
             @keyframes ripple {
-                0% {
-                    transform: scale(0, 0);
-                    opacity: 0.5;
-                }
-                100% {
-                    transform: scale(25, 25);
-                    opacity: 0;
-                }
+                0% { transform: scale(0, 0); opacity: 0.5; }
+                100% { transform: scale(25, 25); opacity: 0; }
+            }
+
+            /* Recorder panel styles */
+            .o_ai_recorder_panel {
+                background: #fff;
+                border: 1px solid #e6e8ee;
+                border-radius: 14px;
+                padding: 12px;
+                margin-right: 8px;
+                height: 100%;
+                min-height: 540px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .o_ai_recorder_panel.is-recording {
+                border-color: #f3c4cc;
+                box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.08);
+            }
+
+            .o_ai_recorder_header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .o_ai_recorder_left {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .o_ai_rec_title {
+                font-weight: 700;
+                font-size: 22px;
+                line-height: 1;
+                color: #2e2f33;
+            }
+
+            .o_ai_rec_badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 8px;
+                border-radius: 999px;
+                background: #fff2f2;
+                border: 1px solid #ffc9d2;
+                color: #dc3545;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.2px;
+                text-transform: uppercase;
+            }
+
+            .o_ai_rec_badge .fa {
+                font-size: 9px;
+                animation: recPulse 1.2s infinite;
+            }
+
+            @keyframes recPulse {
+                0% { opacity: 0.35; }
+                50% { opacity: 1; }
+                100% { opacity: 0.35; }
+            }
+
+            .o_ai_recorder_right {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+
+            .o_ai_recorder_meta {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+
+            .o_ai_rec_meta_row {
+                background: #f6f7f9;
+                border: 1px solid #e6e8ee;
+                border-radius: 10px;
+                padding: 8px 10px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .o_ai_rec_meta_row .lbl {
+                font-size: 12px;
+                color: #6b7280;
+                text-transform: uppercase;
+                letter-spacing: .2px;
+            }
+
+            .o_ai_rec_meta_row .val {
+                font-size: 13px;
+                font-weight: 700;
+                color: #20232a;
+            }
+
+            .o_ai_recorder_controls {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+
+            .o_ai_recorder_pick {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: #f0f7ff;
+                border: 1px solid #cfe4ff;
+                color: #1e60a5;
+                border-radius: 999px;
+                padding: 4px 10px;
+                max-width: 100%;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            .o_ai_recorder_step textarea.form-control {
+                border-radius: 10px;
+                min-height: 72px;
+                resize: vertical;
+            }
+
+            .o_ai_rec_step_actions {
+                display: flex;
+                justify-content: flex-end;
+                margin-top: 8px;
+            }
+
+            .o_ai_recorder_feed {
+                border-top: 1px dashed #d8dbe4;
+                padding-top: 10px;
+                display: flex;
+                flex-direction: column;
+                min-height: 180px;
+                flex: 1 1 auto;
+            }
+
+            .o_ai_rec_feed_title {
+                font-size: 12px;
+                font-weight: 800;
+                letter-spacing: .5px;
+                color: #4b5563;
+                text-transform: uppercase;
+                margin-bottom: 8px;
+            }
+
+            .o_ai_rec_feed_list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                overflow: auto;
+                max-height: 100%;
+                padding-right: 2px;
+            }
+
+            .o_ai_rec_feed_item {
+                border: 1px solid #e5e7eb;
+                border-radius: 10px;
+                padding: 8px 10px;
+                background: #fcfcfd;
+            }
+
+            .o_ai_rec_feed_item .line1,
+            .o_ai_rec_feed_item .line2 {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+
+            .o_ai_rec_feed_item .typ {
+                font-weight: 800;
+                color: #1f2937;
+                text-transform: uppercase;
+                font-size: 12px;
+            }
+
+            .o_ai_rec_feed_item .tgt {
+                color: #374151;
+                font-size: 12px;
+                max-width: 52%;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                text-align: right;
+            }
+
+            .o_ai_rec_feed_item .ts {
+                font-size: 11px;
+                color: #6b7280;
+            }
+
+            .o_ai_rec_feed_item .err {
+                color: #b42318;
+                font-size: 12px;
+                font-weight: 700;
+                max-width: 60%;
+                text-align: right;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
         </style>
     </t>

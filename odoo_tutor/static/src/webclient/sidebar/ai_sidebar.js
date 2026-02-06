@@ -46,6 +46,8 @@ export class AiSidebar extends Component {
         this.chatUiRef = useRef("chat-ui");
         this.handleRef = useRef("handle");
         this.aiWs = useService("ai_ws");
+        this.aiRecorder = useService("ai_recorder");
+
 
         this.state = useState({
             width: "600px",
@@ -67,7 +69,21 @@ export class AiSidebar extends Component {
             firstFailedStep: null,
             finishLoading: false,
             result: "failed",
+            recorderStatus: "idle",        // idle | recording | paused
+            recorderSessionId: null,
+            recorderFeed: [],
+            recorderStepIndex: 0,
+            recorderNote: "",
+            recorderPicked: null,
+            recorderPicking: false,
+            activePanel: "chat",
+            wsStatus: "unknown",
+            showRecorderPanel: false,          // false = chat, true = recorder
+            canSeeRecorderToggle: false,
+            isPickingElement: false,
         });
+
+        this._savedStepHashes = new Set();
 
         useEffect(
             (currentContext) => {
@@ -90,6 +106,16 @@ export class AiSidebar extends Component {
         );
 
         onMounted(() => {
+            const el = this._getOffcanvasEl();
+            if (!el) return;
+
+            this._onHiddenOffcanvas = () => this._forceUiUnlock();
+            el.addEventListener("hidden.bs.offcanvas", this._onHiddenOffcanvas);
+
+            this._forceUiUnlock();
+
+            this._loadRecorderPermission();
+
             this.contextInterval = setInterval(() => {
                 const newContext = this.contextService.getContext();
                 if (
@@ -110,6 +136,13 @@ export class AiSidebar extends Component {
                 }
             });
             this.observer.observe(this.chatUiRef.el, { childList: true, subtree: true });
+
+            this._recListener = (ev) => {
+                this.state.recorderFeed = [ev, ...(this.state.recorderFeed || [])].slice(0, 60);
+                this.state.wsStatus = this.aiWs?.connected ? "online" : "offline";
+            };
+            this.aiRecorder.subscribe(this._recListener);
+            this.state.wsStatus = this.aiWs?.connected ? "online" : "offline";
         });
 
         const aiBotStreamListener = ({ message, stop }) => {
@@ -120,12 +153,25 @@ export class AiSidebar extends Component {
         this.busService.subscribe("ai_bot_stream", aiBotStreamListener);
 
         onWillUnmount(() => {
+            const el = this._getOffcanvasEl();
+            if (el && this._onHiddenOffcanvas) {
+                el.removeEventListener("hidden.bs.offcanvas", this._onHiddenOffcanvas);
+            }
+            this._forceUiUnlock();
+
             clearInterval(this.contextInterval);
             this.busService.unsubscribe("ai_bot_stream", aiBotStreamListener);
             if (this.state.timerInterval) clearInterval(this.state.timerInterval);
             this._teardownAntiAutoScroll();
             this._disconnectContainerFinder();
             this._teardownFeedbackObserver();
+            this._restoreSidebarAfterPick?.();
+            document.body.classList.remove("o_ai_pick_mode");
+            this._exitPickModeUI?.();
+            if (this._recListener) {
+                this.aiRecorder.unsubscribe(this._recListener);
+                this._recListener = null;
+            }
         });
 
         this.onHandleMouseDown = useMouseListeners({
@@ -133,6 +179,699 @@ export class AiSidebar extends Component {
             onMouseMove: this.onMouseMove,
             onMouseUp: this.onMouseUp,
         });
+    }
+
+    _getOffcanvasEl() {
+        return this.containerRef?.el || document.getElementById("offcanvasAiSidebar");
+    }
+
+    _getBsOffcanvas(el) {
+        const Offcanvas = window.bootstrap?.Offcanvas;
+        if (!Offcanvas || !el) return null;
+        return Offcanvas.getOrCreateInstance(el, {
+            backdrop: true,   // permite cerrar al click fuera
+            keyboard: true,   // ESC cierra
+            scroll: false,
+        });
+    }
+
+    _waitEvent(el, evtName, timeout = 900) {
+        return new Promise((resolve) => {
+            let done = false;
+            const onEvt = () => {
+                if (done) return;
+                done = true;
+                clearTimeout(t);
+                el.removeEventListener(evtName, onEvt);
+                resolve(true);
+            };
+            const t = setTimeout(() => {
+                if (done) return;
+                done = true;
+                el.removeEventListener(evtName, onEvt);
+                resolve(false);
+            }, timeout);
+            el.addEventListener(evtName, onEvt, { once: true });
+        });
+    }
+
+    _forceUiUnlock() {
+        // limpia cualquier backdrop huérfano
+        document.querySelectorAll(".offcanvas-backdrop").forEach((b) => b.remove());
+
+        // limpia locks del body
+        document.body.classList.remove("offcanvas-open", "modal-open");
+        document.body.style.removeProperty("overflow");
+        document.body.style.removeProperty("padding-right");
+
+        // limpia clases/estilos raros del sidebar si quedaron de pruebas previas
+        const el = this._getOffcanvasEl();
+        if (el) {
+            el.classList.remove("hiding", "showing");
+            el.style.removeProperty("visibility");
+            el.style.removeProperty("pointer-events");
+            el.style.removeProperty("display");
+        }
+    }
+
+    async hideSidebar() {
+        const el = this._getOffcanvasEl();
+        if (!el) return;
+
+        const bs = this._getBsOffcanvas(el);
+        if (bs) {
+            const p = this._waitEvent(el, "hidden.bs.offcanvas", 900);
+            bs.hide();
+            await p;
+        } else {
+            // fallback mínimo
+            el.classList.remove("show");
+        }
+        this._forceUiUnlock();
+    }
+
+    async showSidebar() {
+        const el = this._getOffcanvasEl();
+        if (!el) return;
+
+        this._forceUiUnlock(); // por si había basura previa
+        const bs = this._getBsOffcanvas(el);
+
+        if (bs) {
+            const p = this._waitEvent(el, "shown.bs.offcanvas", 900);
+            bs.show();
+            await p;
+        } else {
+            el.classList.add("show");
+        }
+    }
+
+    async onCloseSidebar() {
+        await this.hideSidebar();
+    }
+
+    // Pick element: cerrar -> pick -> reabrir
+    async onRecorderPick() {
+        if (this.state.recorderStatus === "idle") return;
+
+        // opcional: si tienes modo chat/recorder
+        // this.state.sidebarMode = "recorder";
+
+        await this.hideSidebar();
+
+        try {
+            const picked = await this.aiRecorder.pickTarget({ timeoutMs: 30000 });
+            if (picked) {
+                this.state.recorderPicked = picked;
+            }
+        } catch (e) {
+            console.warn("[ai_recorder] pick failed:", e);
+        } finally {
+            await this.showSidebar();
+            // this.state.sidebarMode = "recorder";
+        }
+    }
+
+    _waitBsEvent(el, eventName, timeout = 700) {
+        return new Promise((resolve) => {
+            let done = false;
+            const onEvt = () => {
+                if (done) return;
+                done = true;
+                clearTimeout(t);
+                el.removeEventListener(eventName, onEvt);
+                resolve(true);
+            };
+            const t = setTimeout(() => {
+                if (done) return;
+                done = true;
+                el.removeEventListener(eventName, onEvt);
+                resolve(false);
+            }, timeout);
+            el.addEventListener(eventName, onEvt, { once: true });
+        });
+    }
+
+    _cleanupOffcanvasArtifacts() {
+        // quita backdrops huérfanos
+        document.querySelectorAll(".offcanvas-backdrop").forEach((b) => b.remove());
+
+        // limpia lock del body que deja opaca/bloqueada la vista
+        document.body.classList.remove("modal-open", "offcanvas-open");
+        document.body.style.removeProperty("overflow");
+        document.body.style.removeProperty("padding-right");
+    }
+
+    async _closeSidebarForPick() {
+        const el = this._getOffcanvasEl();
+        if (!el) return false;
+
+        const wasOpen = el.classList.contains("show");
+        if (!wasOpen) {
+            this._cleanupOffcanvasArtifacts();
+            return false;
+        }
+
+        let closedByBs = false;
+        const inst = this._getOffcanvasInstance(el);
+        if (inst) {
+            try {
+                const waitHidden = this._waitBsEvent(el, "hidden.bs.offcanvas", 800);
+                inst.hide();
+                closedByBs = await waitHidden;
+            } catch (_) {}
+        }
+
+        // fallback si bootstrap no disparó hidden
+        if (!closedByBs) {
+            el.classList.remove("show", "showing");
+            el.classList.add("hiding");
+            el.setAttribute("aria-hidden", "true");
+            el.removeAttribute("aria-modal");
+            el.style.visibility = "hidden";
+            el.style.pointerEvents = "none";
+        }
+
+        this._cleanupOffcanvasArtifacts();
+        return true;
+    }
+
+    async _reopenSidebarAfterPick(shouldOpen) {
+        if (!shouldOpen) return;
+
+        const el = this._getOffcanvasEl();
+        if (!el) return;
+
+        // revierte fallback visual por si se usó
+        el.classList.remove("hiding");
+        el.style.removeProperty("visibility");
+        el.style.removeProperty("pointer-events");
+
+        const inst = this._getOffcanvasInstance(el);
+        if (inst) {
+            try {
+                const waitShown = this._waitBsEvent(el, "shown.bs.offcanvas", 800);
+                inst.show();
+                await waitShown;
+                return;
+            } catch (_) {}
+        }
+
+        // fallback final (si bootstrap no está disponible)
+        el.classList.add("show");
+        el.removeAttribute("aria-hidden");
+        el.setAttribute("aria-modal", "true");
+        document.body.style.overflow = "hidden";
+        if (!document.querySelector(".offcanvas-backdrop.show")) {
+            const bd = document.createElement("div");
+            bd.className = "offcanvas-backdrop fade show";
+            document.body.appendChild(bd);
+        }
+    }
+
+    _getBackdropEls() {
+        return Array.from(document.querySelectorAll(".offcanvas-backdrop"));
+    }
+
+    _waitEventOnce(el, eventName, timeout = 700) {
+        return new Promise((resolve) => {
+            if (!el) return resolve(false);
+            let done = false;
+            const onEvt = () => {
+                if (done) return;
+                done = true;
+                el.removeEventListener(eventName, onEvt);
+                resolve(true);
+            };
+            el.addEventListener(eventName, onEvt, { once: true });
+            setTimeout(() => {
+                if (done) return;
+                done = true;
+                el.removeEventListener(eventName, onEvt);
+                resolve(false);
+            }, timeout);
+        });
+    }
+
+    _manualHideOffcanvas(offcanvasEl) {
+        if (!offcanvasEl) return;
+
+        // guardar estilos previos
+        offcanvasEl.dataset._aiPrevStyle = offcanvasEl.getAttribute("style") || "";
+
+        offcanvasEl.classList.remove("show");
+        offcanvasEl.setAttribute("aria-hidden", "true");
+
+        // forzar fuera de pantalla + no interacción
+        offcanvasEl.style.setProperty("visibility", "hidden", "important");
+        offcanvasEl.style.setProperty("pointer-events", "none", "important");
+        offcanvasEl.style.setProperty("transform", "translateX(110%)", "important");
+
+        // ocultar backdrops activos
+        this._getBackdropEls().forEach((bd, i) => {
+            bd.dataset._aiIdx = String(i);
+            bd.dataset._aiPrevStyle = bd.getAttribute("style") || "";
+            bd.classList.remove("show");
+            bd.style.setProperty("opacity", "0", "important");
+            bd.style.setProperty("pointer-events", "none", "important");
+        });
+
+        // limpiar lock de body que deja Bootstrap
+        this._aiBodyPrevOverflow = document.body.style.overflow || "";
+        this._aiBodyPrevPaddingRight = document.body.style.paddingRight || "";
+        document.body.style.overflow = "";
+        document.body.style.paddingRight = "";
+    }
+
+    _manualRestoreOffcanvas(offcanvasEl) {
+        if (!offcanvasEl) return;
+
+        // restaurar style previo del offcanvas
+        const prev = offcanvasEl.dataset._aiPrevStyle;
+        if (prev !== undefined) {
+            offcanvasEl.setAttribute("style", prev);
+            delete offcanvasEl.dataset._aiPrevStyle;
+        } else {
+            offcanvasEl.style.removeProperty("visibility");
+            offcanvasEl.style.removeProperty("pointer-events");
+            offcanvasEl.style.removeProperty("transform");
+        }
+
+        // backdrops
+        this._getBackdropEls().forEach((bd) => {
+            const prevBd = bd.dataset._aiPrevStyle;
+            if (prevBd !== undefined) {
+                bd.setAttribute("style", prevBd);
+                delete bd.dataset._aiPrevStyle;
+                delete bd.dataset._aiIdx;
+            } else {
+                bd.style.removeProperty("opacity");
+                bd.style.removeProperty("pointer-events");
+            }
+        });
+
+        // body
+        document.body.style.overflow = this._aiBodyPrevOverflow || "";
+        document.body.style.paddingRight = this._aiBodyPrevPaddingRight || "";
+    }
+
+    async _hideSidebarForPick() {
+        const el = this._getOffcanvasEl();
+        if (!el) return;
+
+        // intenta vía Bootstrap primero
+        const BS = window.bootstrap;
+        if (BS?.Offcanvas) {
+            try {
+                const inst = BS.Offcanvas.getOrCreateInstance(el);
+                inst.hide();
+                const hidden = await this._waitEventOnce(el, "hidden.bs.offcanvas", 700);
+                if (hidden) return;
+            } catch (e) {
+                // cae a manual
+            }
+        }
+
+        // fallback robusto
+        this._manualHideOffcanvas(el);
+    }
+
+    async _showSidebarAfterPick() {
+        const el = this._getOffcanvasEl();
+        if (!el) return;
+
+        const BS = window.bootstrap;
+        if (BS?.Offcanvas) {
+            try {
+                const inst = BS.Offcanvas.getOrCreateInstance(el);
+                inst.show();
+                await this._waitEventOnce(el, "shown.bs.offcanvas", 700);
+                return;
+            } catch (e) {
+                // cae a manual
+            }
+        }
+
+        // fallback manual
+        this._manualRestoreOffcanvas(el);
+        el.classList.add("show");
+        el.style.setProperty("visibility", "visible");
+        el.style.setProperty("pointer-events", "auto");
+        el.style.setProperty("transform", "none");
+    }
+
+    _enterPickModeUI() {
+        // Guardar estado previo del body por si Odoo/Bootstrap lo tocó
+        this._pickPrevBodyOverflow = document.body.style.overflow || "";
+        this._pickPrevBodyPaddingRight = document.body.style.paddingRight || "";
+
+        // Clase global para ocultar panel/backdrop
+        document.body.classList.add("o_ai_pick_mode");
+
+        // Desbloquea interacción de la vista detrás
+        document.body.style.overflow = "";
+        document.body.style.paddingRight = "";
+    }
+
+    _exitPickModeUI() {
+        document.body.classList.remove("o_ai_pick_mode");
+
+        // Restaurar estilos previos
+        document.body.style.overflow = this._pickPrevBodyOverflow || "";
+        document.body.style.paddingRight = this._pickPrevBodyPaddingRight || "";
+    }
+
+    _hideSidebarForPick() {
+        const panel = this.containerRef?.el;
+        this._pickUiStash = { panel: null, panelStyle: null, backdrops: [] };
+
+        if (panel) {
+            this._pickUiStash.panel = panel;
+            this._pickUiStash.panelStyle = {
+                visibility: panel.style.visibility,
+                opacity: panel.style.opacity,
+                pointerEvents: panel.style.pointerEvents,
+            };
+            panel.style.visibility = "hidden";
+            panel.style.opacity = "0";
+            panel.style.pointerEvents = "none";
+        }
+
+        const backdrops = document.querySelectorAll(".offcanvas-backdrop");
+        backdrops.forEach((bd) => {
+            this._pickUiStash.backdrops.push({
+                el: bd,
+                display: bd.style.display,
+                visibility: bd.style.visibility,
+                opacity: bd.style.opacity,
+                pointerEvents: bd.style.pointerEvents,
+            });
+            bd.style.display = "none";
+            bd.style.visibility = "hidden";
+            bd.style.opacity = "0";
+            bd.style.pointerEvents = "none";
+        });
+
+        document.body.classList.add("o_ai_pick_mode");
+    }
+
+    _restoreSidebarAfterPick() {
+        const st = this._pickUiStash;
+        if (!st) return;
+
+        if (st.panel) {
+            st.panel.style.visibility = st.panelStyle?.visibility || "";
+            st.panel.style.opacity = st.panelStyle?.opacity || "";
+            st.panel.style.pointerEvents = st.panelStyle?.pointerEvents || "";
+        }
+
+        (st.backdrops || []).forEach((x) => {
+            x.el.style.display = x.display || "";
+            x.el.style.visibility = x.visibility || "";
+            x.el.style.opacity = x.opacity || "";
+            x.el.style.pointerEvents = x.pointerEvents || "";
+        });
+
+        document.body.classList.remove("o_ai_pick_mode");
+        this._pickUiStash = null;
+    }
+
+    _getOffcanvasEl() {
+        return this.containerRef?.el || document.getElementById("offcanvasAiSidebar");
+    }
+
+    _getBootstrapOffcanvasClass() {
+        // compat robusta
+        if (window.bootstrap?.Offcanvas) return window.bootstrap.Offcanvas;
+        try {
+            // por si bootstrap está global sin window.bootstrap
+            return bootstrap?.Offcanvas;
+        } catch {
+            return null;
+        }
+    }
+
+    _waitEventOrTimeout(el, eventName, timeoutMs = 500) {
+        return new Promise((resolve) => {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                el?.removeEventListener?.(eventName, onEvent, true);
+                resolve();
+            };
+            const onEvent = () => finish();
+            el?.addEventListener?.(eventName, onEvent, { once: true, capture: true });
+            setTimeout(finish, timeoutMs);
+        });
+    }
+
+    async _hideSidebarForPicking() {
+        const el = this._getOffcanvasEl();
+        const inst = this._getOffcanvasInstance();
+        if (!el || !inst) return;
+
+        await new Promise((resolve) => {
+            let done = false;
+            const finish = () => {
+                if (done) return;
+                done = true;
+                el.removeEventListener("hidden.bs.offcanvas", onHidden);
+                resolve();
+            };
+            const onHidden = () => finish();
+
+            el.addEventListener("hidden.bs.offcanvas", onHidden, { once: true });
+            inst.hide();
+
+            // fallback por si no dispara evento
+            setTimeout(finish, 300);
+        });
+    }
+
+    async _showSidebarBackToRecorder() {
+        const inst = this._getOffcanvasInstance();
+        if (!inst) return;
+
+        // aseguras volver a la vista recorder
+        this.state.activePanel = "recorder"; // usa aquí tu clave real de toggle
+
+        // pequeño wait para evitar glitches visuales
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        inst.show();
+    }
+
+    async _hideOffcanvasForPick() {
+        const panel = this.containerRef?.el;
+        if (!panel) return null;
+
+        const stash = {
+            panel,
+            reopen: panel.classList.contains("show"),
+            bs: null,
+            hiddenBackdrops: [],
+        };
+
+        try {
+            stash.bs = window.bootstrap?.Offcanvas?.getOrCreateInstance(panel) || null;
+        } catch (_) {
+            stash.bs = null;
+        }
+
+        // 1) Cerrar offcanvas real (crea/gestiona backdrop correctamente)
+        if (stash.reopen && stash.bs?.hide) {
+            await new Promise((resolve) => {
+                let done = false;
+                const finish = () => {
+                    if (done) return;
+                    done = true;
+                    panel.removeEventListener("hidden.bs.offcanvas", onHidden);
+                    resolve();
+                };
+                const onHidden = () => finish();
+                panel.addEventListener("hidden.bs.offcanvas", onHidden, { once: true });
+                stash.bs.hide();
+                setTimeout(finish, 350); // fallback
+            });
+        } else {
+            // fallback duro
+            panel.classList.remove("show");
+            panel.style.setProperty("visibility", "hidden", "important");
+            panel.style.setProperty("pointer-events", "none", "important");
+            panel.style.setProperty("transform", "translateX(100%)", "important");
+        }
+
+        // 2) Forzar ocultar cualquier backdrop residual
+        const bds = document.querySelectorAll(".offcanvas-backdrop, .modal-backdrop");
+        bds.forEach((bd) => {
+            stash.hiddenBackdrops.push({
+                el: bd,
+                style: bd.getAttribute("style"),
+                className: bd.className,
+            });
+            bd.classList.remove("show");
+            bd.style.setProperty("display", "none", "important");
+            bd.style.setProperty("opacity", "0", "important");
+            bd.style.setProperty("pointer-events", "none", "important");
+            bd.style.setProperty("visibility", "hidden", "important");
+        });
+
+        document.body.classList.remove("modal-open");
+        document.body.classList.add("o_ai_pick_mode");
+
+        return stash;
+    }
+
+    async _restoreOffcanvasAfterPick(stash) {
+        if (!stash) return;
+
+        document.body.classList.remove("o_ai_pick_mode");
+
+        // restaurar backdrop (si seguía abierto antes)
+        (stash.hiddenBackdrops || []).forEach(({ el, style }) => {
+            if (!el) return;
+            if (style == null) el.removeAttribute("style");
+            else el.setAttribute("style", style);
+        });
+
+        if (stash.reopen && stash.bs?.show) {
+            stash.bs.show();
+            await new Promise((r) => setTimeout(r, 50));
+        } else if (stash.panel) {
+            stash.panel.style.removeProperty("visibility");
+            stash.panel.style.removeProperty("pointer-events");
+            stash.panel.style.removeProperty("transform");
+        }
+    }
+
+    _pushSavedStepToFeed(stepPayload) {
+        const item = {
+            _id: stepPayload.step_id,
+            event_type: "STEP_SAVED",
+            target: stepPayload.target || "(instruction only)",
+            timestamp: stepPayload.timestamp,
+            note: stepPayload.instruction || "",
+        };
+        this.state.recorderFeed.unshift(item);
+        if (this.state.recorderFeed.length > 100) {
+            this.state.recorderFeed.pop();
+        }
+    }
+
+    async _loadRecorderPermission() {
+        try {
+            this.state.canSeeRecorderToggle = await user.hasGroup("base.group_system");
+        } catch (e) {
+            console.warn("[ai_sidebar] hasGroup failed:", e);
+            this.state.canSeeRecorderToggle = false;
+        }
+    }
+
+    // ✅ NEW: cambiar vista chat/recorder
+    toggleRecorderPanel() {
+        if (!this.state.canSeeRecorderToggle) return;
+
+        this.state.showRecorderPanel = !this.state.showRecorderPanel;
+
+        // limpiar popovers abiertos al cambiar de modo
+        this._closeFeedbackPopover();
+
+        if (this.state.showRecorderPanel) {
+            this._setComposerAutoFocus(false);
+            this.aiRecorder?.setPanelVisible?.(true);
+        } else {
+            this._setComposerAutoFocus(true);
+            this.aiRecorder?.setPanelVisible?.(false);
+        }
+    }
+
+    async onRecorderStart() {
+        const sid = await this.aiRecorder.startRecording({
+            exerciseId: this.state.exerciseId || null,
+        });
+        this.state.recorderSessionId = sid;
+        this.state.recorderStatus = "recording";
+        this.state.wsStatus = this.aiWs?.connected ? "online" : "offline";
+    }
+
+    async onRecorderPause() {
+        await this.aiRecorder.pauseRecording();
+        this.state.recorderStatus = "paused";
+    }
+
+    async onRecorderFinish() {
+        await this.aiRecorder.finishRecording();
+        this.state.recorderStatus = "idle";
+        this.state.recorderSessionId = null;
+        this.state.recorderPicked = null;
+        this.state.recorderNote = "";
+    }
+
+
+    onRecorderClearPick() {
+        this.state.recorderPicked = null;
+    }
+
+    async onRecorderSaveStep() {
+        if (this.state.recorderStatus === "idle") return;
+
+        const instruction = (this.state.recorderNote || "").trim();
+        const picked = this.state.recorderPicked || null;
+
+        // Permite step con solo texto o solo elemento
+        if (!instruction && !picked) {
+            this.notification.add(_t("Add an instruction or pick an element first."), { type: "warning" });
+            return;
+        }
+
+        const stepIndex = (this.state.recorderStepIndex || 0) + 1;
+        const stepId = (crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`);
+        const payload = {
+            recorder_session_id: this.state.recorderSessionId,
+            step_id: stepId,
+            step_index: stepIndex,
+            timestamp: new Date().toISOString(),
+            instruction: instruction || "",
+            target: picked?.target_key || null,
+            target_meta: picked || null,
+            context: this.state.currentContext || null,
+        };
+
+        // dedupe básico en frontend
+        const dedupeKey = [
+            payload.recorder_session_id,
+            payload.step_index,
+            payload.target || "",
+            payload.instruction || "",
+        ].join("|");
+
+        if (this._savedStepHashes.has(dedupeKey)) {
+            this.notification.add(_t("Duplicate step ignored."), { type: "warning" });
+            return;
+        }
+        this._savedStepHashes.add(dedupeKey);
+
+        try {
+            // ✅ SOLO AQUÍ se manda por WS
+            await this.aiWs.sendEvent({
+                type: "exercise_step",
+                event_name: "step_saved",
+                event_data: payload,
+            });
+
+            // ✅ SOLO AQUÍ entra al feed
+            this._pushSavedStepToFeed(payload);
+
+            this.state.recorderStepIndex = stepIndex;
+            this.state.recorderNote = "";
+            this.state.recorderPicked = null;
+
+            this.notification.add(_t("Step saved."), { type: "success" });
+        } catch (e) {
+            console.warn("[recorder] save step failed:", e);
+            // ❌ NO agregar WS_ERROR al feed
+            this.notification.add(_t("Could not save step to WebSocket."), { type: "danger" });
+        }
     }
 
     _getNluxMessageEl(chatItemEl) {

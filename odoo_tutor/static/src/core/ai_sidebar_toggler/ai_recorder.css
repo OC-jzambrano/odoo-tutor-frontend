@@ -1,0 +1,299 @@
+/* =========================
+   AI Recorder Panel (Sidebar)
+   ========================= */
+
+.o_ai_recorder_panel {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 12px;
+    padding: 12px 12px 10px 12px;
+    margin: 8px 8px 10px 0; /* leave space from left handle */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    backdrop-filter: blur(6px);
+}
+
+.o_ai_recorder_panel.is-recording {
+    border-color: rgba(220, 53, 69, 0.35);
+    box-shadow: 0 6px 18px rgba(220, 53, 69, 0.08);
+}
+
+.o_ai_recorder_header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.o_ai_recorder_left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.o_ai_rec_title {
+    font-weight: 700;
+    font-size: 14px;
+    color: #1f2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.o_ai_rec_badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    color: #b42318;
+    background: rgba(220, 53, 69, 0.12);
+    border: 1px solid rgba(220, 53, 69, 0.25);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.o_ai_rec_badge .fa-circle {
+    font-size: 10px;
+    color: #dc3545;
+    animation: o_ai_rec_pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes o_ai_rec_pulse {
+    0% { transform: scale(0.85); opacity: 0.5; }
+    50% { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(0.85); opacity: 0.5; }
+}
+
+.o_ai_recorder_right {
+    display: inline-flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.o_ai_recorder_right .btn {
+    border-radius: 10px;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+/* Meta row */
+.o_ai_recorder_meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.o_ai_rec_meta_row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: rgba(0,0,0,0.03);
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: 10px;
+    padding: 6px 10px;
+    min-width: 0;
+}
+
+.o_ai_rec_meta_row .lbl {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+.o_ai_rec_meta_row .val {
+    font-size: 12px;
+    font-weight: 700;
+    color: #111827;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+}
+
+/* Controls */
+.o_ai_recorder_controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.o_ai_recorder_controls .btn {
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.o_ai_recorder_pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.10);
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    color: #065f46;
+    font-weight: 700;
+    font-size: 12px;
+    min-width: 0;
+}
+
+.o_ai_recorder_pick span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 280px;
+}
+
+/* Step section */
+.o_ai_recorder_step {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.o_ai_recorder_step textarea.form-control {
+    border-radius: 12px;
+    resize: vertical;
+    font-size: 13px;
+    line-height: 1.25;
+}
+
+.o_ai_rec_step_actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.o_ai_rec_step_actions .btn {
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+/* Feed */
+.o_ai_recorder_feed {
+    border-top: 1px dashed rgba(0,0,0,0.10);
+    padding-top: 10px;
+}
+
+.o_ai_rec_feed_title {
+    font-weight: 800;
+    font-size: 12px;
+    color: #374151;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.o_ai_rec_feed_list {
+    max-height: 180px;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+/* scrollbar (optional, safe) */
+.o_ai_rec_feed_list::-webkit-scrollbar { width: 8px; }
+.o_ai_rec_feed_list::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.15);
+    border-radius: 999px;
+}
+.o_ai_rec_feed_list::-webkit-scrollbar-track {
+    background: rgba(0,0,0,0.04);
+    border-radius: 999px;
+}
+
+.o_ai_rec_feed_item {
+    background: rgba(0,0,0,0.02);
+    border: 1px solid rgba(0,0,0,0.06);
+    border-radius: 12px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+}
+
+.o_ai_rec_feed_item .line1 {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.o_ai_rec_feed_item .typ {
+    font-size: 12px;
+    font-weight: 800;
+    color: #111827;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+
+.o_ai_rec_feed_item .tgt {
+    font-size: 12px;
+    color: #4b5563;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 65%;
+    text-align: right;
+}
+
+.o_ai_rec_feed_item .line2 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    color: #6b7280;
+}
+
+.o_ai_rec_feed_item .err {
+    color: #b42318;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 55%;
+    text-align: right;
+}
+
+/* Mobile-ish */
+@media (max-width: 520px) {
+    .o_ai_recorder_meta {
+        grid-template-columns: 1fr;
+    }
+    .o_ai_recorder_pick span {
+        max-width: 200px;
+    }
+    .o_ai_rec_feed_list {
+        max-height: 150px;
+    }
+}
+
+/* Modo selección: esconder offcanvas + backdrop y permitir click detrás */
+body.o_ai_pick_mode #offcanvasAiSidebar {
+    transform: translateX(110%) !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+body.o_ai_pick_mode .offcanvas-backdrop,
+body.o_ai_pick_mode .modal-backdrop {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Evita que body quede bloqueado al entrar en pick mode */
+body.o_ai_pick_mode {
+    overflow: auto !important;
+}
+
