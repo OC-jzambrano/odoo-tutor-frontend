@@ -219,9 +219,40 @@ export const aiWsService = {
         safeSend(payload);
     }
 
+    async function disconnect({ code = 1000, reason = "client_disconnect" } = {}) {
+      // corta el socket actual sin destruir la cola global (queue)
+      const sock = ws;
+      ws = null; // importante: evita que connect() crea que aún existe
+      isConnected = false;
+      setStatus("closed");
+
+      // rechaza cualquier chat pendiente
+      while (pendingChats.length) {
+        const entry = pendingChats.shift();
+        clearTimeout(entry.timer);
+        entry.reject(new Error(`WS disconnected (${code}) ${reason || ""}`));
+      }
+
+      try {
+        if (sock && (sock.readyState === WS_OPEN || sock.readyState === WS_CONNECTING)) {
+          sock.close(code, reason);
+        }
+      } catch (e) {
+        console.warn("[ai_ws] disconnect close failed:", e);
+      }
+    }
+
+    async function restart({ reason = "restart" } = {}) {
+      await disconnect({ code: 1000, reason });
+      await new Promise((r) => setTimeout(r, 80));
+      await connect();
+    }
 
     const api = {
       ensureConnected: connect,
+      connect,
+      disconnect,
+      restart,
       chat,
       sendEvent,
       subscribe: (fn) => listeners.add(fn),
