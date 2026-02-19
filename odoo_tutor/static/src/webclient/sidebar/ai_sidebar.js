@@ -831,8 +831,13 @@ export class AiSidebar extends Component {
             } else if (action === "down") {
                 this._submitAiFeedback({ message_uid: messageUid, vote: "down", comment: "", message_body_html: html, message_body_text: text });
             } else if (action === "comment") {
-                // deja tu popover real aquí si lo necesitas
-                this.notification.add(_t("Comment UI not included in this compact version."), { type: "info" });
+                this._toggleFeedbackQuickPopover({
+                    chatItemEl,
+                    anchorBtn: btn,
+                    messageUid,
+                    messageHtml: html,
+                    messageText: text,
+                });
             }
         });
 
