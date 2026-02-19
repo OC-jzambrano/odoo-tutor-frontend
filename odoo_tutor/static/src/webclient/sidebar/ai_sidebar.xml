@@ -213,52 +213,6 @@
 
                 </div>
             </div>
-
-            <!-- Result Modal -->
-            <t t-if="state.showResultModal">
-                <div class="result-modal-overlay" t-on-click.self="closeResultModal">
-                    <div class="result-modal-content">
-                        <h3 class="result-title">
-                            <t t-if="state.result === 'passed'">¡Success!</t>
-                            <t t-else="">Exercise Validation</t>
-                        </h3>
-
-                        <div class="result-details">
-                            <t t-if="state.result === 'passed'">
-                                <div class="passed-message alert alert-success">
-                                    <i class="fa fa-check-circle mr-2"/>
-                                    Congratulations! All steps passed successfully.
-                                </div>
-                            </t>
-                            <t t-else="">
-                                <div class="failed-message">
-                                    <div class="alert alert-danger">
-                                        <i class="fa fa-exclamation-circle mr-2"/>
-                                        <strong>Failed:</strong>
-                                    </div>
-
-                                    <t t-if="state.firstFailedStep">
-                                        <div class="step-description alert alert-warning">
-                                            <t t-esc="state.firstFailedStep.description"/>
-                                        </div>
-                                    </t>
-                                    <t t-else="">
-                                        <div class="alert alert-info">
-                                            No validation details available
-                                        </div>
-                                    </t>
-                                </div>
-                            </t>
-                        </div>
-
-                        <div class="modal-footer">
-                            <button class="btn btn-primary" t-on-click="closeResultModal">
-                                Close
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </t>
         </div>
 
         <style>
