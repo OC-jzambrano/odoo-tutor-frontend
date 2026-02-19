@@ -1,5 +1,6 @@
 /* eslint-disable */
 /** @odoo-module **/
+
 import { Component, onMounted, onWillUnmount, useEffect, useRef, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { cookie } from "@web/core/browser/cookie";
@@ -16,23 +17,37 @@ export class AiSidebar extends Component {
     setup() {
         super.setup();
 
+        // -------------------------
+        // Services
+        // -------------------------
         this.contextService = useService("context_service");
         this.notification = useService("notification");
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
 
+        // -------------------------
+        // Refs
+        // -------------------------
         this.containerRef = useRef("container");
         this.chatUiRef = useRef("chat-ui");
         this.handleRef = useRef("handle");
 
+        // -------------------------
+        // Internal
+        // -------------------------
         this._activeFeedbackPopover = null;
         this._feedbackObserver = null;
 
+        // anti-auto-scroll lock
         this._expectingAssistant = false;
         this._lockActive = false;
+        this._lockRaf = null;
+        this._anchorEl = null;
 
+        // recorder step dedupe
         this._savedStepHashes = new Set();
 
+        // placeholders per model
         this.modelPlaceholders = {
             "sale.order": "You're creating a Quotation, want help?",
             "account.move": "Need help with this Invoice?",
@@ -40,6 +55,9 @@ export class AiSidebar extends Component {
             default: "How can I help you today?",
         };
 
+        // -------------------------
+        // State
+        // -------------------------
         this.state = useState({
             width: "600px",
             isResizing: false,
@@ -77,12 +95,23 @@ export class AiSidebar extends Component {
             canSeeRecorderToggle: false,
         });
 
+        // -------------------------
+        // React to context changes
+        // - update placeholder
+        // - init chat once
+        // - send live_context (background) best-effort
+        // -------------------------
         useEffect(
             (currentContext) => {
                 if (!currentContext) return;
 
                 const model = currentContext.model;
                 const newPlaceholder = this.modelPlaceholders[model] || this.modelPlaceholders.default;
+
+                // ✅ send live_context to WS (best-effort, dedup happens in ai_ws)
+                try {
+                    this.aiWs?.sendLiveContext?.({ context_model: model });
+                } catch (_) {}
 
                 if (!this.state.isChatInitialized) {
                     this.state.placeholder = newPlaceholder;
@@ -96,7 +125,11 @@ export class AiSidebar extends Component {
             () => [this.state.currentContext]
         );
 
+        // -------------------------
+        // Lifecycle
+        // -------------------------
         onMounted(() => {
+            // Bootstrap offcanvas events
             const el = this._getOffcanvasEl();
             if (el) {
                 this._onShown = () => this._afterShown();
@@ -111,6 +144,8 @@ export class AiSidebar extends Component {
             this.contextInterval = setInterval(() => {
                 const newContext = this.contextService.getContext();
                 if (!newContext) return;
+
+                // compare by JSON (simple + works fine at your cadence)
                 if (!this.state.currentContext || JSON.stringify(newContext) !== JSON.stringify(this.state.currentContext)) {
                     this.state.currentContext = newContext;
                 }
@@ -130,17 +165,12 @@ export class AiSidebar extends Component {
                 this.observer.observe(this.chatUiRef.el, { childList: true, subtree: true });
             }
 
-            // recorder feed: solo STEP_SAVED (no te ensucia con WS_ERROR)
+            // recorder feed: solo STEP_SAVED (no ensuciar con WS_ERROR)
             this._recListener = (ev) => {
                 this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
                 if (!ev || ev.event_type !== "STEP_SAVED") return;
 
-                const _id =
-                    ev._id ||
-                    ev.step_id ||
-                    ev.event_id ||
-                    `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-
+                const _id = ev._id || ev.step_id || ev.event_id || `${Date.now()}_${Math.random().toString(16).slice(2)}`;
                 if ((this.state.recorderFeed || []).some((x) => x?._id === _id)) return;
 
                 this.state.recorderFeed = [{ ...ev, _id }, ...(this.state.recorderFeed || [])].slice(0, 60);
@@ -171,6 +201,7 @@ export class AiSidebar extends Component {
             }
         });
 
+        // Resize handle events
         this.onHandleMouseDown = useMouseListeners({
             onMouseDown: this.onMouseDown,
             onMouseMove: this.onMouseMove,
@@ -178,9 +209,9 @@ export class AiSidebar extends Component {
         });
     }
 
-    // -------------------------
+    // =========================================================
     // Bootstrap Offcanvas helpers
-    // -------------------------
+    // =========================================================
     _getOffcanvasEl() {
         return this.containerRef?.el || document.getElementById("offcanvasAiSidebar");
     }
@@ -254,7 +285,14 @@ export class AiSidebar extends Component {
         if (!this.state.showRecorderPanel) {
             requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
         }
+
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
+
+        // ✅ al abrir: manda contexto actual si existe (por si la recarga no lo “flusheó”)
+        try {
+            const ctx = this.state.currentContext;
+            if (ctx?.model) this.aiWs?.sendLiveContext?.({ context_model: ctx.model });
+        } catch (_) {}
     }
 
     _afterHidden() {
@@ -310,9 +348,9 @@ export class AiSidebar extends Component {
         await this.hideSidebar();
     }
 
-    // -------------------------
+    // =========================================================
     // Recorder / Pick
-    // -------------------------
+    // =========================================================
     async _loadRecorderPermission() {
         try {
             this.state.canSeeRecorderToggle = await user.hasGroup("base.group_system");
@@ -325,7 +363,7 @@ export class AiSidebar extends Component {
         if (!this.state.canSeeRecorderToggle) return;
 
         this.state.showRecorderPanel = !this.state.showRecorderPanel;
-        this._closeFeedbackPopover?.();
+        this._closeFeedbackPopover();
 
         // reflow al volver a chat
         if (!this.state.showRecorderPanel) {
@@ -397,7 +435,6 @@ export class AiSidebar extends Component {
             // 3) quitar pick mode + reabrir
             document.body.classList.remove("o_ai_pick_mode");
             await this.showSidebar();
-
             this.state.recorderPicking = false;
         }
     }
@@ -425,7 +462,7 @@ export class AiSidebar extends Component {
         }
 
         const stepIndex = (this.state.recorderStepIndex || 0) + 1;
-        const stepId = (crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`);
+        const stepId = crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
 
         const payload = {
             recorder_session_id: this.state.recorderSessionId,
@@ -438,13 +475,7 @@ export class AiSidebar extends Component {
             context: this.state.currentContext || null,
         };
 
-        const dedupeKey = [
-            payload.recorder_session_id,
-            payload.step_index,
-            payload.target || "",
-            payload.instruction || "",
-        ].join("|");
-
+        const dedupeKey = [payload.recorder_session_id, payload.step_index, payload.target || "", payload.instruction || ""].join("|");
         if (this._savedStepHashes.has(dedupeKey)) {
             this.notification.add(_t("Duplicate step ignored."), { type: "warning" });
             return;
@@ -471,9 +502,9 @@ export class AiSidebar extends Component {
         }
     }
 
-    // -------------------------
+    // =========================================================
     // Chat (NLUX)
-    // -------------------------
+    // =========================================================
     updateChatPlaceholder(newPlaceholder) {
         if (this.aiChat && this.aiChat.updateComposerOptions) {
             this.aiChat.updateComposerOptions({ placeholder: newPlaceholder });
@@ -489,7 +520,9 @@ export class AiSidebar extends Component {
 
     createAiChat() {
         if (this.aiChat) {
-            try { this.aiChat.unmount(); } catch {}
+            try {
+                this.aiChat.unmount();
+            } catch {}
             this.aiChat = null;
         }
 
@@ -536,6 +569,12 @@ export class AiSidebar extends Component {
             console.warn("[ai_sidebar] ws restart failed:", e);
         }
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
+
+        // ✅ fuerza enviar contexto actual tras reset (por si NLUX re-mount)
+        try {
+            const ctx = this.state.currentContext;
+            if (ctx?.model) this.aiWs?.sendLiveContext?.({ context_model: ctx.model });
+        } catch (_) {}
     }
 
     async batchText(message) {
@@ -561,16 +600,21 @@ export class AiSidebar extends Component {
 
             const response = await this.sendMessage(message);
             if (response.stream) {
-                response.stream.pipeTo(new WritableStream({
-                    write: (chunk) => this.onMessage(chunk),
-                    close: () => this.onStop(),
-                }));
+                response.stream.pipeTo(
+                    new WritableStream({
+                        write: (chunk) => this.onMessage(chunk),
+                        close: () => this.onStop(),
+                    })
+                );
             }
         } catch (error) {
             observer.error(`AI Error: ${error.message}`);
         }
     }
 
+    // =========================================================
+    // Process UI (timer + validate modal)
+    // =========================================================
     startProcess() {
         this.state.processActive = true;
         this.state.timerSeconds = 0;
@@ -603,7 +647,7 @@ export class AiSidebar extends Component {
         try {
             const response = await fetch("/ai_chat/validate_exercise", {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
                 body: JSON.stringify({ exercise_id: this.state.exerciseId }),
             });
 
@@ -642,9 +686,9 @@ export class AiSidebar extends Component {
         this.state.firstFailedStep = null;
     }
 
-    // -------------------------
+    // =========================================================
     // Anti auto-scroll (tu lógica)
-    // -------------------------
+    // =========================================================
     _waitAndInitAntiAutoScroll() {
         const root = this.chatUiRef?.el;
         if (!root) return;
@@ -717,7 +761,7 @@ export class AiSidebar extends Component {
             this._observerAA.disconnect();
             this._observerAA = null;
         }
-        this._stopLock?.();
+        this._stopLock();
         this._conv = null;
         this._segments = null;
     }
@@ -755,9 +799,16 @@ export class AiSidebar extends Component {
         this._lockRaf = requestAnimationFrame(tick);
     }
 
-    // -------------------------
-    // Feedback (dejas tu UI igual; aquí solo mantenemos el hook)
-    // -------------------------
+    _stopLock() {
+        this._lockActive = false;
+        if (this._lockRaf) cancelAnimationFrame(this._lockRaf);
+        this._lockRaf = null;
+        this._anchorEl = null;
+    }
+
+    // =========================================================
+    // Feedback (FULL: up/down + quick popover + textarea popover)
+    // =========================================================
     _initFeedbackObserver() {
         if (this._feedbackObserver) return;
         const root = this.chatUiRef?.el;
@@ -780,10 +831,24 @@ export class AiSidebar extends Component {
             this._feedbackObserver.disconnect();
             this._feedbackObserver = null;
         }
-        this._closeFeedbackPopover?.();
+        this._closeFeedbackPopover();
+    }
+
+    _setComposerAutoFocus(enabled) {
+        // NLUX: evita que el textarea del popover pierda foco
+        try {
+            if (this.aiChat?.updateComposerOptions) {
+                this.aiChat.updateComposerOptions({ autoFocus: !!enabled });
+            }
+        } catch {}
+
+        const composerInput =
+            this.chatUiRef?.el?.querySelector(".nlux-composer-container textarea, .nlux-composer-container input");
+        if (!enabled && composerInput) composerInput.blur();
     }
 
     _getNluxMessageUid(chatItemEl) {
+        // nlux pone nlux-message-id en el contenedor markdown
         const msg = chatItemEl.querySelector(".nlux-markdown-container[nlux-message-id]");
         return msg?.getAttribute("nlux-message-id") || null;
     }
@@ -792,6 +857,12 @@ export class AiSidebar extends Component {
         const md = chatItemEl.querySelector(".nlux-markdown-container");
         if (!md) return { html: "", text: "" };
         return { html: md.innerHTML || "", text: (md.innerText || md.textContent || "").trim() };
+    }
+
+    _setSelectedVote(barEl, vote) {
+        barEl.querySelectorAll(".ai_feedback_btn").forEach((b) => b.classList.remove("is-active"));
+        const target = barEl.querySelector(`.ai_feedback_btn[data-action="${vote}"]`);
+        if (target) target.classList.add("is-active");
     }
 
     _injectFeedbackBar(chatItemEl) {
@@ -827,10 +898,30 @@ export class AiSidebar extends Component {
             const { html, text } = this._getMessageBody(chatItemEl);
 
             if (action === "up") {
-                this._submitAiFeedback({ message_uid: messageUid, vote: "up", comment: "", message_body_html: html, message_body_text: text });
-            } else if (action === "down") {
-                this._submitAiFeedback({ message_uid: messageUid, vote: "down", comment: "", message_body_html: html, message_body_text: text });
-            } else if (action === "comment") {
+                this._setSelectedVote(bar, "up");
+                this._submitAiFeedback({
+                    message_uid: messageUid,
+                    vote: "up",
+                    comment: "",
+                    message_body_html: html,
+                    message_body_text: text,
+                });
+                return;
+            }
+
+            if (action === "down") {
+                this._setSelectedVote(bar, "down");
+                this._submitAiFeedback({
+                    message_uid: messageUid,
+                    vote: "down",
+                    comment: "",
+                    message_body_html: html,
+                    message_body_text: text,
+                });
+                return;
+            }
+
+            if (action === "comment") {
                 this._toggleFeedbackQuickPopover({
                     chatItemEl,
                     anchorBtn: btn,
@@ -838,25 +929,348 @@ export class AiSidebar extends Component {
                     messageHtml: html,
                     messageText: text,
                 });
+                return;
             }
         });
 
         messageRoot.appendChild(bar);
     }
 
+    _toggleFeedbackQuickPopover({ chatItemEl, anchorBtn, messageUid, messageHtml, messageText }) {
+        // si ya hay algo abierto, ciérralo primero
+        if (this._activeFeedbackPopover) this._closeFeedbackPopover();
+
+        const portal = this.chatUiRef?.el || this.containerRef?.el;
+        if (!portal || !anchorBtn) return;
+
+        const pop = document.createElement("div");
+        pop.className = "ai_feedback_popover ai_feedback_popover--quick";
+        pop.dataset.messageUid = messageUid;
+
+        pop.innerHTML = `
+          <div class="ai_feedback_popover_title">${_t("Quick feedback")}</div>
+
+          <div class="ai_feedback_quick_grid">
+            <button type="button" class="ai_feedback_quick_btn" data-act="excellent">
+              <i class="fa fa-star"></i><span>${_t("Excellent")}</span>
+            </button>
+
+            <button type="button" class="ai_feedback_quick_btn" data-act="unclear">
+              <i class="fa fa-question-circle"></i><span>${_t("Unclear")}</span>
+            </button>
+
+            <button type="button" class="ai_feedback_quick_btn" data-act="technical">
+              <i class="fa fa-wrench"></i><span>${_t("Technical issue")}</span>
+            </button>
+
+            <button type="button" class="ai_feedback_quick_btn" data-act="comment">
+              <i class="fa fa-comment"></i><span>${_t("Comment")}</span>
+            </button>
+          </div>
+
+          <div class="ai_feedback_actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-act="cancel">${_t("Cancel")}</button>
+          </div>
+        `;
+
+        // no romper NLUX
+        const stopOnly = (e) => e.stopPropagation();
+        pop.addEventListener("pointerdown", stopOnly, true);
+        pop.addEventListener("mousedown", stopOnly, true);
+        pop.addEventListener("keydown", stopOnly, true);
+
+        portal.appendChild(pop);
+
+        pop.style.position = "fixed";
+        pop.style.zIndex = "10000";
+        pop.style.pointerEvents = "auto";
+
+        this._setComposerAutoFocus(false);
+
+        const place = () => {
+            const r = anchorBtn.getBoundingClientRect();
+            let left = r.left;
+            let top = r.bottom + 8;
+
+            const pr = pop.getBoundingClientRect();
+            const pad = 8;
+
+            if (left + pr.width > window.innerWidth - pad) left = window.innerWidth - pr.width - pad;
+            if (left < pad) left = pad;
+
+            if (top + pr.height > window.innerHeight - pad) top = r.top - pr.height - pad;
+            if (top < pad) top = pad;
+
+            pop.style.left = `${left}px`;
+            pop.style.top = `${top}px`;
+        };
+
+        place();
+        requestAnimationFrame(place);
+
+        const onClick = (ev) => {
+            const btn = ev.target.closest("button");
+            if (!btn) return;
+
+            const act = btn.dataset.act;
+            if (!act) return;
+
+            const closeAndOpenTextarea = (opts) => {
+                this._closeFeedbackPopover();
+                this._toggleFeedbackPopover({
+                    chatItemEl,
+                    anchorBtn,
+                    messageUid,
+                    messageHtml,
+                    messageText,
+                    ...opts,
+                });
+            };
+
+            if (act === "cancel") {
+                this._closeFeedbackPopover();
+                return;
+            }
+
+            if (act === "excellent") {
+                this._submitAiFeedback(
+                    {
+                        message_uid: messageUid,
+                        vote: "up",
+                        comment: "",
+                        message_body_html: messageHtml,
+                        message_body_text: messageText,
+                    },
+                    { eventName: "ai_feedback" }
+                );
+                this._closeFeedbackPopover();
+                return;
+            }
+
+            if (act === "unclear") {
+                closeAndOpenTextarea({
+                    eventName: "ai_feedback_unclear",
+                    title: _t("What was unclear?"),
+                    placeholder: _t("Tell us what felt confusing or incomplete..."),
+                    presetVote: "down",
+                });
+                return;
+            }
+
+            if (act === "technical") {
+                closeAndOpenTextarea({
+                    eventName: "ai_feedback_technical_issue",
+                    title: _t("Describe the technical issue"),
+                    placeholder: _t("What went wrong? (error, stuck, wrong output, etc.)"),
+                    presetVote: "",
+                });
+                return;
+            }
+
+            if (act === "comment") {
+                closeAndOpenTextarea({
+                    eventName: "ai_feedback",
+                    title: _t("Feedback about this answer"),
+                    placeholder: _t("Tell us what we can improve..."),
+                    presetVote: "",
+                });
+                return;
+            }
+        };
+
+        pop.addEventListener("click", onClick, true);
+
+        const onDocMouseDown = (e) => {
+            if (!pop.contains(e.target) && e.target !== anchorBtn) this._closeFeedbackPopover();
+        };
+        const onKeyDown = (e) => {
+            if (e.key === "Escape") this._closeFeedbackPopover();
+        };
+
+        document.addEventListener("mousedown", onDocMouseDown, true);
+        document.addEventListener("keydown", onKeyDown, true);
+        window.addEventListener("resize", place, true);
+        window.addEventListener("scroll", place, true);
+
+        this._activeFeedbackPopover = pop;
+        pop._onDocMouseDown = onDocMouseDown;
+        pop._onKeyDown = onKeyDown;
+        pop._onReflow = place;
+        pop._onQuickClick = onClick;
+    }
+
+    _toggleFeedbackPopover({
+        chatItemEl,
+        anchorBtn,
+        messageUid,
+        messageHtml,
+        messageText,
+        eventName = "ai_feedback",
+        title = _t("Feedback about this answer"),
+        placeholder = _t("Tell us what we can improve..."),
+        presetVote = "",
+    }) {
+        // toggle si es el mismo
+        if (this._activeFeedbackPopover) {
+            if (this._activeFeedbackPopover.dataset.messageUid === messageUid) {
+                this._closeFeedbackPopover();
+                return;
+            }
+            this._closeFeedbackPopover();
+        }
+
+        const portal = this.chatUiRef?.el || this.containerRef?.el;
+        if (!portal || !anchorBtn) return;
+
+        const pop = document.createElement("div");
+        pop.className = "ai_feedback_popover";
+        pop.dataset.messageUid = messageUid;
+        pop.dataset.eventName = eventName;
+        pop.dataset.presetVote = presetVote;
+
+        pop.innerHTML = `
+          <div class="ai_feedback_popover_title">${title}</div>
+          <textarea class="ai_feedback_text" rows="3" placeholder="${placeholder}"></textarea>
+          <div class="ai_feedback_actions">
+            <button type="button" class="btn btn-primary btn-sm" data-act="send">${_t("Send")}</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-act="cancel">${_t("Cancel")}</button>
+          </div>
+        `;
+
+        const stopOnly = (e) => e.stopPropagation();
+        pop.addEventListener("pointerdown", stopOnly, true);
+        pop.addEventListener("mousedown", stopOnly, true);
+        pop.addEventListener("keydown", stopOnly, true);
+
+        portal.appendChild(pop);
+
+        pop.style.position = "fixed";
+        pop.style.zIndex = "10000";
+        pop.style.pointerEvents = "auto";
+
+        this._setComposerAutoFocus(false);
+
+        const place = () => {
+            const r = anchorBtn.getBoundingClientRect();
+            let left = r.left;
+            let top = r.bottom + 8;
+
+            const pr = pop.getBoundingClientRect();
+            const pad = 8;
+
+            if (left + pr.width > window.innerWidth - pad) left = window.innerWidth - pr.width - pad;
+            if (left < pad) left = pad;
+
+            if (top + pr.height > window.innerHeight - pad) top = r.top - pr.height - pad;
+            if (top < pad) top = pad;
+
+            pop.style.left = `${left}px`;
+            pop.style.top = `${top}px`;
+        };
+
+        place();
+        requestAnimationFrame(place);
+
+        const ta = pop.querySelector(".ai_feedback_text");
+        if (ta) {
+            ta.tabIndex = 0;
+            ta.style.pointerEvents = "auto";
+            setTimeout(() => ta.focus({ preventScroll: true }), 0);
+        }
+
+        const btnSend = pop.querySelector('button[data-act="send"]');
+        const btnCancel = pop.querySelector('button[data-act="cancel"]');
+
+        const onSend = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const text = ta?.value?.trim() || "";
+            const eventNameFinal = pop.dataset.eventName || "ai_feedback";
+            const voteFinal = pop.dataset.presetVote || "";
+
+            this._submitAiFeedback(
+                {
+                    message_uid: messageUid,
+                    comment: text,
+                    vote: voteFinal,
+                    message_body_html: messageHtml,
+                    message_body_text: messageText,
+                },
+                { eventName: eventNameFinal }
+            );
+
+            this._closeFeedbackPopover();
+        };
+
+        const onCancel = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this._closeFeedbackPopover();
+        };
+
+        btnSend?.addEventListener("click", onSend, true);
+        btnCancel?.addEventListener("click", onCancel, true);
+
+        const onDocMouseDown = (e) => {
+            if (!pop.contains(e.target) && e.target !== anchorBtn) this._closeFeedbackPopover();
+        };
+
+        const onKeyDown = (e) => {
+            if (e.key === "Escape") this._closeFeedbackPopover();
+        };
+
+        document.addEventListener("mousedown", onDocMouseDown, true);
+        document.addEventListener("keydown", onKeyDown, true);
+        window.addEventListener("resize", place, true);
+        window.addEventListener("scroll", place, true);
+
+        this._activeFeedbackPopover = pop;
+        pop._onDocMouseDown = onDocMouseDown;
+        pop._onKeyDown = onKeyDown;
+        pop._onReflow = place;
+        pop._onSend = onSend;
+        pop._onCancel = onCancel;
+    }
+
+    _closeFeedbackPopover() {
+        if (!this._activeFeedbackPopover) return;
+        const pop = this._activeFeedbackPopover;
+
+        document.removeEventListener("mousedown", pop._onDocMouseDown, true);
+        document.removeEventListener("keydown", pop._onKeyDown, true);
+        window.removeEventListener("resize", pop._onReflow, true);
+        window.removeEventListener("scroll", pop._onReflow, true);
+
+        const btnSend = pop.querySelector('button[data-act="send"]');
+        const btnCancel = pop.querySelector('button[data-act="cancel"]');
+        btnSend?.removeEventListener("click", pop._onSend, true);
+        btnCancel?.removeEventListener("click", pop._onCancel, true);
+
+        if (pop._onQuickClick) pop.removeEventListener("click", pop._onQuickClick, true);
+
+        this._setComposerAutoFocus(true);
+
+        pop.remove();
+        this._activeFeedbackPopover = null;
+    }
+
     async _submitAiFeedback(payload, opts = {}) {
         const fullPayload = { ...payload, context: this.state.currentContext };
         const eventName = opts?.eventName || "ai_feedback";
-        return this.aiWs.sendEvent({
-            type: "feedback_event",
-            event_name: eventName,
-            event_data: fullPayload,
-        }).catch(() => {});
+
+        return this.aiWs
+            .sendEvent({
+                type: "feedback_event",
+                event_name: eventName,
+                event_data: fullPayload,
+            })
+            .catch((e) => console.warn("[ai_sidebar] feedback send failed:", e));
     }
 
-    // -------------------------
+    // =========================================================
     // Resize
-    // -------------------------
+    // =========================================================
     onMouseDown(event) {
         event.preventDefault();
         if (!this.containerRef.el || !this.handleRef.el) return;
