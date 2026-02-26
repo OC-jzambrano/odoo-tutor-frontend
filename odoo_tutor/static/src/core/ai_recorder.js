@@ -2,6 +2,7 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
+import { normalizeDomEvent } from "./normalize_event";
 
 const DUP_WINDOW_MS = 800;
 const MAX_LOCAL_LOGS = 250;
@@ -216,72 +217,118 @@ export const aiRecorderService = {
         }
 
         function onDomClick(e) {
-            if (status !== "recording" || pickerActive) return;
+          if (status !== "recording" || pickerActive) return;
 
-            const targetEl = e.target?.closest?.("button,a,input,textarea,select,[role='button']") || e.target;
-            if (!targetEl) return;
+          const ts = Date.now();
+          const normalized = normalizeDomEvent({
+            domEventType: "click",
+            originalEvent: e,
+            contextService,
+          });
 
-            const ts = Date.now();
-            const target = describeTarget(targetEl);
-            const event_type = classifyEvent("click", targetEl);
-            const dedupeKey = `${event_type}|${target.target_key}`;
 
-            if (isDuplicate(dedupeKey, ts)) return;
+          // dedupe: type + (field/target_name/dom_key) + res_id + value?
+          const keyPart =
+            normalized.field ||
+            normalized.meta?.target_name ||
+            normalized.dom?.dom_key ||
+            "unknown";
+          const dedupeKey = `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}`;
 
-            const payload = {
-                _id: uuid(),
-                session_id: sessionId,
-                exercise_id: exerciseId,
-                timestamp: new Date(ts).toISOString(),
-                event_type,
-                target: target.target_key,
-                target_meta: target,
-                context: getCtxSnapshot(),
-            };
+          if (isDuplicate(dedupeKey, ts)) return;
 
-            pushLog(payload);
-            sendWS("record_ui_event", payload).catch((err) => {
-                pushLog({
-                    _id: uuid(),
-                    session_id: sessionId,
-                    exercise_id: exerciseId,
-                    timestamp: nowIso(),
-                    event_type: "WS_ERROR",
-                    target: target.target_key,
-                    error: err?.message || String(err),
-                });
+          // payload “rico”
+          const payload = {
+            _id: uuid(),
+            session_id: sessionId,
+            exercise_id: exerciseId,
+            timestamp: normalized.ts,
+            normalized,
+          };
+
+          pushLog({
+            ...payload,
+            event_type: normalized.type,
+            target: keyPart,
+          });
+
+          // payload “ticket style” (el de la imagen)
+          const ticketPayload = {
+            type: normalized.type,
+            label: normalized.label,
+            field: normalized.field,
+            value: normalized.value,
+            meta: normalized.meta,
+            quality: normalized.quality,
+            ts: normalized.ts,
+            v: normalized.v,
+          };
+
+          sendWS("normalized_event", ticketPayload).catch((err) => {
+            pushLog({
+              _id: uuid(),
+              session_id: sessionId,
+              exercise_id: exerciseId,
+              timestamp: nowIso(),
+              event_type: "WS_ERROR",
+              target: keyPart,
+              error: err?.message || String(err),
             });
+          });
         }
 
         function onDomChange(e) {
-            if (status !== "recording" || pickerActive) return;
+          if (status !== "recording" || pickerActive) return;
 
-            const el = e.target;
-            if (!el) return;
-            const tag = (el.tagName || "").toUpperCase();
-            if (!["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+          const el = e.target;
+          if (!el) return;
+          if (el.type === "checkbox") {
+            return;
+          }
 
-            const ts = Date.now();
-            const target = describeTarget(el);
-            const event_type = "update";
-            const dedupeKey = `${event_type}|${target.target_key}`;
+          const tag = (el.tagName || "").toUpperCase();
+          if (!["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
 
-            if (isDuplicate(dedupeKey, ts)) return;
+          const ts = Date.now();
+          const normalized = normalizeDomEvent({
+            domEventType: "change",
+            originalEvent: e,
+            contextService,
+          });
 
-            const payload = {
-                _id: uuid(),
-                session_id: sessionId,
-                exercise_id: exerciseId,
-                timestamp: new Date(ts).toISOString(),
-                event_type,
-                target: target.target_key,
-                target_meta: target,
-                value_preview: cleanText(el.value),
-                context: getCtxSnapshot(),
-            };
+          const keyPart = normalized.field || normalized.dom?.dom_key || "unknown";
+          const val = normalized.value != null ? String(normalized.value) : "";
+          const dedupeKey = `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}|${val}`;
 
-            pushLog(payload);
-            sendWS("record_ui_event", payload).catch(() => {});
+          if (isDuplicate(dedupeKey, ts)) return;
+
+          const payload = {
+            _id: uuid(),
+            session_id: sessionId,
+            exercise_id: exerciseId,
+            timestamp: normalized.ts,
+            normalized,
+          };
+
+          pushLog({
+            ...payload,
+            event_type: normalized.type,
+            target: keyPart,
+            value_preview: cleanText(normalized.value),
+          });
+
+          const ticketPayload = {
+            type: normalized.type,
+            label: normalized.label,
+            field: normalized.field,
+            value: normalized.value,
+            meta: normalized.meta,
+            quality: normalized.quality,
+            ts: normalized.ts,
+            v: normalized.v,
+          };
+
+          sendWS("normalized_event", ticketPayload).catch(() => {});
         }
 
         function attachDomListeners() {

@@ -5,10 +5,12 @@ import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
-
+import { normalizeDomEvent } from "../normalize_ui_event";
 // ---------------------
 // Helpers
 // ---------------------
+
+const AI_DOC = window.top?.document || document;
 async function getUserLogin() {
     const info = await rpc("/web/session/get_session_info", {});
     return {
@@ -294,7 +296,7 @@ class AiFloatingButton extends Component {
     setup() {
         this.actionService = useService("action");
         this.contextService = useService("context_service");
-
+        this._lastActiveListField = null;
         // ✅ WebSocket service (single source of truth)
         this.aiWs = useService("ai_ws");
 
@@ -306,7 +308,6 @@ class AiFloatingButton extends Component {
             logs: [],
             ctx: { viewType: null, resId: null },
         });
-
         // dedupe cache: key -> lastTsMs
         this._dedup = new Map();
         this.DEDUP_MS = 650;
@@ -341,6 +342,7 @@ class AiFloatingButton extends Component {
             "purchase.order",
             "project.project",
             "project.task",
+            "project.task.type",
             "report.project.task.user",
             "project.tags",
             "mail.activity.type",
@@ -351,6 +353,17 @@ class AiFloatingButton extends Component {
             "account.invoice",
             "purchase.order",
             "res.config.settings",
+            "crm.lead",
+            "crm.team",
+            "crm.activity.report",
+            "crm.stage",
+            "crm.tag",
+            "crm.lost.reason",
+            "crm.iap.lead.mining.request",
+            "mail.activity.plan",
+            "mail.activity.type",
+            "crm.team.member",
+
         ];
 
         onMounted(() => {
@@ -382,6 +395,21 @@ class AiFloatingButton extends Component {
         this._onDocClick = (ev) => {
             if (!ev.target || !ev.target.tagName) return;
 
+            const t = ev.target;
+            const td = t?.closest?.("td");
+            if (td) {
+                const inferred =
+                  td.getAttribute("data-name") ||
+                  td.getAttribute("data-field") ||
+                  td.dataset?.name ||
+                  td.dataset?.field ||
+                  null;
+
+                if (inferred) {
+                  this._lastActiveListField = inferred;
+                  console.log("[AI_UI] inferred list column:", inferred);
+                }
+            }
             const base = this._getContextSnapshot();
 
             const link = ev.target.closest?.("a, [role='menuitem'], .o_app, .o_menuitem, .dropdown-item");
@@ -391,7 +419,6 @@ class AiFloatingButton extends Component {
                 const ds = link.dataset || {};
                 menuXmlid = ds.menuXmlid || ds.menuXmlId || ds.xmlid || null;
             }
-
             const uiType = classifyElement(ev.target);
             const gctx = findGridContext(ev.target);
             const label = getControlLabel(ev.target);
@@ -418,13 +445,44 @@ class AiFloatingButton extends Component {
                 ...base,
             });
 
+            // ✅ Normalización (console + opcional WS)
+            try {
+              const normalized = normalizeDomEvent({
+                domEventType: "click",
+                originalEvent: ev,
+                context: this._getContextSnapshot(),
+                hints: { lastActiveField: this._lastActiveListField },
+              });
+
+              if (normalized) {
+                // si quieres mandarlo por WS ya:
+                this.aiWs?.sendEvent?.({
+                  type: "ui_event",
+                  event_name: normalized.type,
+                  event_data: normalized,
+                }).catch(() => {});
+              }
+            } catch (e) {
+              console.warn("[AI_UI] normalize failed", e);
+            }
+
+            /*this._maybeRecordUiEvent({
+              type: "click",
+              timestamp: Date.now(),
+              targetElement: ev.target,
+              uiType: ev.uiType || "Unknown",
+              label: ev.label || null,
+              labelKey: ev.labelKey || null,
+              name: ev.name || null,
+              viewType: ev.viewType || null,
+              resId: ev.resId || null,
+            });*/
+
             // route_after
             setTimeout(() => {
                 this.addLog("route_after", this._getContextSnapshot());
             }, 0);
 
-            // ✅ recorder hook (solo si está activo)
-            this._maybeRecordUiEvent(logEv);
         };
 
         this._onDocInput = (ev) => {
@@ -455,14 +513,10 @@ class AiFloatingButton extends Component {
                 ...base,
             });
 
-            // normalmente NO grabamos cada tecla en recorder MVP (solo input_final),
-            // pero lo dejamos logueado.
-            // this._maybeRecordUiEvent(logEv);
         };
 
         this._onDocChange = (ev) => {
             if (!ev.target || !["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName)) return;
-
             const base = this._getContextSnapshot();
             const uiType = classifyElement(ev.target);
             const gctx = findGridContext(ev.target);
@@ -488,13 +542,45 @@ class AiFloatingButton extends Component {
                 ...base,
             });
 
-            // ✅ recorder hook (solo si está activo)
-            this._maybeRecordUiEvent(logEv);
+            const checked =
+              ev.target?.type === "checkbox"
+                ? !!ev.target.checked
+                : null;
+
+            try {
+              const normalized = normalizeDomEvent({
+                domEventType: "change",
+                originalEvent: ev,
+                context: this._getContextSnapshot(),
+                hints: { lastActiveField: this._lastActiveListField },
+              });
+
+              if (normalized) {
+                this.aiWs?.sendEvent?.({
+                  type: "ui_event",
+                  event_name: normalized.type,
+                  event_data: normalized,
+                }).catch(() => {});
+              }
+            } catch (e) {
+              console.warn("[AI_UI] normalize failed", e);
+            }
+
+            /*this._maybeRecordUiEvent({
+              type: "input_final",
+              timestamp: Date.now(),
+              targetElement: ev.target,
+              uiType: ev.target?.type === "checkbox" ? "Checkbox" : "Input",
+              name: ev.target?.name || null,
+              value: ev.target?.value || null,
+              checked,
+            });*/
+
         };
 
-        document.addEventListener("click", this._onDocClick, true);
-        document.addEventListener("input", this._onDocInput, true);
-        document.addEventListener("change", this._onDocChange, true);
+        AI_DOC.addEventListener("click", this._onDocClick, true);
+        AI_DOC.addEventListener("input", this._onDocInput, true);
+        AI_DOC.addEventListener("change", this._onDocChange, true);
 
         // ---------------------
         // Debug helpers (como antes)
@@ -577,19 +663,27 @@ class AiFloatingButton extends Component {
     }
 
     _getContextSnapshot() {
-        try {
-            const props = this.actionService.currentController?.props || {};
-            const hash = parseHashParams();
-            const query = parseQueryParams();
-            const getNum = (x) => (x != null && x !== "" && !Number.isNaN(Number(x)) ? Number(x) : null);
+      try {
+        // 1) usa TU context_service primero (es lo más estable)
+        const ctx = this.contextService?.getContext?.() || {};
+        const props = this.actionService.currentController?.props || {};
 
-            return {
-                viewType: props.viewType || hash.view_type || query.view_type || guessViewType(),
-                resId: getNum(props.resId) || getNum(hash.id) || getNum(query.id),
-            };
-        } catch {
-            return { viewType: null, resId: null };
-        }
+        const model = props.resModel || ctx.model || null;
+
+        const viewType =
+          props.viewType ||
+          ctx.view ||
+          (document.querySelector(".o_form_view, .o_form_renderer") ? "form" : null) ||
+          (document.querySelector(".o_list_view, .o_list_renderer") ? "list" : null) ||
+          (document.querySelector(".o_kanban_view, .o_kanban_renderer") ? "kanban" : null) ||
+          null;
+
+        const resId = props.resId || null;
+
+        return { model, viewType, resId };
+      } catch {
+        return { model: null, viewType: null, resId: null };
+      }
     }
 
     addLog(type, data) {
@@ -607,81 +701,57 @@ class AiFloatingButton extends Component {
      * - Dedup por (type + targetElement + value?) en ventana corta.
      * - Además lo pasa al ai_recorder (si tiene método).
      */
+
     _maybeRecordUiEvent(ev) {
+      try {
+        // Siempre imprime para debug (aunque no esté grabando)
+        console.log("[AI_UI] candidate", ev);
+
         const isActive =
-            this.aiRecorder?.isActive?.() ??
-            this.aiRecorder?.isRecording?.() ??
-            !!this.aiRecorder?.active;
+          window.getRecorderStatus?.() === "recording" ||
+          window.__AI_TUTOR_RECORDER_ACTIVE;
+
+        // 🔥 Construimos JSON normalizado tipo ticket
+        const normalized = {
+          type:
+            ev.type === "input_final"
+              ? "field_changed"
+              : ev.type === "click" && ev.uiType === "Button"
+              ? "button_click"
+              : ev.type,
+          label: ev.labelKey || ev.label || null,
+          field: ev.name || ev.columnField || null,
+          value:
+            ev.uiType === "Checkbox"
+              ? !!ev.checked
+              : ev.value ?? null,
+          meta: {
+            viewType: ev.viewType || null,
+            resId: ev.resId || null,
+            rowId: ev.rowId || null,
+          },
+          ts: new Date().toISOString(),
+          v: 1,
+        };
 
         if (!isActive) return;
 
-        // dedupe key
-        const target = ev?.targetElement || ev?.uniqueKey || "unknown";
-        const v = ev?.value != null ? String(ev.value) : "";
-        const key = `${ev.type}|${target}|${v}`;
-        const now = Date.now();
-        const last = this._dedup.get(key) || 0;
-
-        if (now - last < this.DEDUP_MS) {
-            // evita duplicado
-            return;
+        // Envío por websocket si está grabando
+        if (window.aiWs?.sendEvent) {
+          window.aiWs.sendEvent(normalized);
         }
-        this._dedup.set(key, now);
-
-        // recording id (si tu servicio lo expone)
-        const recordingId =
-            this.aiRecorder?.getRecordingId?.() ||
-            this.aiRecorder?.recordingId ||
-            this.aiRecorder?.id ||
-            null;
-
-        const payload = {
-            // lo mínimo que pedía el ticket
-            timestamp: ev.timestamp,
-            event_type: ev.type,           // "click" | "input_final"
-            target_element: target,        // ej: "button.new_lead"
-            // extras útiles y seguros
-            uiType: ev.uiType,
-            label: ev.label || null,
-            value: ev.value ?? null,
-            context: {
-                viewType: ev.viewType || null,
-                resId: ev.resId || null,
-                columnField: ev.columnField || null,
-                rowId: ev.rowId || null,
-                rowLabel: ev.rowLabel || null,
-            },
-            recording_id: recordingId,
-        };
-
-        // 1) guarda en recorder local (si existe método)
-        this.aiRecorder?.pushEvent?.(payload);
-        this.aiRecorder?.addEvent?.(payload);
-
-        // 2) transmite por WS (real-time feed)
-        // mantenemos compatibilidad con tu backend: type="ui_event"
-        let event_name = ev.type;
-        if (ev.type === "click" && ev.uiType === "Button") event_name = "button_click";
-        if (ev.type === "input_final") event_name = "input_change";
-
-        this.aiWs?.sendEvent?.({
-            type: "ui_event",
-            event_name,
-            event_data: payload,
-        }).catch((e) => {
-            // si WS cae, el recorder puede reintentar luego (según tu servicio)
-            console.warn("[ai_recorder] sendEvent failed:", e);
-            this.aiRecorder?.markPending?.(payload, String(e?.message || e));
-        });
+      } catch (err) {
+        console.warn("[AI_UI] normalize error", err);
+      }
     }
 
     willUnmount() {
         clearInterval(this._interval);
 
         try {
-            document.removeEventListener("click", this._onDocClick, true);
-            document.removeEventListener("input", this._onDocInput, true);
-            document.removeEventListener("change", this._onDocChange, true);
+            AI_DOC.removeEventListener("click", this._onDocClick, true);
+            AI_DOC.removeEventListener("input", this._onDocInput, true);
+            AI_DOC.removeEventListener("change", this._onDocChange, true);
         } catch {}
 
         this._onDocClick = null;

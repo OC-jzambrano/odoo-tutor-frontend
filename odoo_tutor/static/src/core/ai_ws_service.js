@@ -362,11 +362,9 @@ export const aiWsService = {
       }
 
       const payload = {
-        // 🔥 Mantén tu contrato actual: el backend identifica por "type"
-        type: "context_event",
+        type: "live_context",
         session_id: sid,
-        context_model: context_model,
-        event_type: "live_context",
+        context_model,
         timestamp: new Date().toISOString(),
       };
 

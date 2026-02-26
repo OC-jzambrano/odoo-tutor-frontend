@@ -32,6 +32,7 @@ export class AiSidebar extends Component {
         this.chatUiRef = useRef("chat-ui");
         this.handleRef = useRef("handle");
 
+        this._offcanvasQueue = Promise.resolve();
         // -------------------------
         // Internal
         // -------------------------
@@ -212,15 +213,32 @@ export class AiSidebar extends Component {
     // =========================================================
     // Bootstrap Offcanvas helpers
     // =========================================================
+
+    _runOffcanvasOp(fn) {
+        this._offcanvasQueue = (this._offcanvasQueue || Promise.resolve())
+            .then(() => fn())
+            .catch((e) => console.warn("[ai_sidebar] offcanvas op failed:", e));
+        return this._offcanvasQueue;
+    }
+
+    async _waitOffcanvasStable(el, timeout = 1200) {
+        if (!el) return;
+        // Si bootstrap está animando, espera a que termine
+        if (!el.classList.contains("hiding") && !el.classList.contains("showing")) return;
+
+        await Promise.race([
+            this._waitEvent(el, "hidden.bs.offcanvas", timeout),
+            this._waitEvent(el, "shown.bs.offcanvas", timeout),
+            new Promise((r) => setTimeout(r, timeout)),
+        ]);
+    }
+
     _getOffcanvasEl() {
         return this.containerRef?.el || document.getElementById("offcanvasAiSidebar");
     }
 
     _getBsOffcanvas() {
-        const el = this._getOffcanvasEl();
-        const Offcanvas = window.bootstrap?.Offcanvas;
-        if (!el || !Offcanvas) return null;
-        return Offcanvas.getOrCreateInstance(el, { backdrop: true, keyboard: true, scroll: false });
+        return this._getBsOffcanvasInstance({ create: true });
     }
 
     _waitEvent(el, evtName, timeout = 900) {
@@ -299,49 +317,71 @@ export class AiSidebar extends Component {
         document.body.classList.remove("o_ai_pick_mode");
         this._normalizeDomAfterTransitions();
 
-        // limpieza segura: solo si no hay ningún offcanvas abierto
-        if (!document.querySelector(".offcanvas.show")) {
-            document.querySelectorAll(".offcanvas-backdrop").forEach((b) => b.remove());
-            document.body.classList.remove("offcanvas-open", "modal-open");
-            document.body.style.removeProperty("overflow");
-            document.body.style.removeProperty("padding-right");
-        }
+        // ✅ Limpieza segura del backdrop / body
+        this._forceOffcanvasCleanup();
+
+        this._disposeBsOffcanvas();
 
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
     }
 
     async hideSidebar() {
-        const el = this._getOffcanvasEl();
-        if (!el) return;
+        return this._runOffcanvasOp(async () => {
+            const el = this._getOffcanvasEl();
+            if (!el) return;
 
-        document.body.classList.remove("o_ai_pick_mode");
+            document.body.classList.remove("o_ai_pick_mode");
 
-        const bs = this._getBsOffcanvas();
-        if (!bs) {
-            el.classList.remove("show");
-            return;
-        }
-        const p = this._waitEvent(el, "hidden.bs.offcanvas", 900);
-        bs.hide();
-        await p;
+            // ✅ espera si todavía está abriendo/cerrando
+            await this._waitOffcanvasStable(el, 1200);
+
+            const bs = this._getBsOffcanvas();
+            if (!bs) {
+                el.classList.remove("show");
+                this._normalizeDomAfterTransitions();
+                this._forceOffcanvasCleanup();
+                this._disposeBsOffcanvas();
+                return;
+            }
+
+            const p = this._waitEvent(el, "hidden.bs.offcanvas", 1200);
+            bs.hide();
+            const ok = await p;
+
+            if (!ok) {
+                // fallback duro
+                el.classList.remove("show");
+                el.setAttribute("aria-hidden", "true");
+                el.removeAttribute("aria-modal");
+                this._normalizeDomAfterTransitions();
+                this._forceOffcanvasCleanup();
+                this._disposeBsOffcanvas();
+            }
+        });
     }
 
     async showSidebar() {
-        const el = this._getOffcanvasEl();
-        if (!el) return;
+        return this._runOffcanvasOp(async () => {
+            const el = this._getOffcanvasEl();
+            if (!el) return;
 
-        document.body.classList.remove("o_ai_pick_mode");
+            document.body.classList.remove("o_ai_pick_mode");
 
-        const bs = this._getBsOffcanvas();
-        if (!bs) {
-            el.classList.add("show");
+            // ✅ espera si todavía está en transición (clave del doble click)
+            await this._waitOffcanvasStable(el, 1200);
+
+            const bs = this._getBsOffcanvas();
+            if (!bs) {
+                el.classList.add("show");
+                this._ensureBackdropVisible();
+                return;
+            }
+
+            const p = this._waitEvent(el, "shown.bs.offcanvas", 1200);
+            bs.show();
+            await p;
             this._ensureBackdropVisible();
-            return;
-        }
-        const p = this._waitEvent(el, "shown.bs.offcanvas", 900);
-        bs.show();
-        await p;
-        this._ensureBackdropVisible();
+        });
     }
 
     async onCloseSidebar() {
@@ -437,6 +477,27 @@ export class AiSidebar extends Component {
             await this.showSidebar();
             this.state.recorderPicking = false;
         }
+    }
+
+    _getBsOffcanvasClass() {
+        return window.bootstrap?.Offcanvas || null;
+    }
+
+    _getBsOffcanvasInstance({ create = false } = {}) {
+        const el = this._getOffcanvasEl();
+        const Offcanvas = this._getBsOffcanvasClass();
+        if (!el || !Offcanvas) return null;
+
+        const opts = { backdrop: true, keyboard: true, scroll: false };
+        return create ? Offcanvas.getOrCreateInstance(el, opts) : Offcanvas.getInstance(el);
+    }
+
+    _disposeBsOffcanvas() {
+        const inst = this._getBsOffcanvasInstance({ create: false });
+        if (!inst) return;
+        try {
+            inst.dispose(); // ✅ resetea el “isShown” interno y handlers de bootstrap
+        } catch (e) {}
     }
 
     _pushSavedStepToFeed(stepPayload) {
@@ -1097,6 +1158,24 @@ export class AiSidebar extends Component {
         pop._onKeyDown = onKeyDown;
         pop._onReflow = place;
         pop._onQuickClick = onClick;
+    }
+
+    _forceOffcanvasCleanup() {
+        // Si hay otro offcanvas abierto, NO limpies (evita romper otros)
+        if (document.querySelector(".offcanvas.show")) return;
+
+        // Borra backdrops (bootstrap o manuales)
+        document.querySelectorAll(".offcanvas-backdrop").forEach((b) => b.remove());
+
+        // Quita clases típicas
+        document.body.classList.remove("offcanvas-open");
+
+        // Solo limpia modal-open/estilos si NO hay modales abiertos
+        if (!document.querySelector(".modal.show")) {
+            document.body.classList.remove("modal-open");
+            document.body.style.removeProperty("overflow");
+            document.body.style.removeProperty("padding-right");
+        }
     }
 
     _toggleFeedbackPopover({
