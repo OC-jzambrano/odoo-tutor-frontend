@@ -24,7 +24,6 @@ export class AiSidebar extends Component {
         this.notification = useService("notification");
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
-
         // -------------------------
         // Refs
         // -------------------------
@@ -38,6 +37,10 @@ export class AiSidebar extends Component {
         // -------------------------
         this._activeFeedbackPopover = null;
         this._feedbackObserver = null;
+        this._seenTutorPush = new Map(); // key -> timestamp
+        this._tutorPushTtlMs = 8000
+        this._lastInjectedTutorText = null;
+        this._lastInjectedTutorAt = 0;
 
         // anti-auto-scroll lock
         this._expectingAssistant = false;
@@ -180,6 +183,34 @@ export class AiSidebar extends Component {
             this.aiRecorder.subscribe(this._recListener);
 
             this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
+
+            // =========================
+            // tutor_push -> inyectar en NLUX como respuesta del assistant
+            // =========================
+            this._seenTutorPushIds = new Set();
+
+            this._onTutorPush = (ev) => {
+                const msg = ev?.kind === "tutor_push" ? ev.data : ev;
+                if (!msg || msg.type !== "tutor_push") return;
+
+                const text = String(msg.response || msg.message || "").trim();
+                if (!text) return;
+
+                // ✅ si NLUX ya lo puso, NO lo repitas
+                if (this._isDuplicateAssistantText(text)) return;
+
+                // marca que lo inyectamos
+                this._lastInjectedTutorText = text;
+                this._lastInjectedTutorAt = Date.now();
+
+                this._pushAssistantMessageToNlux(text);
+            };
+
+            if (!this._tutorPushSubscribed) {
+                this.aiWs.subscribe(this._onTutorPush);
+                this._tutorPushSubscribed = true;
+            }
+
         });
 
         onWillUnmount(() => {
@@ -202,6 +233,13 @@ export class AiSidebar extends Component {
                 this.aiRecorder.unsubscribe(this._recListener);
                 this._recListener = null;
             }
+
+            if (this._tutorPushSubscribed && this._onTutorPush) {
+                this.aiWs.unsubscribe(this._onTutorPush);
+                this._tutorPushSubscribed = false;
+            }
+
+            this._seenTutorPushIds = null;
         });
 
         // Resize handle events
@@ -210,6 +248,86 @@ export class AiSidebar extends Component {
             onMouseMove: this.onMouseMove,
             onMouseUp: this.onMouseUp,
         });
+    }
+
+    // Helpers for tutor_push
+
+    _escapeHtml(s) {
+        return String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+    _getLastAssistantTextFromDom() {
+        const root = this.chatUiRef?.el;
+        if (!root) return null;
+
+        // último mensaje recibido (asistente)
+        const items = root.querySelectorAll(".nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-markdown-container");
+        const last = items?.[items.length - 1];
+        const text = (last?.innerText || last?.textContent || "").trim();
+        return text || null;
+    }
+
+    _isDuplicateAssistantText(text) {
+        const t = String(text || "").trim();
+        if (!t) return true;
+
+        // 1) check rápido contra lo último que inyectamos nosotros
+        const now = Date.now();
+        if (this._lastInjectedTutorText === t && now - this._lastInjectedTutorAt < 6000) {
+            return true;
+        }
+
+        // 2) check contra lo que YA renderizó NLUX en el DOM
+        const lastDom = this._getLastAssistantTextFromDom();
+        if (lastDom && lastDom === t) {
+            return true;
+        }
+
+        return false;
+    }
+
+    _injectAssistantToNlux(text) {
+        // Encuentra el contenedor donde NLUX mete los mensajes
+        const root = this.chatUiRef?.el;
+        if (!root) return;
+
+        const segments = root.querySelector(".nlux-chatSegments-container");
+        if (!segments) {
+            console.warn("[AiSidebar] NLUX segments container not found yet");
+            return;
+        }
+
+        // Crea un “chat item received” con estructura compatible
+        const item = document.createElement("div");
+        item.className = "nlux-comp-chatItem nlux-comp-chatItem--received";
+
+        // Usamos markdown container porque NLUX lo usa para render
+        // (no hacemos markdown real; sólo texto con saltos)
+        const safe = this._escapeHtml(text).replaceAll("\n", "<br/>");
+
+        item.innerHTML = `
+            <div class="nlux-comp-message">
+                <div class="nlux-markdown-container">
+                    ${safe}
+                </div>
+            </div>
+        `;
+
+        segments.appendChild(item);
+
+        // Tu lógica de anti-auto-scroll: simula “llegó assistant”
+        try {
+            this._anchorEl = item;
+            this._startLockToAnchor();
+        } catch (_) {}
+
+        // Reflow por si NLUX recalcula heights
+        requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     }
 
     // =========================================================
@@ -590,13 +708,6 @@ export class AiSidebar extends Component {
 
             // ✅ intenta inyectarlo en NLUX
             const pushed = this._pushAssistantMessageToNlux(String(text));
-
-            // ✅ fallback visible si NLUX no deja (para debug)
-            if (!pushed) {
-                try {
-                    this.notification.add(String(text), { type: "info" });
-                } catch {}
-            }
         };
 
         // Suscribir al servicio
@@ -852,8 +963,68 @@ export class AiSidebar extends Component {
         this.state.firstFailedStep = null;
     }
 
+    _pushAssistantMessageToNlux(text) {
+        const root = this.chatUiRef?.el;
+        if (!root) return;
+
+        const segs = root.querySelector(".nlux-chatSegments-container");
+        if (!segs) {
+            console.warn("[AiSidebar] NLUX segments container not found");
+            return;
+        }
+
+        // 1) Clona un mensaje recibido real para heredar EXACTO el estilo NLUX
+        const lastReceived =
+            segs.querySelector(".nlux-comp-chatItem.nlux-comp-chatItem--received:last-of-type") ||
+            segs.querySelector(".nlux-comp-chatItem.nlux-comp-chatItem--received");
+
+        let node = null;
+
+        if (lastReceived) {
+            node = lastReceived.cloneNode(true);
+
+            // Limpia cosas que NO quieres duplicar (tu feedback bar, popovers, etc.)
+            node.querySelectorAll(".ai_feedback_bar, .ai_feedback_popover").forEach((el) => el.remove());
+        } else {
+            // Fallback (raro): estructura mínima si aún no hay mensajes “received”
+            node = document.createElement("div");
+            node.className = "nlux-comp-chatItem nlux-comp-chatItem--received";
+            node.innerHTML = `
+                <div class="nlux-comp-message">
+                  <div class="nlux-markdown-container"></div>
+                </div>
+            `;
+        }
+
+        // 2) Reemplaza SOLO el contenido del contenedor markdown
+        const md = node.querySelector(".nlux-markdown-container") || node;
+
+        // Asegura un id para que tu feedback bar no colisione
+        const uid = `tutor_push_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        try {
+            md.setAttribute("nlux-message-id", uid);
+        } catch {}
+
+        // Si tu texto trae markdown (**bold**), NLUX normalmente lo renderiza internamente.
+        // Aquí para no romper, ponlo como texto plano (mantiene estilo). Si quieres markdown,
+        // podemos hacer un render simple luego.
+        md.textContent = text;
+
+        // 3) Inserta al final (como una respuesta normal)
+        segs.appendChild(node);
+
+        // 4) Reinyecta tu feedback bar sobre este nuevo mensaje
+        try {
+            this._injectFeedbackBar(node);
+        } catch {}
+
+        // 5) Opcional: engancha tu anti-auto-scroll para que “pegue” este mensaje
+        this._anchorEl = node;
+        this._startLockToAnchor();
+    }
+
     // =========================================================
-    // Anti auto-scroll (tu lógica)
+    // Anti auto-scroll
     // =========================================================
     _waitAndInitAntiAutoScroll() {
         const root = this.chatUiRef?.el;
