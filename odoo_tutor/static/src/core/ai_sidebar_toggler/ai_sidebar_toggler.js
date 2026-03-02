@@ -292,12 +292,12 @@ function buildTargetElement(el, uiType, uniqueKey, labelKey) {
 // ---------------------
 class AiFloatingButton extends Component {
     static template = "ai_chat.AiFloatingButton";
-
+    static props = {};
     setup() {
         this.actionService = useService("action");
         this.contextService = useService("context_service");
         this._lastActiveListField = null;
-        // ✅ WebSocket service (single source of truth)
+
         this.aiWs = useService("ai_ws");
 
         // ✅ Recorder service (tu nuevo servicio)

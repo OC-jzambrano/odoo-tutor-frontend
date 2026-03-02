@@ -1,0 +1,22 @@
+.ai_tutor_push_layer{
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: 8px 8px 0 0;
+    max-height: 180px;
+    overflow: auto;
+}
+
+.ai_push_row { display:flex; justify-content:flex-start; margin-bottom:8px; }
+.ai_push_bubble{
+    background:#fff7d6;
+    border:1px solid #f3d48b;
+    border-radius:12px;
+    padding:10px 12px;
+    width:100%;
+    box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+.ai_push_header{ display:flex; gap:10px; align-items:center; margin-bottom:6px; }
+.ai_push_title{ font-weight:800; }
+.ai_push_meta{ font-size:12px; opacity:.75; }
+.ai_push_body{ white-space:pre-wrap; }

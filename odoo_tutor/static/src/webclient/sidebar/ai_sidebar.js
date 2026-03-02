@@ -131,6 +131,7 @@ export class AiSidebar extends Component {
         // -------------------------
         onMounted(() => {
             // Bootstrap offcanvas events
+            this._setupTutorPushListener();
             const el = this._getOffcanvasEl();
             if (el) {
                 this._onShown = () => this._afterShown();
@@ -187,6 +188,7 @@ export class AiSidebar extends Component {
             if (el && this._onHidden) el.removeEventListener("hidden.bs.offcanvas", this._onHidden);
 
             clearInterval(this.contextInterval);
+            this._teardownTutorPushListener();
 
             if (this.observer) this.observer.disconnect();
             this.observer = null;
@@ -561,6 +563,109 @@ export class AiSidebar extends Component {
             console.warn("[recorder] save step failed:", e);
             this.notification.add(_t("Could not save step to WebSocket."), { type: "danger" });
         }
+    }
+
+    // =========================================================
+    // WS Tutor Push (receive server-driven messages)
+    // =========================================================
+    _setupTutorPushListener() {
+        if (this._onTutorPush) return;
+
+        this._onTutorPush = (ev) => {
+            // Soporta ambos formatos:
+            // 1) { kind: "tutor_push", data: {...} }
+            // 2) {...} crudo
+            const msg = ev?.kind === "tutor_push" ? ev.data : ev;
+            if (!msg || typeof msg !== "object") return;
+            if (msg.type !== "tutor_push") return;
+
+            const text =
+                msg.response ||
+                msg.message ||
+                msg.content ||
+                msg.text ||
+                (typeof msg === "string" ? msg : "");
+
+            if (!text) return;
+
+            // ✅ intenta inyectarlo en NLUX
+            const pushed = this._pushAssistantMessageToNlux(String(text));
+
+            // ✅ fallback visible si NLUX no deja (para debug)
+            if (!pushed) {
+                try {
+                    this.notification.add(String(text), { type: "info" });
+                } catch {}
+            }
+        };
+
+        // Suscribir al servicio
+        try {
+            this.aiWs?.subscribe?.(this._onTutorPush);
+        } catch (e) {
+            console.warn("[AiSidebar] aiWs.subscribe failed:", e);
+        }
+
+        // Extra: escucha también el CustomEvent por si lo usas
+        this._onTutorPushEvent = (e) => {
+            const data = e?.detail;
+            this._onTutorPush?.({ kind: "tutor_push", data });
+        };
+        try {
+            window.addEventListener("ai:tutor_push", this._onTutorPushEvent);
+        } catch {}
+    }
+
+    _teardownTutorPushListener() {
+        try {
+            if (this._onTutorPush) this.aiWs?.unsubscribe?.(this._onTutorPush);
+        } catch {}
+        this._onTutorPush = null;
+
+        try {
+            if (this._onTutorPushEvent) window.removeEventListener("ai:tutor_push", this._onTutorPushEvent);
+        } catch {}
+        this._onTutorPushEvent = null;
+    }
+
+    /**
+     * Intenta insertar un mensaje "assistant" en NLUX.
+     * Devuelve true si pudo; false si no encontró API compatible.
+     */
+    _pushAssistantMessageToNlux(text) {
+        if (!this.aiChat) return false;
+
+        // Variante 1: algunos builds tienen "addMessage"
+        if (typeof this.aiChat.addMessage === "function") {
+            try {
+                this.aiChat.addMessage({
+                    role: "assistant",
+                    content: text,
+                });
+                return true;
+            } catch (e) {
+                console.warn("[AiSidebar] aiChat.addMessage failed:", e);
+            }
+        }
+
+        // Variante 2: otros tienen "pushMessage"
+        if (typeof this.aiChat.pushMessage === "function") {
+            try {
+                this.aiChat.pushMessage({
+                    role: "assistant",
+                    content: text,
+                });
+                return true;
+            } catch (e) {
+                console.warn("[AiSidebar] aiChat.pushMessage failed:", e);
+            }
+        }
+
+        // Variante 3: ultra fallback: inyectar DOM (no recomendado, pero útil para verificar)
+        // Lo dejo apagado por defecto:
+        // return this._pushAssistantDomFallback(text);
+
+        return false;
     }
 
     // =========================================================

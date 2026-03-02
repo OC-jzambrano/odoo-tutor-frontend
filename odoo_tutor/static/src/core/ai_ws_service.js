@@ -28,6 +28,11 @@ function isChatFinal(data) {
   );
 }
 
+/** ✅ NUEVO (mínimo): detectar tutor_push sin tocar tu flujo FIFO */
+function isTutorPush(data) {
+  return !!(data && typeof data === "object" && data.type === "tutor_push");
+}
+
 // ✅ Estado GLOBAL: aunque el archivo se ejecute 2 veces, SOLO hay 1 WS real.
 function getState() {
   window.__AI_TUTOR_WS_STATE = window.__AI_TUTOR_WS_STATE || {
@@ -228,6 +233,25 @@ export const aiWsService = {
             }
           }
 
+          /**
+           * ✅ NUEVO (mínimo): si llega tutor_push, notifícalo SIEMPRE
+           * - Lo mandamos como {kind:"tutor_push", data} para que tu AiSidebar lo consuma fácil
+           * - También disparo un CustomEvent por si quieres escucharlo sin subscribe()
+           */
+          if (isTutorPush(data)) {
+            for (const fn of st.listeners) {
+              try {
+                fn({ kind: "tutor_push", data });
+              } catch (e) {
+                console.error("[ai_ws] listener error (tutor_push)", e);
+              }
+            }
+            try {
+              window.dispatchEvent(new CustomEvent("ai:tutor_push", { detail: data }));
+            } catch {}
+            return;
+          }
+
           // 1) Resolver chat FIFO
           if (st.pendingChats.length) {
             const entry = st.pendingChats[0];
@@ -334,7 +358,6 @@ export const aiWsService = {
           return true;
         }
       } else {
-        // fuerza: invalida dedupe para que se vea el envío sí o sí
         st.lastSentContextModel = null;
         st.lastSentContextAt = 0;
       }
@@ -346,7 +369,7 @@ export const aiWsService = {
         return false;
       }
 
-      // ✅ si está abierto pero aún no llegó connection_established, guardo el último y espero
+      // ✅ si está abierto pero aún no llegó connection_established, guardo el último
       if (!st.wsSessionId) {
         st.pendingContextModel = context_model;
         return false;
