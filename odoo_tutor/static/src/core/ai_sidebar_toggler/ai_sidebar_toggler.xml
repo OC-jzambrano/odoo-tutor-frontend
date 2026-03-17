@@ -1,19 +1,46 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <templates xml:space="preserve">
-  <t t-name="ai_chat.AiFloatingButton">
-    <t t-if="state.showButton">
-      <div class="ai-floating-button">
-        <button
-          class="btn btn-primary rounded-circle p-3 shadow"
-          type="button"
-          data-ai-sidebar-toggle="1"
-          data-bs-toggle="offcanvas"
-          data-bs-target="#offcanvasAiSidebar"
-          aria-controls="offcanvasAiSidebar"
-        >
-          <img src="/odoo_tutor/static/images/iabot.png" alt="Asistente IA" />
-        </button>
-      </div>
+    <t t-name="ai_chat.AiFloatingButton">
+        <t t-if="state.showButton">
+            <div class="ai-floating-button">
+
+                <t t-if="state.previewVisible and state.previewMessage">
+                    <div class="ai-owl-preview">
+                        <button
+                            type="button"
+                            class="ai-owl-preview-close"
+                            t-on-click.stop="closePreview"
+                            aria-label="Close preview"
+                        >×</button>
+
+                        <div class="ai-owl-preview-time">
+                            <t t-esc="previewTimeAgo"/>
+                        </div>
+
+                        <div class="ai-owl-preview-text">
+                            <t t-esc="state.previewMessage"/>
+                        </div>
+
+                        <div class="ai-owl-preview-tail"/>
+                    </div>
+                </t>
+
+                <button
+                    class="ai-owl-trigger"
+                    type="button"
+                    t-on-click="toggleChat"
+                    data-ai-sidebar-toggle="1"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#offcanvasAiSidebar"
+                    aria-controls="offcanvasAiSidebar"
+                >
+                    <img
+                        t-att-src="'/odoo_tutor/static/images/iabotv2.png'"
+                        alt="Asistente IA"
+                        class="ai-owl-trigger-img"
+                    />
+                </button>
+            </div>
+        </t>
     </t>
-  </t>
 </templates>

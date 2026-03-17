@@ -818,7 +818,7 @@ export class AiSidebar extends Component {
             .withConversationOptions({ historyPayloadSize: "max", conversationStarters: [] })
             .withComposerOptions({ placeholder: this.state.placeholder, autoFocus: true })
             .withPersonaOptions({
-                assistant: { name: "IAbot", avatar: "/odoo_tutor/static/images/iabot.png", tagline: "Your helpful AI assistant!" },
+                assistant: { name: "IAbot", avatar: "/odoo_tutor/static/images/iabotv2.png", tagline: "Your helpful AI assistant!" },
                 user: { name: user.name, avatar: userAvatar },
             })
             .withMessageOptions({ waitTimeBeforeStreamCompletion: "never" });
@@ -838,6 +838,15 @@ export class AiSidebar extends Component {
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.timerValue = "00:00:00";
+
+        window.__AI_TUTOR_OWL_PREVIEW__ = {
+            message: "",
+            timestamp: null,
+            visible: false,
+        };
+
+        // notifica al floating button para que refresque al instante
+        window.dispatchEvent(new CustomEvent("ai:preview_reset"));
 
         // ✅ reinicia WS de verdad
         try {

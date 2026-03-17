@@ -270,6 +270,12 @@ export const aiWsService = {
               st.pendingChats.shift();
               clearTimeout(entry.timer);
               entry.resolve(data);
+
+              for (const fn of st.listeners) {
+                try {
+                  fn({ kind: "chat_final", data });
+                } catch {}
+              }
               return;
             }
           }

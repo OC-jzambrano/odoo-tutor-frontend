@@ -6,11 +6,94 @@ import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
 import { normalizeDomEvent } from "../normalize_ui_event";
+
 // ---------------------
 // Helpers
 // ---------------------
 
 const AI_DOC = window.top?.document || document;
+
+function normalizePreviewTimestamp(ts) {
+    const now = Date.now();
+
+    if (!ts) {
+        return new Date(now).toISOString();
+    }
+
+    let parsed = NaN;
+
+    if (typeof ts === "number") {
+        parsed = ts < 1e12 ? ts * 1000 : ts;
+    } else {
+        const raw = String(ts).trim();
+
+        if (/^\d+$/.test(raw)) {
+            const n = Number(raw);
+            parsed = n < 1e12 ? n * 1000 : n;
+        } else {
+            parsed = new Date(raw).getTime();
+        }
+    }
+
+    // si el valor es inválido, absurdo, o demasiado viejo para un preview,
+    // usamos "ahora"
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return new Date(now).toISOString();
+    }
+
+    if (parsed > now + 5 * 60 * 1000) {
+        return new Date(now).toISOString();
+    }
+
+    if (parsed < now - 30 * 24 * 60 * 60 * 1000) {
+        return new Date(now).toISOString();
+    }
+
+    return new Date(parsed).toISOString();
+}
+
+function cleanPreviewText(text) {
+    return (text || "")
+        .toString()
+        .replace(/\*\*/g, "")
+        .replace(/\n+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function formatTimeAgo(ts) {
+    if (!ts) return "";
+    const now = Date.now();
+    const then = new Date(ts).getTime();
+    if (!Number.isFinite(then)) return "";
+
+    const diffSec = Math.max(0, Math.floor((now - then) / 1000));
+
+    if (diffSec < 10) return "just now";
+    if (diffSec < 60) return `${diffSec} seconds ago`;
+
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin === 1) return "1 minute ago";
+    if (diffMin < 60) return `${diffMin} minutes ago`;
+
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour === 1) return "1 hour ago";
+    if (diffHour < 24) return `${diffHour} hours ago`;
+
+    const diffDay = Math.floor(diffHour / 24);
+    if (diffDay === 1) return "1 day ago";
+    return `${diffDay} days ago`;
+}
+
+function getOwlPreviewState() {
+    window.__AI_TUTOR_OWL_PREVIEW__ = window.__AI_TUTOR_OWL_PREVIEW__ || {
+        message: "",
+        timestamp: null,
+        visible: false,
+    };
+    return window.__AI_TUTOR_OWL_PREVIEW__;
+}
+
 async function getUserLogin() {
     const info = await rpc("/web/session/get_session_info", {});
     return {
@@ -293,21 +376,74 @@ function buildTargetElement(el, uiType, uniqueKey, labelKey) {
 class AiFloatingButton extends Component {
     static template = "ai_chat.AiFloatingButton";
     static props = {};
+
     setup() {
         this.actionService = useService("action");
         this.contextService = useService("context_service");
         this._lastActiveListField = null;
 
         this.aiWs = useService("ai_ws");
-
-        // ✅ Recorder service (tu nuevo servicio)
-        this.aiRecorder = useService("ai_recorder"); // si no existe aún, Odoo lanzará error -> asegúrate de registrarlo
+        this.aiRecorder = useService("ai_recorder");
 
         this.state = useState({
             showButton: false,
             logs: [],
             ctx: { viewType: null, resId: null },
+            previewMessage: "",
+            previewTimestamp: null,
+            previewVisible: false,
+            previewTick: Date.now(),
         });
+
+        const previewState = getOwlPreviewState();
+
+        this.state.previewMessage = previewState.message || "";
+        this.state.previewTimestamp = previewState.timestamp || null;
+        this.state.previewVisible = !!previewState.visible;
+
+        this._syncPreviewState = () => {
+            previewState.message = this.state.previewMessage;
+            previewState.timestamp = this.state.previewTimestamp;
+            previewState.visible = this.state.previewVisible;
+        };
+
+        this._setPreviewMessage = (text, timestamp) => {
+            const cleaned = cleanPreviewText(text);
+            if (!cleaned) return;
+
+            const safeTimestamp = normalizePreviewTimestamp(timestamp);
+
+            this.state.previewMessage = cleaned;
+            this.state.previewTimestamp = safeTimestamp;
+            this.state.previewTick = Date.now();
+
+            const offcanvasEl = document.getElementById("offcanvasAiSidebar");
+            const isChatOpen = !!offcanvasEl?.classList?.contains("show");
+
+            this.state.previewVisible = !isChatOpen;
+            this._syncPreviewState();
+        };
+
+        this._onPreviewMessage = (ev) => {
+            const msg = ev?.kind ? ev.data : ev;
+            if (!msg || typeof msg !== "object") return;
+
+            // tutor_push
+            if (msg.type === "tutor_push") {
+                this._setPreviewMessage(msg.response || "", msg.timestamp);
+                return;
+            }
+
+            // respuesta final normal del chat
+            if (
+                msg.type === "chat_response_complete" ||
+                ev?.kind === "chat_final"
+            ) {
+                const text = msg.response || msg.message || "";
+                this._setPreviewMessage(text, msg.timestamp);
+            }
+        };
+
         // dedupe cache: key -> lastTsMs
         this._dedup = new Map();
         this.DEDUP_MS = 650;
@@ -363,12 +499,60 @@ class AiFloatingButton extends Component {
             "mail.activity.plan",
             "mail.activity.type",
             "crm.team.member",
-
         ];
 
         onMounted(() => {
             // abre conexión WS (si ya está abierta, no hace nada)
             this.aiWs?.ensureConnected?.().catch(() => {});
+            this.aiWs?.subscribe?.(this._onPreviewMessage);
+            this._onPreviewReset = () => {
+                this.state.previewMessage = "";
+                this.state.previewTimestamp = null;
+                this.state.previewVisible = false;
+                this.state.previewTick = Date.now();
+                this._syncPreviewState?.();
+            };
+
+            window.addEventListener("ai:preview_reset", this._onPreviewReset);
+
+            this._previewTimer = setInterval(() => {
+                if (this.state.previewTimestamp) {
+                    this.state.previewTick = Date.now();
+                }
+            }, 30000);
+
+            this._bindOffcanvasEvents = () => {
+                const offcanvasEl = document.getElementById("offcanvasAiSidebar");
+                if (!offcanvasEl || this._offcanvasEventsBound) return false;
+
+                this._onOffcanvasShown = () => {
+                    this.state.previewVisible = false;
+                    this._syncPreviewState?.();
+                };
+
+                this._onOffcanvasHidden = () => {
+                    if (this.state.previewMessage) {
+                        this.state.previewVisible = true;
+                        this.state.previewTick = Date.now();
+                        this._syncPreviewState?.();
+                    }
+                };
+
+                offcanvasEl.addEventListener("shown.bs.offcanvas", this._onOffcanvasShown);
+                offcanvasEl.addEventListener("hidden.bs.offcanvas", this._onOffcanvasHidden);
+
+                this._offcanvasEventsBound = true;
+                return true;
+            };
+
+            this._bindOffcanvasEvents();
+
+            this._offcanvasBindTimer = setInterval(() => {
+                if (this._bindOffcanvasEvents()) {
+                    clearInterval(this._offcanvasBindTimer);
+                    this._offcanvasBindTimer = null;
+                }
+            }, 500);
         });
 
         // interval de contexto / visibilidad
@@ -399,15 +583,14 @@ class AiFloatingButton extends Component {
             const td = t?.closest?.("td");
             if (td) {
                 const inferred =
-                  td.getAttribute("data-name") ||
-                  td.getAttribute("data-field") ||
-                  td.dataset?.name ||
-                  td.dataset?.field ||
-                  null;
+                    td.getAttribute("data-name") ||
+                    td.getAttribute("data-field") ||
+                    td.dataset?.name ||
+                    td.dataset?.field ||
+                    null;
 
                 if (inferred) {
-                  this._lastActiveListField = inferred;
-                  console.log("[AI_UI] inferred list column:", inferred);
+                    this._lastActiveListField = inferred;
                 }
             }
             const base = this._getContextSnapshot();
@@ -426,7 +609,7 @@ class AiFloatingButton extends Component {
             const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
             const targetElement = buildTargetElement(ev.target, uiType, uniqueKey, labelKey);
 
-            const logEv = this.addLog("click", {
+            this.addLog("click", {
                 tag: ev.target.tagName,
                 text: cleanText(ev.target.innerText).slice(0, 80),
                 className: ev.target.className,
@@ -445,44 +628,43 @@ class AiFloatingButton extends Component {
                 ...base,
             });
 
-            // ✅ Normalización (console + opcional WS)
             try {
-              const normalized = normalizeDomEvent({
-                domEventType: "click",
-                originalEvent: ev,
-                context: this._getContextSnapshot(),
-                hints: { lastActiveField: this._lastActiveListField },
-              });
+                const rawTarget = ev.target;
+                const actionableClick = this._isClearlyActionableClick(rawTarget);
 
-              if (normalized) {
-                // si quieres mandarlo por WS ya:
-                this.aiWs?.sendEvent?.({
-                  type: "ui_event",
-                  event_name: normalized.type,
-                  event_data: normalized,
-                }).catch(() => {});
-              }
+                let normalized = normalizeDomEvent({
+                    domEventType: "click",
+                    originalEvent: ev,
+                    context: this._getContextSnapshot(),
+                    hints: {
+                        lastActiveField: this._lastActiveListField,
+                        actionableEl: this._getActionableTarget(rawTarget),
+                    },
+                });
+
+                if (normalized && actionableClick) {
+                    normalized = this._patchNormalizedWithActionable(normalized, rawTarget);
+                }
+
+                if (normalized) {
+
+                    if (!actionableClick && this._shouldIgnoreNormalizedEvent(normalized)) {
+                        return;
+                    }
+
+                    this.aiWs?.sendEvent?.({
+                        type: "ui_event",
+                        event_name: normalized.type || "click",
+                        event_data: normalized,
+                    }).catch(() => {});
+                }
             } catch (e) {
-              console.warn("[AI_UI] normalize failed", e);
+                console.warn("[AI_UI] normalize failed", e);
             }
 
-            /*this._maybeRecordUiEvent({
-              type: "click",
-              timestamp: Date.now(),
-              targetElement: ev.target,
-              uiType: ev.uiType || "Unknown",
-              label: ev.label || null,
-              labelKey: ev.labelKey || null,
-              name: ev.name || null,
-              viewType: ev.viewType || null,
-              resId: ev.resId || null,
-            });*/
-
-            // route_after
             setTimeout(() => {
                 this.addLog("route_after", this._getContextSnapshot());
             }, 0);
-
         };
 
         this._onDocInput = (ev) => {
@@ -496,7 +678,7 @@ class AiFloatingButton extends Component {
             const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
             const targetElement = buildTargetElement(ev.target, uiType, uniqueKey, labelKey);
 
-            const logEv = this.addLog("input", {
+            this.addLog("input", {
                 name: ev.target.name,
                 value: (ev.target.value ?? "").toString().slice(0, 80),
                 tag: ev.target.tagName,
@@ -512,7 +694,6 @@ class AiFloatingButton extends Component {
                 ...gctx,
                 ...base,
             });
-
         };
 
         this._onDocChange = (ev) => {
@@ -525,7 +706,7 @@ class AiFloatingButton extends Component {
             const uniqueKey = buildUniqueKey(ev.target, uiType, gctx);
             const targetElement = buildTargetElement(ev.target, uiType, uniqueKey, labelKey);
 
-            const logEv = this.addLog("input_final", {
+            this.addLog("input_final", {
                 name: ev.target.name,
                 value: (ev.target.value ?? "").toString().slice(0, 80),
                 tag: ev.target.tagName,
@@ -542,40 +723,24 @@ class AiFloatingButton extends Component {
                 ...base,
             });
 
-            const checked =
-              ev.target?.type === "checkbox"
-                ? !!ev.target.checked
-                : null;
-
             try {
-              const normalized = normalizeDomEvent({
-                domEventType: "change",
-                originalEvent: ev,
-                context: this._getContextSnapshot(),
-                hints: { lastActiveField: this._lastActiveListField },
-              });
+                const normalized = normalizeDomEvent({
+                    domEventType: "change",
+                    originalEvent: ev,
+                    context: this._getContextSnapshot(),
+                    hints: { lastActiveField: this._lastActiveListField },
+                });
 
-              if (normalized) {
-                this.aiWs?.sendEvent?.({
-                  type: "ui_event",
-                  event_name: normalized.type,
-                  event_data: normalized,
-                }).catch(() => {});
-              }
+                if (normalized) {
+                    this.aiWs?.sendEvent?.({
+                        type: "ui_event",
+                        event_name: normalized.type,
+                        event_data: normalized,
+                    }).catch(() => {});
+                }
             } catch (e) {
-              console.warn("[AI_UI] normalize failed", e);
+                console.warn("[AI_UI] normalize failed", e);
             }
-
-            /*this._maybeRecordUiEvent({
-              type: "input_final",
-              timestamp: Date.now(),
-              targetElement: ev.target,
-              uiType: ev.target?.type === "checkbox" ? "Checkbox" : "Input",
-              name: ev.target?.name || null,
-              value: ev.target?.value || null,
-              checked,
-            });*/
-
         };
 
         AI_DOC.addEventListener("click", this._onDocClick, true);
@@ -662,28 +827,231 @@ class AiFloatingButton extends Component {
         };
     }
 
+    _isGenericDomRef(value) {
+        const v = String(value || "").trim().toLowerCase();
+        if (!v) return true;
+
+        return (
+            v === "el.unknown" ||
+            v.endsWith(".unknown") ||
+
+            v.startsWith("div.") ||
+            v.startsWith("span.") ||
+            v.startsWith("i.") ||
+            v.startsWith("svg.") ||
+            v.startsWith("path.") ||
+            v.startsWith("label.") ||
+            v.startsWith("strong.") ||
+            v.startsWith("small.") ||
+            v.startsWith("p.") ||
+            v.startsWith("ul.") ||
+            v.startsWith("li.") ||
+
+            v.includes("o_list_renderer") ||
+            v.includes("o_form_view") ||
+            v.includes("o_form_renderer") ||
+            v.includes("o_kanban_view") ||
+            v.includes("o_kanban_renderer") ||
+            v.includes("o_content") ||
+            v.includes("o_web_client")
+        );
+    }
+
+    _isSemanticFieldRef(value) {
+        const v = String(value || "").trim();
+        if (!v) return false;
+
+        if (this._isGenericDomRef(v)) return false;
+
+        // field real estilo Odoo: product_id, qty_to_order, forecast_qty
+        return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v);
+    }
+
+    _isMeaningfulLabel(value) {
+        const v = String(value || "").trim();
+        if (!v) return false;
+
+        // descarta labels gigantes concatenados
+        if (v.length > 80) return false;
+
+        const words = v.split(/\s+/).filter(Boolean);
+        if (words.length > 10) return false;
+
+        return true;
+    }
+
+    _shouldIgnoreNormalizedEvent(normalized) {
+        if (!normalized || typeof normalized !== "object") return true;
+
+        const type = String(normalized.type || "").toLowerCase();
+        const isClickLike = type.includes("click");
+
+        // por ahora solo filtrar clicks
+        if (!isClickLike) return false;
+
+        const uiType =
+            normalized.uiType ||
+            normalized.ui_type ||
+            normalized.meta?.uiType ||
+            normalized.meta?.ui_type ||
+            null;
+
+        const targetElement =
+            normalized.targetElement ||
+            normalized.target_element ||
+            normalized.identifier ||
+            normalized.meta?.targetElement ||
+            normalized.meta?.target_element ||
+            null;
+
+        const field =
+            normalized.field ||
+            normalized.field_name ||
+            normalized.meta?.field ||
+            normalized.meta?.field_name ||
+            null;
+
+        const label =
+            normalized.label ||
+            normalized.meta?.label ||
+            normalized.text ||
+            normalized.name ||
+            null;
+
+        const uniqueKey =
+            normalized.uniqueKey ||
+            normalized.unique_key ||
+            normalized.meta?.uniqueKey ||
+            normalized.meta?.unique_key ||
+            null;
+
+        const role =
+            normalized.role ||
+            normalized.meta?.role ||
+            null;
+
+        const href =
+            normalized.href ||
+            normalized.meta?.href ||
+            null;
+
+        const hasUsefulHref = !!href;
+        const hasSemanticField = this._isSemanticFieldRef(field);
+        const hasUsefulTarget = !!targetElement && !this._isGenericDomRef(targetElement);
+        const hasUsefulLabel = this._isMeaningfulLabel(label);
+
+        const normalizedLabel = String(label || "").trim().toLowerCase();
+
+        const isCommonActionButton =
+            [
+                "new",
+                "create",
+                "save",
+                "discard",
+                "edit",
+                "cancel",
+                "confirm",
+                "apply",
+                "add",
+                "remove",
+                "delete",
+                "upload",
+                "import",
+                "export",
+                "automate",
+                "order",
+                "snooze",
+            ].includes(normalizedLabel);
+
+        const isButtonLike =
+            uiType === "Button" ||
+            String(role || "").toLowerCase() === "button" ||
+            (targetElement && String(targetElement).toLowerCase().startsWith("button."));
+
+        // 1) señales realmente útiles
+        if (hasUsefulHref) return false;
+        if (hasSemanticField) return false;
+        if (hasUsefulTarget) return false;
+
+        // 2) botón real con label corto/útil => NO ignorar
+        if (isButtonLike && (hasUsefulLabel || isCommonActionButton)) {
+            return false;
+        }
+
+        // 3) links / menuitems / tabs con label útil => NO ignorar
+        if (
+            role &&
+            ["menuitem", "tab", "checkbox", "link"].includes(String(role).toLowerCase()) &&
+            hasUsefulLabel
+        ) {
+            return false;
+        }
+
+        // 4) uniqueKey fallback puro = ruido
+        if (uniqueKey) {
+            const uk = String(uniqueKey);
+            if (
+                /^Other-\d+$/.test(uk) ||
+                /^Button-\d+$/.test(uk) ||
+                /^Link-\d+$/.test(uk) ||
+                /^Input-\d+$/.test(uk) ||
+                /^List-\d+$/.test(uk)
+            ) {
+                return true;
+            }
+        }
+
+        // 5) label concatenado gigante sin nada semántico = ruido
+        if (label && !hasUsefulLabel && !hasSemanticField && !hasUsefulTarget && !hasUsefulHref) {
+            return true;
+        }
+
+        // 6) sin señales útiles = ignorar
+        return true;
+    }
+
+    get previewTimeAgo() {
+        this.state.previewTick;
+        return formatTimeAgo(this.state.previewTimestamp);
+    }
+
+    closePreview() {
+        this.state.previewVisible = false;
+        this._syncPreviewState?.();
+    }
+
+    toggleChat() {
+        const el = document.getElementById("offcanvasAiSidebar");
+        if (el && window.bootstrap?.Offcanvas) {
+            const inst = window.bootstrap.Offcanvas.getOrCreateInstance(el);
+            inst.show();
+        }
+
+        this.state.previewVisible = false;
+        this._syncPreviewState?.();
+    }
+
     _getContextSnapshot() {
-      try {
-        // 1) usa TU context_service primero (es lo más estable)
-        const ctx = this.contextService?.getContext?.() || {};
-        const props = this.actionService.currentController?.props || {};
+        try {
+            const ctx = this.contextService?.getContext?.() || {};
+            const props = this.actionService.currentController?.props || {};
 
-        const model = props.resModel || ctx.model || null;
+            const model = props.resModel || ctx.model || null;
 
-        const viewType =
-          props.viewType ||
-          ctx.view ||
-          (document.querySelector(".o_form_view, .o_form_renderer") ? "form" : null) ||
-          (document.querySelector(".o_list_view, .o_list_renderer") ? "list" : null) ||
-          (document.querySelector(".o_kanban_view, .o_kanban_renderer") ? "kanban" : null) ||
-          null;
+            const viewType =
+                props.viewType ||
+                ctx.view ||
+                (document.querySelector(".o_form_view, .o_form_renderer") ? "form" : null) ||
+                (document.querySelector(".o_list_view, .o_list_renderer") ? "list" : null) ||
+                (document.querySelector(".o_kanban_view, .o_kanban_renderer") ? "kanban" : null) ||
+                null;
 
-        const resId = props.resId || null;
+            const resId = props.resId || null;
 
-        return { model, viewType, resId };
-      } catch {
-        return { model: null, viewType: null, resId: null };
-      }
+            return { model, viewType, resId };
+        } catch {
+            return { model: null, viewType: null, resId: null };
+        }
     }
 
     addLog(type, data) {
@@ -696,53 +1064,146 @@ class AiFloatingButton extends Component {
         return ev;
     }
 
-    /**
-     * Envia evento al backend SOLO si recorder está activo.
-     * - Dedup por (type + targetElement + value?) en ventana corta.
-     * - Además lo pasa al ai_recorder (si tiene método).
-     */
+    _getActionableTarget(el) {
+        if (!el?.closest) return null;
+
+        return el.closest(`
+            button,
+            [role="button"],
+            [role="menuitem"],
+            [role="tab"],
+            a[href],
+            .btn,
+            .dropdown-item,
+            .o_form_button_create,
+            .o_form_button_save,
+            .o_form_button_cancel,
+            .o_statusbar_button,
+            .o-kanban-button
+        `);
+    }
+
+    _getActionableLabel(el) {
+        if (!el) return null;
+
+        const text = cleanText(
+            el.innerText ||
+            el.textContent ||
+            el.getAttribute?.("title") ||
+            el.getAttribute?.("aria-label") ||
+            ""
+        );
+
+        if (text) return text;
+
+        const icon = el.querySelector?.("i[title], span[title]");
+        if (icon?.getAttribute) {
+            return cleanText(icon.getAttribute("title") || "");
+        }
+
+        return null;
+    }
+
+    _isClearlyActionableClick(rawTarget) {
+        const actionable = this._getActionableTarget(rawTarget);
+        if (!actionable) return false;
+
+        const tag = (actionable.tagName || "").toLowerCase();
+        const role = (actionable.getAttribute?.("role") || "").toLowerCase();
+        const cls = (actionable.className || "").toString();
+
+        if (tag === "button") return true;
+        if (tag === "a") return true;
+        if (["button", "menuitem", "tab"].includes(role)) return true;
+
+        if (
+            cls.includes("btn") ||
+            cls.includes("dropdown-item") ||
+            cls.includes("o_form_button_create") ||
+            cls.includes("o_form_button_save") ||
+            cls.includes("o_form_button_cancel") ||
+            cls.includes("o_statusbar_button") ||
+            cls.includes("o-kanban-button")
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    _patchNormalizedWithActionable(normalized, rawTarget) {
+        const actionable = this._getActionableTarget(rawTarget);
+        if (!actionable || !normalized) return normalized;
+
+        const label = this._getActionableLabel(actionable);
+        const role = actionable.getAttribute?.("role") || null;
+        const href = actionable.getAttribute?.("href") || null;
+        const tag = (actionable.tagName || "").toLowerCase();
+
+        let targetElement = null;
+        const dataName = actionable.getAttribute?.("data-name");
+        const name = actionable.getAttribute?.("name");
+        const id = actionable.getAttribute?.("id");
+        const title = actionable.getAttribute?.("title");
+
+        if (dataName) targetElement = `${tag}.${dataName}`;
+        else if (name) targetElement = `${tag}.${name}`;
+        else if (id) targetElement = `${tag}#${id}`;
+        else if (title) targetElement = `${tag}.${slugify(title)}`;
+        else if (label) targetElement = `${tag}.${slugify(label)}`;
+
+        return {
+            ...normalized,
+            type: normalized.type || "click",
+            uiType: "Button",
+            role: role || normalized.role || "button",
+            label: label || normalized.label || null,
+            href: href || normalized.href || null,
+            targetElement: targetElement || normalized.targetElement || null,
+            field:
+                normalized.field && !String(normalized.field).startsWith("div.")
+                    ? normalized.field
+                    : null,
+        };
+    }
 
     _maybeRecordUiEvent(ev) {
-      try {
-        // Siempre imprime para debug (aunque no esté grabando)
-        console.log("[AI_UI] candidate", ev);
+        try {
 
-        const isActive =
-          window.getRecorderStatus?.() === "recording" ||
-          window.__AI_TUTOR_RECORDER_ACTIVE;
+            const isActive =
+                window.getRecorderStatus?.() === "recording" ||
+                window.__AI_TUTOR_RECORDER_ACTIVE;
 
-        // 🔥 Construimos JSON normalizado tipo ticket
-        const normalized = {
-          type:
-            ev.type === "input_final"
-              ? "field_changed"
-              : ev.type === "click" && ev.uiType === "Button"
-              ? "button_click"
-              : ev.type,
-          label: ev.labelKey || ev.label || null,
-          field: ev.name || ev.columnField || null,
-          value:
-            ev.uiType === "Checkbox"
-              ? !!ev.checked
-              : ev.value ?? null,
-          meta: {
-            viewType: ev.viewType || null,
-            resId: ev.resId || null,
-            rowId: ev.rowId || null,
-          },
-          ts: new Date().toISOString(),
-          v: 1,
-        };
+            const normalized = {
+                type:
+                    ev.type === "input_final"
+                        ? "field_changed"
+                        : ev.type === "click" && ev.uiType === "Button"
+                        ? "button_click"
+                        : ev.type,
+                label: ev.labelKey || ev.label || null,
+                field: ev.name || ev.columnField || null,
+                value:
+                    ev.uiType === "Checkbox"
+                        ? !!ev.checked
+                        : ev.value ?? null,
+                meta: {
+                    viewType: ev.viewType || null,
+                    resId: ev.resId || null,
+                    rowId: ev.rowId || null,
+                },
+                ts: new Date().toISOString(),
+                v: 1,
+            };
 
-        if (!isActive) return;
+            if (!isActive) return;
 
-        // Envío por websocket si está grabando
-        if (window.aiWs?.sendEvent) {
-          window.aiWs.sendEvent(normalized);
+            if (window.aiWs?.sendEvent) {
+                window.aiWs.sendEvent(normalized);
+            }
+        } catch (err) {
+            console.warn("[AI_UI] normalize error", err);
         }
-      } catch (err) {
-        console.warn("[AI_UI] normalize error", err);
-      }
     }
 
     willUnmount() {
@@ -753,6 +1214,37 @@ class AiFloatingButton extends Component {
             AI_DOC.removeEventListener("input", this._onDocInput, true);
             AI_DOC.removeEventListener("change", this._onDocChange, true);
         } catch {}
+
+        if (this._onPreviewMessage) {
+            this.aiWs?.unsubscribe?.(this._onPreviewMessage);
+            this._onPreviewMessage = null;
+        }
+
+        if (this._previewTimer) {
+            clearInterval(this._previewTimer);
+            this._previewTimer = null;
+        }
+
+        if (this._offcanvasBindTimer) {
+            clearInterval(this._offcanvasBindTimer);
+            this._offcanvasBindTimer = null;
+        }
+
+        if (this._onPreviewReset) {
+            window.removeEventListener("ai:preview_reset", this._onPreviewReset);
+            this._onPreviewReset = null;
+        }
+
+        const offcanvasEl = document.getElementById("offcanvasAiSidebar");
+        if (offcanvasEl && this._onOffcanvasShown) {
+            offcanvasEl.removeEventListener("shown.bs.offcanvas", this._onOffcanvasShown);
+        }
+        if (offcanvasEl && this._onOffcanvasHidden) {
+            offcanvasEl.removeEventListener("hidden.bs.offcanvas", this._onOffcanvasHidden);
+        }
+
+        this._onOffcanvasShown = null;
+        this._onOffcanvasHidden = null;
 
         this._onDocClick = null;
         this._onDocInput = null;
