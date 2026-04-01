@@ -1,7 +1,7 @@
 /* eslint-disable */
 /** @odoo-module **/
 
-import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
+import { Component, onMounted, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
@@ -35,8 +35,6 @@ function normalizePreviewTimestamp(ts) {
         }
     }
 
-    // si el valor es inválido, absurdo, o demasiado viejo para un preview,
-    // usamos "ahora"
     if (!Number.isFinite(parsed) || parsed <= 0) {
         return new Date(now).toISOString();
     }
@@ -201,10 +199,10 @@ function pickHeaderCellFor(table, cell) {
 
     const aria = Number(
         cell?.getAttribute?.("aria-colindex") ||
-            cell?.closest?.("[aria-colindex]")?.getAttribute?.("aria-colindex")
+        cell?.closest?.("[aria-colindex]")?.getAttribute?.("aria-colindex")
     );
     if (Number.isFinite(aria)) {
-        const th = table.querySelector('thead th[aria-colindex="' + aria + '"]');
+        const th = table.querySelector(`thead th[aria-colindex="${aria}"]`);
         if (th) return th;
     }
 
@@ -229,7 +227,8 @@ function pickHeaderCellFor(table, cell) {
     if (idx != null && headerCells[idx]) return headerCells[idx];
 
     const txt = cleanText(cell?.textContent || "").toLowerCase();
-    let best = null, bestScore = -1;
+    let best = null;
+    let bestScore = -1;
     for (const th of headerCells) {
         const name = (th.getAttribute?.("data-name") || "").toLowerCase();
         const label = cleanText(th.textContent).toLowerCase();
@@ -284,9 +283,9 @@ function getControlLabel(el) {
     if (id) {
         try {
             const sel = window.CSS && CSS.escape ? CSS.escape(id) : id;
-            labelEl = document.querySelector('label[for="' + sel + '"]');
+            labelEl = document.querySelector(`label[for="${sel}"]`);
         } catch {
-            labelEl = document.querySelector('label[for="' + id + '"]');
+            labelEl = document.querySelector(`label[for="${id}"]`);
         }
     }
 
@@ -345,11 +344,6 @@ function buildUniqueKey(el, uiType, gctx) {
     return `${uiType}-${uid}`;
 }
 
-/**
- * "Target element" (MVP) para tu backend:
- * - Ideal: button.new_lead (si existe name/id/data-name)
- * - Fallback: uniqueKey
- */
 function buildTargetElement(el, uiType, uniqueKey, labelKey) {
     const tag = (el?.tagName || "").toLowerCase() || "el";
 
@@ -381,12 +375,25 @@ class AiFloatingButton extends Component {
         this.actionService = useService("action");
         this.contextService = useService("context_service");
         this._lastActiveListField = null;
+        this._dragJustEndedAt = 0;
+        this._boundDragMove = null;
+        this._boundDragEnd = null;
+        this._previewDismissed = false;
 
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
 
+        this._dragState = null;
+        this._dragPos = { x: 0, y: 0 };
+        this._suppressNextClick = false;
+        this._rafDrag = null;
+
         this.state = useState({
             showButton: false,
+            chatOpen: false,
+            dragging: false,
+            dragX: 0,
+            dragY: 0,
             logs: [],
             ctx: { viewType: null, resId: null },
             previewMessage: "",
@@ -412,13 +419,14 @@ class AiFloatingButton extends Component {
             if (!cleaned) return;
 
             const safeTimestamp = normalizePreviewTimestamp(timestamp);
+            this._previewDismissed = false;
 
             this.state.previewMessage = cleaned;
             this.state.previewTimestamp = safeTimestamp;
             this.state.previewTick = Date.now();
 
             const offcanvasEl = document.getElementById("offcanvasAiSidebar");
-            const isChatOpen = !!offcanvasEl?.classList?.contains("show");
+            const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
 
             this.state.previewVisible = !isChatOpen;
             this._syncPreviewState();
@@ -428,13 +436,11 @@ class AiFloatingButton extends Component {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
 
-            // tutor_push
             if (msg.type === "tutor_push") {
                 this._setPreviewMessage(msg.response || "", msg.timestamp);
                 return;
             }
 
-            // respuesta final normal del chat
             if (
                 msg.type === "chat_response_complete" ||
                 ev?.kind === "chat_final"
@@ -444,7 +450,6 @@ class AiFloatingButton extends Component {
             }
         };
 
-        // dedupe cache: key -> lastTsMs
         this._dedup = new Map();
         this.DEDUP_MS = 650;
 
@@ -502,10 +507,19 @@ class AiFloatingButton extends Component {
         ];
 
         onMounted(() => {
-            // abre conexión WS (si ya está abierta, no hace nada)
             this.aiWs?.ensureConnected?.().catch(() => {});
             this.aiWs?.subscribe?.(this._onPreviewMessage);
+
+            this._restoreWidgetPosition();
+            this._syncChatOpenStateFromDom();
+
+            this._onWindowResize = () => {
+                this._fixPositionToViewport({ persist: true });
+            };
+            window.addEventListener("resize", this._onWindowResize, { passive: true });
+
             this._onPreviewReset = () => {
+                this._previewDismissed = false;
                 this.state.previewMessage = "";
                 this.state.previewTimestamp = null;
                 this.state.previewVisible = false;
@@ -525,17 +539,27 @@ class AiFloatingButton extends Component {
                 const offcanvasEl = document.getElementById("offcanvasAiSidebar");
                 if (!offcanvasEl || this._offcanvasEventsBound) return false;
 
+                this.state.chatOpen = offcanvasEl.classList.contains("show");
+
                 this._onOffcanvasShown = () => {
+                    this.state.chatOpen = true;
                     this.state.previewVisible = false;
+                    this._suppressNextClick = false;
                     this._syncPreviewState?.();
                 };
 
                 this._onOffcanvasHidden = () => {
-                    if (this.state.previewMessage) {
+                    this.state.chatOpen = false;
+                    this._suppressNextClick = false;
+
+                    if (this.state.previewMessage && !this._previewDismissed) {
                         this.state.previewVisible = true;
                         this.state.previewTick = Date.now();
-                        this._syncPreviewState?.();
+                    } else {
+                        this.state.previewVisible = false;
                     }
+
+                    this._syncPreviewState?.();
                 };
 
                 offcanvasEl.addEventListener("shown.bs.offcanvas", this._onOffcanvasShown);
@@ -555,14 +579,20 @@ class AiFloatingButton extends Component {
             }, 500);
         });
 
-        // interval de contexto / visibilidad
         this._interval = setInterval(() => {
-            let currentModel = null, showButton = false;
+            this._syncChatOpenStateFromDom();
+
+            let currentModel = null;
+            let showButton = false;
+
             const currentAction = this.actionService.currentController?.props;
             if (currentAction) {
                 currentModel = currentAction.resModel;
-                if (this.modules.includes(currentModel)) showButton = true;
+                if (this.modules.includes(currentModel)) {
+                    showButton = true;
+                }
             }
+
             this.state.showButton = showButton;
 
             const currentPath2 = window.location.pathname;
@@ -573,9 +603,6 @@ class AiFloatingButton extends Component {
             this.state.ctx = this._getContextSnapshot();
         }, 500);
 
-        // ---------------------
-        // Document listeners (guardamos refs para cleanup)
-        // ---------------------
         this._onDocClick = (ev) => {
             if (!ev.target || !ev.target.tagName) return;
 
@@ -596,7 +623,8 @@ class AiFloatingButton extends Component {
             const base = this._getContextSnapshot();
 
             const link = ev.target.closest?.("a, [role='menuitem'], .o_app, .o_menuitem, .dropdown-item");
-            let href = null, menuXmlid = null;
+            let href = null;
+            let menuXmlid = null;
             if (link) {
                 href = link.getAttribute?.("href") || null;
                 const ds = link.dataset || {};
@@ -647,7 +675,6 @@ class AiFloatingButton extends Component {
                 }
 
                 if (normalized) {
-
                     if (!actionableClick && this._shouldIgnoreNormalizedEvent(normalized)) {
                         return;
                     }
@@ -747,9 +774,6 @@ class AiFloatingButton extends Component {
         AI_DOC.addEventListener("input", this._onDocInput, true);
         AI_DOC.addEventListener("change", this._onDocChange, true);
 
-        // ---------------------
-        // Debug helpers (como antes)
-        // ---------------------
         window.filterUIEvents = (opts = {}) => {
             const {
                 uiType,
@@ -827,6 +851,190 @@ class AiFloatingButton extends Component {
         };
     }
 
+    _syncChatOpenStateFromDom() {
+        const offcanvasEl = document.getElementById("offcanvasAiSidebar");
+        const isOpen = !!offcanvasEl?.classList?.contains("show");
+
+        if (this.state.chatOpen !== isOpen) {
+            this.state.chatOpen = isOpen;
+        }
+    }
+
+    _restoreWidgetPosition() {
+        let saved = null;
+        try {
+            saved = JSON.parse(localStorage.getItem("odoo_chat_position") || "null");
+        } catch {
+            saved = null;
+        }
+
+        const fallback = {
+            x: Math.max(0, window.innerWidth - 110),
+            y: Math.max(0, window.innerHeight - 110),
+        };
+
+        const pos = saved &&
+            Number.isFinite(saved.x) &&
+            Number.isFinite(saved.y)
+            ? saved
+            : fallback;
+
+        const fixed = this._clampPosition(pos.x, pos.y);
+        this._dragPos = fixed;
+        this.state.dragX = fixed.x;
+        this.state.dragY = fixed.y;
+    }
+
+    _persistWidgetPosition() {
+        try {
+            localStorage.setItem("odoo_chat_position", JSON.stringify({
+                x: this._dragPos.x,
+                y: this._dragPos.y,
+            }));
+        } catch {}
+    }
+
+    _getDragPoint(ev) {
+        if (ev?.touches?.length) return ev.touches[0];
+        if (ev?.changedTouches?.length) return ev.changedTouches[0];
+        return ev;
+    }
+
+    _getWidgetRect() {
+        const root = this.el?.querySelector?.(".ai-floating-button");
+        if (!root) return { width: 90, height: 90 };
+
+        const rect = root.getBoundingClientRect();
+        return {
+            width: Math.max(90, Math.ceil(rect.width || root.offsetWidth || 90)),
+            height: Math.max(90, Math.ceil(rect.height || root.offsetHeight || 90)),
+        };
+    }
+
+    _clampPosition(x, y) {
+        const { width, height } = this._getWidgetRect();
+        const maxX = Math.max(0, window.innerWidth - width);
+        const maxY = Math.max(0, window.innerHeight - height);
+
+        return {
+            x: Math.max(0, Math.min(x, maxX)),
+            y: Math.max(0, Math.min(y, maxY)),
+        };
+    }
+
+    _fixPositionToViewport({ persist = false } = {}) {
+        const fixed = this._clampPosition(this._dragPos.x, this._dragPos.y);
+        this._dragPos = fixed;
+        this.state.dragX = fixed.x;
+        this.state.dragY = fixed.y;
+
+        if (persist) {
+            this._persistWidgetPosition();
+        }
+    }
+
+    noop() {}
+
+    onIconClick(ev) {
+        ev?.preventDefault?.();
+        ev?.stopPropagation?.();
+
+        const justDragged = Date.now() - (this._dragJustEndedAt || 0) < 250;
+
+        if (this.state.dragging || justDragged || this._suppressNextClick) {
+            this._suppressNextClick = false;
+            return;
+        }
+
+        this.toggleChat();
+    }
+
+    onIconDragStart(ev) {
+        const point = this._getDragPoint(ev);
+        if (!point) return;
+
+        this._dragState = {
+            startX: point.clientX,
+            startY: point.clientY,
+            originX: this._dragPos.x,
+            originY: this._dragPos.y,
+            moved: false,
+            startedAt: Date.now(),
+        };
+
+        this._suppressNextClick = false;
+        this.state.dragging = true;
+        document.body.classList.add("ai-widget-dragging");
+
+        this._boundDragMove = this._boundDragMove || this._onDragMove.bind(this);
+        this._boundDragEnd = this._boundDragEnd || this._onDragEnd.bind(this);
+
+        window.addEventListener("mousemove", this._boundDragMove, { passive: false });
+        window.addEventListener("mouseup", this._boundDragEnd, { passive: true });
+        window.addEventListener("touchmove", this._boundDragMove, { passive: false });
+        window.addEventListener("touchend", this._boundDragEnd, { passive: true });
+        window.addEventListener("touchcancel", this._boundDragEnd, { passive: true });
+    }
+
+    _onDragMove(ev) {
+        if (!this._dragState) return;
+
+        const point = this._getDragPoint(ev);
+        if (!point) return;
+
+        const dx = point.clientX - this._dragState.startX;
+        const dy = point.clientY - this._dragState.startY;
+
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+            this._dragState.moved = true;
+            this._suppressNextClick = true;
+        }
+
+        if (!this._dragState.moved) return;
+
+        ev.preventDefault();
+
+        const next = this._clampPosition(
+            this._dragState.originX + dx,
+            this._dragState.originY + dy
+        );
+
+        this._dragPos = next;
+        this.state.dragX = next.x;
+        this.state.dragY = next.y;
+    }
+
+    _onDragEnd() {
+        if (!this._dragState) return;
+
+        const moved = !!this._dragState.moved;
+
+        this.state.dragging = false;
+        this._dragState = null;
+        document.body.classList.remove("ai-widget-dragging");
+
+        if (this._boundDragMove) {
+            window.removeEventListener("mousemove", this._boundDragMove);
+            window.removeEventListener("touchmove", this._boundDragMove);
+        }
+        if (this._boundDragEnd) {
+            window.removeEventListener("mouseup", this._boundDragEnd);
+            window.removeEventListener("touchend", this._boundDragEnd);
+            window.removeEventListener("touchcancel", this._boundDragEnd);
+        }
+
+        this._persistWidgetPosition();
+
+        if (moved) {
+            this._dragJustEndedAt = Date.now();
+            this._suppressNextClick = true;
+
+            setTimeout(() => {
+                this._suppressNextClick = false;
+            }, 260);
+        }
+    }
+
     _isGenericDomRef(value) {
         const v = String(value || "").trim().toLowerCase();
         if (!v) return true;
@@ -862,16 +1070,12 @@ class AiFloatingButton extends Component {
         if (!v) return false;
 
         if (this._isGenericDomRef(v)) return false;
-
-        // field real estilo Odoo: product_id, qty_to_order, forecast_qty
         return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(v);
     }
 
     _isMeaningfulLabel(value) {
         const v = String(value || "").trim();
         if (!v) return false;
-
-        // descarta labels gigantes concatenados
         if (v.length > 80) return false;
 
         const words = v.split(/\s+/).filter(Boolean);
@@ -886,7 +1090,6 @@ class AiFloatingButton extends Component {
         const type = String(normalized.type || "").toLowerCase();
         const isClickLike = type.includes("click");
 
-        // por ahora solo filtrar clicks
         if (!isClickLike) return false;
 
         const uiType =
@@ -968,17 +1171,14 @@ class AiFloatingButton extends Component {
             String(role || "").toLowerCase() === "button" ||
             (targetElement && String(targetElement).toLowerCase().startsWith("button."));
 
-        // 1) señales realmente útiles
         if (hasUsefulHref) return false;
         if (hasSemanticField) return false;
         if (hasUsefulTarget) return false;
 
-        // 2) botón real con label corto/útil => NO ignorar
         if (isButtonLike && (hasUsefulLabel || isCommonActionButton)) {
             return false;
         }
 
-        // 3) links / menuitems / tabs con label útil => NO ignorar
         if (
             role &&
             ["menuitem", "tab", "checkbox", "link"].includes(String(role).toLowerCase()) &&
@@ -987,7 +1187,6 @@ class AiFloatingButton extends Component {
             return false;
         }
 
-        // 4) uniqueKey fallback puro = ruido
         if (uniqueKey) {
             const uk = String(uniqueKey);
             if (
@@ -1001,12 +1200,10 @@ class AiFloatingButton extends Component {
             }
         }
 
-        // 5) label concatenado gigante sin nada semántico = ruido
         if (label && !hasUsefulLabel && !hasSemanticField && !hasUsefulTarget && !hasUsefulHref) {
             return true;
         }
 
-        // 6) sin señales útiles = ignorar
         return true;
     }
 
@@ -1016,15 +1213,63 @@ class AiFloatingButton extends Component {
     }
 
     closePreview() {
+        this._previewDismissed = true;
         this.state.previewVisible = false;
+        this._suppressNextClick = false;
         this._syncPreviewState?.();
     }
 
     toggleChat() {
         const el = document.getElementById("offcanvasAiSidebar");
-        if (el && window.bootstrap?.Offcanvas) {
-            const inst = window.bootstrap.Offcanvas.getOrCreateInstance(el);
-            inst.show();
+        if (!el) return;
+
+        let opened = false;
+
+        try {
+            const BsOffcanvas =
+                window.bootstrap?.Offcanvas ||
+                globalThis.bootstrap?.Offcanvas;
+
+            if (BsOffcanvas) {
+                const inst = BsOffcanvas.getOrCreateInstance(el);
+                inst.show();
+                opened = true;
+            }
+        } catch (e) {
+            console.warn("[AiFloatingButton] bootstrap offcanvas open failed:", e);
+        }
+
+        if (!opened) {
+            el.classList.add("show");
+            el.setAttribute("aria-modal", "true");
+            el.removeAttribute("aria-hidden");
+            el.style.visibility = "visible";
+
+            let backdrop = document.querySelector(".offcanvas-backdrop");
+            if (!backdrop) {
+                backdrop = document.createElement("div");
+                backdrop.className = "offcanvas-backdrop fade show";
+                document.body.appendChild(backdrop);
+
+                backdrop.addEventListener("click", () => {
+                    try {
+                        el.classList.remove("show");
+                        el.setAttribute("aria-hidden", "true");
+                        el.removeAttribute("aria-modal");
+                        backdrop.remove();
+                        document.body.classList.remove("offcanvas-open");
+                        el.dispatchEvent(new CustomEvent("hidden.bs.offcanvas", { bubbles: true }));
+                    } catch {}
+                }, { once: true });
+            } else {
+                backdrop.classList.add("show");
+            }
+
+            document.body.classList.add("offcanvas-open");
+
+            try {
+                el.dispatchEvent(new CustomEvent("shown.bs.offcanvas", { bubbles: true }));
+            } catch {}
         }
 
         this.state.previewVisible = false;
@@ -1169,7 +1414,6 @@ class AiFloatingButton extends Component {
 
     _maybeRecordUiEvent(ev) {
         try {
-
             const isActive =
                 window.getRecorderStatus?.() === "recording" ||
                 window.__AI_TUTOR_RECORDER_ACTIVE;
@@ -1220,6 +1464,10 @@ class AiFloatingButton extends Component {
             this._onPreviewMessage = null;
         }
 
+        if (this._bindOffcanvasEvents) {
+            this._bindOffcanvasEvents = null;
+        }
+
         if (this._previewTimer) {
             clearInterval(this._previewTimer);
             this._previewTimer = null;
@@ -1234,6 +1482,23 @@ class AiFloatingButton extends Component {
             window.removeEventListener("ai:preview_reset", this._onPreviewReset);
             this._onPreviewReset = null;
         }
+
+        if (this._onWindowResize) {
+            window.removeEventListener("resize", this._onWindowResize);
+            this._onWindowResize = null;
+        }
+
+        if (this._boundDragMove) {
+            window.removeEventListener("mousemove", this._boundDragMove);
+            window.removeEventListener("touchmove", this._boundDragMove);
+        }
+        if (this._boundDragEnd) {
+            window.removeEventListener("mouseup", this._boundDragEnd);
+            window.removeEventListener("touchend", this._boundDragEnd);
+            window.removeEventListener("touchcancel", this._boundDragEnd);
+        }
+
+        document.body.classList.remove("ai-widget-dragging");
 
         const offcanvasEl = document.getElementById("offcanvasAiSidebar");
         if (offcanvasEl && this._onOffcanvasShown) {

@@ -1,13 +1,24 @@
 .ai-floating-button {
     position: fixed !important;
-    bottom: 20px !important;
-    right: 20px !important;
-    z-index: 20 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 1050 !important;
+    display: block !important;
+    width: 78px !important;
+    min-height: 78px !important;
+    pointer-events: auto !important;
+    will-change: transform !important;
+}
+
+/* Si hay preview, permitimos que crezca hacia arriba sin empujar el icono */
+.ai-floating-button.is-dragging {
+    cursor: grabbing !important;
 }
 
 .ai-floating-button .btn {
     font-size: 24px !important;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
     width: 70px !important;
     height: 70px !important;
     padding: 0 !important;
@@ -19,7 +30,7 @@
     box-shadow: none !important;
 }
 
-/* Imagen que cubre todo el botón */
+/* Imagen general */
 .ai-floating-button img {
     width: 100% !important;
     height: 100% !important;
@@ -27,7 +38,7 @@
     transition: transform 0.3s ease;
 }
 
-/* Efecto hover sutil */
+/* Hover general */
 .ai-floating-button:hover img {
     transform: scale(1.1);
     filter: drop-shadow(0 0 8px rgba(0, 159, 227, 0.6));
@@ -40,129 +51,162 @@
     box-shadow: none !important;
 }
 
-
 #chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received.nlux-comp-chatItem--bubblesLayout {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
 }
 
 #chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-comp-chatItem-participantInfo {
-  order: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
+    order: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
 }
 
 #chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-comp-message {
-  order: 1;
+    order: 1;
 }
 
 #chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-comp-avatarPicture {
-  width: 32px;
-  height: 32px;
-  background-size: cover;
-  border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    background-size: cover;
+    border-radius: 50%;
 }
 
-/* New floating message external */
-
-.ai-floating-button {
-    position: fixed;
-    right: 20px;
-    bottom: 20px;
-    z-index: 1050;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 8px;
-}
-
+/* Trigger button */
 .ai-owl-trigger {
-    width: 78px;
-    height: 78px;
-    border: none;
-    background: transparent;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: none;
+    position: relative !important;
+    width: 78px !important;
+    height: 78px !important;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-shadow: none !important;
+    cursor: grab !important;
+    touch-action: none !important;
+    pointer-events: auto !important;
 }
 
 .ai-owl-trigger:focus,
 .ai-owl-trigger:active,
 .ai-owl-trigger:hover {
-    background: transparent;
-    border: none;
-    box-shadow: none;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.ai-floating-button.is-dragging .ai-owl-trigger {
+    cursor: grabbing !important;
 }
 
 .ai-owl-trigger-img {
-    width: 64px;
-    height: 64px;
-    display: block;
-    object-fit: contain;
+    width: 72px !important;
+    height: 72px !important;
+    display: block !important;
+    object-fit: contain !important;
+    pointer-events: none !important;
 }
 
+/* Preview bubble */
 .ai-owl-preview {
-    position: relative;
-    width: 340px;
-    max-width: min(340px, calc(100vw - 32px));
-    min-height: 140px;
-    background: #ffffff;
-    border-radius: 22px;
-    padding: 18px 22px 18px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10);
-    color: #5d6775;
-    overflow: visible;
+    position: absolute !important;
+    right: 0 !important;
+    bottom: calc(100% + 8px) !important;
+    width: 340px !important;
+    max-width: min(340px, calc(100vw - 32px)) !important;
+    min-height: 140px !important;
+    background: #ffffff !important;
+    border-radius: 22px !important;
+    padding: 18px 22px 18px !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10) !important;
+    color: #5d6775 !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
 }
 
 .ai-owl-preview-time {
-    font-size: 12px;
-    line-height: 1.2;
-    color: #9aa3af;
-    font-weight: 700;
-    margin-bottom: 10px;
+    font-size: 12px !important;
+    line-height: 1.2 !important;
+    color: #9aa3af !important;
+    font-weight: 700 !important;
+    margin-bottom: 10px !important;
 }
 
 .ai-owl-preview-text {
-    font-size: 16px;
-    line-height: 1.45;
-    font-weight: 600;
-    color: #5a6472;
-    word-break: break-word;
-    overflow-wrap: anywhere;
+    font-size: 16px !important;
+    line-height: 1.45 !important;
+    font-weight: 600 !important;
+    color: #5a6472 !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
 
-    display: -webkit-box;
-    -webkit-line-clamp: 5; /* antes 3 */
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 5 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
 }
 
 .ai-owl-preview-close {
-    position: absolute;
-    top: 10px;
-    right: 12px;
-    border: none;
-    background: transparent;
-    color: #9aa3af;
-    font-size: 24px;
-    line-height: 1;
-    cursor: pointer;
-    padding: 0;
+    position: absolute !important;
+    top: 10px !important;
+    right: 12px !important;
+    border: none !important;
+    background: transparent !important;
+    color: #9aa3af !important;
+    font-size: 24px !important;
+    line-height: 1 !important;
+    cursor: pointer !important;
+    padding: 0 !important;
 }
 
 .ai-owl-preview-tail {
-    position: absolute;
-    bottom: -8px;
-    left: 85%;
-    transform: translateX(-50%) rotate(45deg);
-    width: 18px;
-    height: 18px;
-    background: #ffffff;
-    border-radius: 3px;
+    position: absolute !important;
+    bottom: -8px !important;
+    right: 24px !important;
+    left: auto !important;
+    transform: rotate(45deg) !important;
+    width: 18px !important;
+    height: 18px !important;
+    background: #ffffff !important;
+    border-radius: 3px !important;
+}
+
+/* Mientras arrastras, evita selección accidental */
+body.ai-widget-dragging,
+body.ai-widget-dragging * {
+    user-select: none !important;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .ai-owl-preview {
+        width: min(320px, calc(100vw - 24px)) !important;
+        max-width: calc(100vw - 24px) !important;
+        min-height: 120px !important;
+        padding: 16px 18px 16px !important;
+    }
+
+    .ai-owl-preview-text {
+        font-size: 15px !important;
+        line-height: 1.4 !important;
+    }
+
+    .ai-owl-trigger {
+        width: 74px !important;
+        height: 74px !important;
+    }
+
+    .ai-owl-trigger-img {
+        width: 68px !important;
+        height: 68px !important;
+    }
 }

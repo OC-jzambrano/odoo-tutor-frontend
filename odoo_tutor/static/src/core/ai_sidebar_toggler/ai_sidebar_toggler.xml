@@ -2,14 +2,23 @@
 <templates xml:space="preserve">
     <t t-name="ai_chat.AiFloatingButton">
         <t t-if="state.showButton">
-            <div class="ai-floating-button">
-
-                <t t-if="state.previewVisible and state.previewMessage">
+            <div
+                class="ai-floating-button"
+                t-ref="floatingRoot"
+                t-att-class="state.dragging ? 'ai-floating-button is-dragging' : 'ai-floating-button'"
+                t-att-style="
+                    'transform: translate3d(' + state.dragX + 'px, ' + state.dragY + 'px, 0);' +
+                    (state.chatOpen ? ' opacity:0; pointer-events:none;' : '')
+                "
+            >
+                <t t-if="state.previewVisible and state.previewMessage and !state.chatOpen">
                     <div class="ai-owl-preview">
                         <button
                             type="button"
                             class="ai-owl-preview-close"
-                            t-on-click.stop="closePreview"
+                            t-on-mousedown.stop.prevent="noop"
+                            t-on-touchstart.stop.prevent="noop"
+                            t-on-click.stop.prevent="closePreview"
                             aria-label="Close preview"
                         >×</button>
 
@@ -28,10 +37,10 @@
                 <button
                     class="ai-owl-trigger"
                     type="button"
-                    t-on-click="toggleChat"
+                    t-on-mousedown.stop.prevent="onIconDragStart"
+                    t-on-touchstart.stop.prevent="onIconDragStart"
+                    t-on-click="onIconClick"
                     data-ai-sidebar-toggle="1"
-                    data-bs-toggle="offcanvas"
-                    data-bs-target="#offcanvasAiSidebar"
                     aria-controls="offcanvasAiSidebar"
                 >
                     <img
