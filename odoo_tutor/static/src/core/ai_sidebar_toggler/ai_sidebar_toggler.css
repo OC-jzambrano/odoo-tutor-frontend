@@ -123,10 +123,11 @@
     bottom: calc(100% + 8px) !important;
     width: 340px !important;
     max-width: min(340px, calc(100vw - 32px)) !important;
-    min-height: 140px !important;
+    min-height: unset !important;
+    height: auto !important;
     background: #ffffff !important;
     border-radius: 22px !important;
-    padding: 18px 22px 18px !important;
+    padding: 14px 22px 14px !important;
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.10) !important;
     color: #5d6775 !important;
     overflow: visible !important;
@@ -138,7 +139,7 @@
     line-height: 1.2 !important;
     color: #9aa3af !important;
     font-weight: 700 !important;
-    margin-bottom: 10px !important;
+    margin-bottom: 8px !important;
 }
 
 .ai-owl-preview-text {
@@ -148,9 +149,10 @@
     color: #5a6472 !important;
     word-break: break-word !important;
     overflow-wrap: anywhere !important;
+    padding-right: 18px !important;
 
     display: -webkit-box !important;
-    -webkit-line-clamp: 5 !important;
+    -webkit-line-clamp: 4 !important;
     -webkit-box-orient: vertical !important;
     overflow: hidden !important;
 }
@@ -191,13 +193,15 @@ body.ai-widget-dragging * {
     .ai-owl-preview {
         width: min(320px, calc(100vw - 24px)) !important;
         max-width: calc(100vw - 24px) !important;
-        min-height: 120px !important;
-        padding: 16px 18px 16px !important;
+        min-height: unset !important;
+        height: auto !important;
+        padding: 14px 18px 14px !important;
     }
 
     .ai-owl-preview-text {
         font-size: 15px !important;
         line-height: 1.4 !important;
+        -webkit-line-clamp: 4 !important;
     }
 
     .ai-owl-trigger {

@@ -1,7 +1,7 @@
 /* eslint-disable */
 /** @odoo-module **/
 
-import { Component, onMounted, useState } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
@@ -506,6 +506,16 @@ class AiFloatingButton extends Component {
             "crm.team.member",
         ];
 
+        window.aiTutorDebug = window.aiTutorDebug || {};
+
+        window.aiTutorDebug.showPreview = (text, timestamp = new Date().toISOString()) => {
+            this._setPreviewMessage(text, timestamp);
+        };
+
+        window.aiTutorDebug.hidePreview = () => {
+            this.closePreview();
+        };
+
         onMounted(() => {
             this.aiWs?.ensureConnected?.().catch(() => {});
             this.aiWs?.subscribe?.(this._onPreviewMessage);
@@ -546,6 +556,7 @@ class AiFloatingButton extends Component {
                     this.state.previewVisible = false;
                     this._suppressNextClick = false;
                     this._syncPreviewState?.();
+                    this._focusChatInput();
                 };
 
                 this._onOffcanvasHidden = () => {
@@ -1274,6 +1285,64 @@ class AiFloatingButton extends Component {
 
         this.state.previewVisible = false;
         this._syncPreviewState?.();
+
+        this._focusChatInput();
+    }
+
+    _focusChatInput() {
+        const tryFocus = () => {
+            const root = document.getElementById("offcanvasAiSidebar") || document;
+
+            const selectors = [
+                '#chat-ui-container textarea',
+                '#chat-ui-container input[type="text"]',
+                '#chat-ui-container input:not([type])',
+                '#chat-ui-container [contenteditable="true"]',
+                '#chat-ui-container .nlux-comp-composer textarea',
+                '#chat-ui-container .nlux-comp-composer input',
+                '#chat-ui-container .nlux-comp-chatInput textarea',
+                '#chat-ui-container .nlux-comp-chatInput input',
+                '#chat-ui-container .nlux-comp-messageComposer textarea',
+                '#chat-ui-container .nlux-comp-messageComposer input',
+                '#chat-ui-container .nlux-comp-promptBox textarea',
+                '#chat-ui-container .nlux-comp-promptBox input',
+            ];
+
+            let el = null;
+            for (const selector of selectors) {
+                el = root.querySelector?.(selector);
+                if (el) break;
+            }
+
+            if (!el) {
+                return false;
+            }
+
+            try {
+                el.focus({ preventScroll: true });
+
+                if (typeof el.value === "string" && typeof el.setSelectionRange === "function") {
+                    const len = el.value.length;
+                    el.setSelectionRange(len, len);
+                }
+
+                return document.activeElement === el;
+            } catch {
+                return false;
+            }
+        };
+
+        if (tryFocus()) return;
+
+        clearTimeout(this._focusChatTimer1);
+        clearTimeout(this._focusChatTimer2);
+        clearTimeout(this._focusChatTimer3);
+        clearTimeout(this._focusChatTimer4);
+
+        this._focusChatTimer1 = setTimeout(() => tryFocus(), 0);
+        this._focusChatTimer2 = setTimeout(() => tryFocus(), 120);
+        this._focusChatTimer3 = setTimeout(() => tryFocus(), 300);
+        this._focusChatTimer4 = setTimeout(() => tryFocus(), 600);
     }
 
     _getContextSnapshot() {
@@ -1450,7 +1519,7 @@ class AiFloatingButton extends Component {
         }
     }
 
-    willUnmount() {
+    onWillUnmount() {
         clearInterval(this._interval);
 
         try {
@@ -1514,6 +1583,10 @@ class AiFloatingButton extends Component {
         this._onDocClick = null;
         this._onDocInput = null;
         this._onDocChange = null;
+        clearTimeout(this._focusChatTimer1);
+        clearTimeout(this._focusChatTimer2);
+        clearTimeout(this._focusChatTimer3);
+        clearTimeout(this._focusChatTimer4);
     }
 }
 

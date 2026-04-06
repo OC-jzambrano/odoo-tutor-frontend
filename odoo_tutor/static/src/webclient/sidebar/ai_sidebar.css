@@ -1,22 +1,211 @@
-.ai_tutor_push_layer{
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    padding: 8px 8px 0 0;
-    max-height: 180px;
-    overflow: auto;
+/* ===== COPY + FOOTER ACTIONS ===== */
+
+/* Fila de acciones debajo del mensaje */
+#chat-ui-container .nlux-comp-messageFeedback,
+#chat-ui-container .nlux-comp-chatItem-actions,
+#chat-ui-container .nlux-comp-message-actions,
+#chat-ui-container .ai-msg-footer {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin-top: 10px !important;
+    flex-wrap: wrap !important;
+    pointer-events: auto !important;
 }
 
-.ai_push_row { display:flex; justify-content:flex-start; margin-bottom:8px; }
-.ai_push_bubble{
-    background:#fff7d6;
-    border:1px solid #f3d48b;
-    border-radius:12px;
-    padding:10px 12px;
-    width:100%;
-    box-shadow:0 2px 10px rgba(0,0,0,.06);
+/* ===== PERMITIR COPIA MANUAL SOLO EN EL TEXTO ===== */
+
+#chat-ui-container .nlux-markdown-container,
+#chat-ui-container .nlux-markdown-container *,
+#chat-ui-container .nlux-comp-messageContent,
+#chat-ui-container .nlux-comp-messageContent *,
+#chat-ui-container .nlux-comp-messageText,
+#chat-ui-container .nlux-comp-messageText *,
+#chat-ui-container .nlux-comp-bubble,
+#chat-ui-container .nlux-comp-bubble p,
+#chat-ui-container .nlux-comp-bubble li,
+#chat-ui-container .nlux-comp-bubble span,
+#chat-ui-container .nlux-comp-bubble strong,
+#chat-ui-container .nlux-comp-bubble em,
+#chat-ui-container .nlux-comp-bubble code,
+#chat-ui-container .nlux-comp-bubble pre {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    cursor: text !important;
 }
-.ai_push_header{ display:flex; gap:10px; align-items:center; margin-bottom:6px; }
-.ai_push_title{ font-weight:800; }
-.ai_push_meta{ font-size:12px; opacity:.75; }
-.ai_push_body{ white-space:pre-wrap; }
+
+/* ===== NO convertir botones/acciones en texto seleccionable ===== */
+
+#chat-ui-container button,
+#chat-ui-container button *,
+#chat-ui-container .ai-msg-action,
+#chat-ui-container .ai-msg-action *,
+#chat-ui-container .ai-copy-btn,
+#chat-ui-container .ai-copy-btn *,
+#chat-ui-container .nlux-comp-avatarPicture,
+#chat-ui-container .nlux-comp-avatarPicture *,
+#chat-ui-container .nlux-comp-chatItem-participantInfo,
+#chat-ui-container .nlux-comp-chatItem-participantInfo *,
+#chat-ui-container .nlux-comp-messageFeedback,
+#chat-ui-container .nlux-comp-messageFeedback *,
+#chat-ui-container .nlux-comp-chatItem-actions,
+#chat-ui-container .nlux-comp-chatItem-actions *,
+#chat-ui-container .nlux-comp-message-actions,
+#chat-ui-container .nlux-comp-message-actions * {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    cursor: pointer !important;
+}
+
+/* ===== botón copiar ===== */
+
+#chat-ui-container .ai-msg-action,
+#chat-ui-container .ai-copy-btn,
+#chat-ui-container .ai-msg-footer button {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: #111827 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+}
+
+#chat-ui-container .ai-copy-btn:hover,
+#chat-ui-container .ai-msg-footer button:hover,
+#chat-ui-container .ai-msg-action:hover {
+    opacity: 0.75 !important;
+}
+
+#chat-ui-container .ai-copy-btn svg {
+    display: block !important;
+    pointer-events: none !important;
+}
+
+#chat-ui-container .ai-copy-btn.is-copied {
+    color: #16a34a !important;
+}
+
+#chat-ui-container .ai-copy-btn.is-copy-failed {
+    color: #dc2626 !important;
+}
+
+#chat-ui-container button,
+#chat-ui-container .ai-msg-footer button,
+#chat-ui-container .ai_feedback_bar button,
+#chat-ui-container .ai_feedback_popover button {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    cursor: pointer !important;
+}
+
+/* =========================
+   Colores base del chat
+   ========================= */
+
+#chat-ui-container {
+    --ai-user-bubble-bg: #1f2937;   /* gris oscuro, no negro puro */
+    --ai-user-bubble-text: #ffffff;
+    --ai-user-action-color: #ffffff;
+
+    --ai-assistant-bubble-bg: #f3f4f6;
+    --ai-assistant-bubble-text: #111827;
+    --ai-assistant-action-color: #111827;
+}
+
+/* =========================
+   Mensajes enviados por el usuario
+   ========================= */
+
+#chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-message,
+#chat-ui-container .nlux-comp-chatItem--sent .nlux-markdown-container,
+#chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-bubble {
+    background: var(--ai-user-bubble-bg) !important;
+    color: var(--ai-user-bubble-text) !important;
+    border-color: transparent !important;
+}
+
+/* texto dentro del mensaje enviado */
+#chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-message *,
+#chat-ui-container .nlux-comp-chatItem--sent .nlux-markdown-container *,
+#chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-bubble * {
+    color: var(--ai-user-bubble-text) !important;
+}
+
+/* botón copiar + feedback en mensajes enviados */
+#chat-ui-container .nlux-comp-chatItem--sent .ai-copy-btn,
+#chat-ui-container .nlux-comp-chatItem--sent .ai-msg-action,
+#chat-ui-container .nlux-comp-chatItem--sent .ai_feedback_btn,
+#chat-ui-container .nlux-comp-chatItem--sent .ai-msg-footer button {
+    color: var(--ai-user-action-color) !important;
+}
+
+/* =========================
+   Mensajes recibidos del asistente
+   ========================= */
+
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-message,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble {
+    background: var(--ai-assistant-bubble-bg) !important;
+    color: var(--ai-assistant-bubble-text) !important;
+}
+
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-message *,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container *,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble * {
+    color: var(--ai-assistant-bubble-text) !important;
+}
+
+#chat-ui-container .nlux-comp-chatItem--received .ai-copy-btn,
+#chat-ui-container .nlux-comp-chatItem--received .ai-msg-action,
+#chat-ui-container .nlux-comp-chatItem--received .ai_feedback_btn,
+#chat-ui-container .nlux-comp-chatItem--received .ai-msg-footer button {
+    color: var(--ai-assistant-action-color) !important;
+}
+
+/* =========================
+   Hover / estados
+   ========================= */
+
+#chat-ui-container .ai-copy-btn:hover,
+#chat-ui-container .ai_feedback_btn:hover,
+#chat-ui-container .ai-msg-footer button:hover {
+    opacity: 0.75 !important;
+}
+
+#chat-ui-container .ai-copy-btn.is-copied {
+    color: #22c55e !important;
+}
+
+#chat-ui-container .ai-copy-btn.is-copy-failed {
+    color: #ef4444 !important;
+}
+
+/* =========================
+   Dark mode
+   ========================= */
+
+@media (prefers-color-scheme: dark) {
+    #chat-ui-container {
+        --ai-user-bubble-bg: #374151;
+        --ai-user-bubble-text: #f9fafb;
+        --ai-user-action-color: #f9fafb;
+
+        --ai-assistant-bubble-bg: #1f2937;
+        --ai-assistant-bubble-text: #f9fafb;
+        --ai-assistant-action-color: #f9fafb;
+    }
+}
+
+#chat-ui-container .ai-copy-btn {
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+#chat-ui-container .ai-copy-btn.is-copied {
+    color: #22c55e !important;
+    transform: scale(1.08);
+}

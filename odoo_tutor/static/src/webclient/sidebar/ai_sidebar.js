@@ -10,6 +10,45 @@ import { imageUrl } from "@web/core/utils/urls";
 import { useMouseListeners } from "../../core/utils";
 import { _t } from "@web/core/l10n/translation";
 
+function formatTimeAgo(ts) {
+    if (!ts) return "";
+    const now = Date.now();
+    const then = new Date(ts).getTime();
+    if (!Number.isFinite(then)) return "";
+
+    const diffSec = Math.max(0, Math.floor((now - then) / 1000));
+
+    if (diffSec < 10) return "just now";
+    if (diffSec < 60) return `${diffSec} seconds ago`;
+
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin === 1) return "1 minute ago";
+    if (diffMin < 60) return `${diffMin} minutes ago`;
+
+    const diffHour = Math.floor(diffMin / 60);
+    if (diffHour === 1) return "1 hour ago";
+    if (diffHour < 24) return `${diffHour} hours ago`;
+
+    const diffDay = Math.floor(diffHour / 24);
+    if (diffDay === 1) return "1 day ago";
+    return `${diffDay} days ago`;
+}
+
+function normalizeAssistantTextForCompare(text) {
+    return String(text || "")
+        .replace(/\*\*/g, "")
+        .replace(/`/g, "")
+        .replace(/\n+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
+function getTutorPendingQueue() {
+    window.__AI_TUTOR_PENDING_QUEUE__ = window.__AI_TUTOR_PENDING_QUEUE__ || [];
+    return window.__AI_TUTOR_PENDING_QUEUE__;
+}
+
 export class AiSidebar extends Component {
     static template = "ai_chat.AiSidebar";
     static props = {};
@@ -24,6 +63,7 @@ export class AiSidebar extends Component {
         this.notification = useService("notification");
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
+
         // -------------------------
         // Refs
         // -------------------------
@@ -32,13 +72,16 @@ export class AiSidebar extends Component {
         this.handleRef = useRef("handle");
 
         this._offcanvasQueue = Promise.resolve();
+
         // -------------------------
         // Internal
         // -------------------------
         this._activeFeedbackPopover = null;
         this._feedbackObserver = null;
+        this._copyButtonsObserver = null;
+
         this._seenTutorPush = new Map(); // key -> timestamp
-        this._tutorPushTtlMs = 8000
+        this._tutorPushTtlMs = 8000;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
 
@@ -97,13 +140,26 @@ export class AiSidebar extends Component {
             wsStatus: "unknown",
             showRecorderPanel: false,
             canSeeRecorderToggle: false,
+
+            hintMessage: "",
+            hintTimestamp: null,
+            hintVisible: false,
         });
+
+        window.aiTutorDebug = window.aiTutorDebug || {};
+
+        window.aiTutorDebug.showHint = (text, timestamp = new Date().toISOString()) => {
+            this.state.hintMessage = text;
+            this.state.hintTimestamp = timestamp;
+            this.state.hintVisible = true;
+        };
+
+        window.aiTutorDebug.hideHint = () => {
+            this.state.hintVisible = false;
+        };
 
         // -------------------------
         // React to context changes
-        // - update placeholder
-        // - init chat once
-        // - send live_context (background) best-effort
         // -------------------------
         useEffect(
             (currentContext) => {
@@ -112,7 +168,6 @@ export class AiSidebar extends Component {
                 const model = currentContext.model;
                 const newPlaceholder = this.modelPlaceholders[model] || this.modelPlaceholders.default;
 
-                // ✅ send live_context to WS (best-effort, dedup happens in ai_ws)
                 try {
                     this.aiWs?.sendLiveContext?.({ context_model: model });
                 } catch (_) {}
@@ -129,12 +184,31 @@ export class AiSidebar extends Component {
             () => [this.state.currentContext]
         );
 
+        this._setInlineHint = (text, timestamp) => {
+            const cleaned = (text || "")
+                .toString()
+                .replace(/\*\*/g, "")
+                .replace(/\n+/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+
+            if (!cleaned) return;
+
+            this.state.hintMessage = cleaned;
+            this.state.hintTimestamp = timestamp || new Date().toISOString();
+            this.state.hintVisible = true;
+        };
+
+        this.closeInlineHint = () => {
+            this.state.hintVisible = false;
+        };
+
         // -------------------------
         // Lifecycle
         // -------------------------
         onMounted(() => {
-            // Bootstrap offcanvas events
             this._setupTutorPushListener();
+
             const el = this._getOffcanvasEl();
             if (el) {
                 this._onShown = () => this._afterShown();
@@ -145,18 +219,15 @@ export class AiSidebar extends Component {
 
             this._loadRecorderPermission();
 
-            // Context polling (ligero)
             this.contextInterval = setInterval(() => {
                 const newContext = this.contextService.getContext();
                 if (!newContext) return;
 
-                // compare by JSON (simple + works fine at your cadence)
                 if (!this.state.currentContext || JSON.stringify(newContext) !== JSON.stringify(this.state.currentContext)) {
                     this.state.currentContext = newContext;
                 }
             }, 250);
 
-            // composer size observer
             this.observer = new MutationObserver(() => {
                 const root = this.chatUiRef?.el;
                 if (!root) return;
@@ -166,11 +237,11 @@ export class AiSidebar extends Component {
                     this.state.composerHeight = composer.offsetHeight;
                 }
             });
+
             if (this.chatUiRef?.el) {
                 this.observer.observe(this.chatUiRef.el, { childList: true, subtree: true });
             }
 
-            // recorder feed: solo STEP_SAVED (no ensuciar con WS_ERROR)
             this._recListener = (ev) => {
                 this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
                 if (!ev || ev.event_type !== "STEP_SAVED") return;
@@ -184,33 +255,40 @@ export class AiSidebar extends Component {
 
             this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
-            // =========================
-            // tutor_push -> inyectar en NLUX como respuesta del assistant
-            // =========================
-            this._seenTutorPushIds = new Set();
+            this._onTutorHint = (ev) => {
+                const msg = ev?.kind ? ev.data : ev;
+                if (!msg || typeof msg !== "object") return;
+                if (msg.type !== "tutor_hint") return;
 
-            this._onTutorPush = (ev) => {
-                const msg = ev?.kind === "tutor_push" ? ev.data : ev;
-                if (!msg || msg.type !== "tutor_push") return;
+                const text =
+                    msg.message ||
+                    msg.response ||
+                    msg.content ||
+                    msg.text ||
+                    "";
 
-                const text = String(msg.response || msg.message || "").trim();
                 if (!text) return;
 
-                // ✅ si NLUX ya lo puso, NO lo repitas
-                if (this._isDuplicateAssistantText(text)) return;
-
-                // marca que lo inyectamos
-                this._lastInjectedTutorText = text;
-                this._lastInjectedTutorAt = Date.now();
-
-                this._pushAssistantMessageToNlux(text);
+                this._setInlineHint(text, msg.timestamp);
             };
 
-            if (!this._tutorPushSubscribed) {
-                this.aiWs.subscribe(this._onTutorPush);
-                this._tutorPushSubscribed = true;
+            if (!this._tutorHintSubscribed) {
+                this.aiWs.subscribe(this._onTutorHint);
+                this._tutorHintSubscribed = true;
             }
 
+            this._onTutorHintEvent = (e) => {
+                const data = e?.detail;
+                if (!data) return;
+                this._onTutorHint({ kind: "tutor_hint", data });
+            };
+
+            window.addEventListener("ai:tutor_hint", this._onTutorHintEvent);
+
+            requestAnimationFrame(() => {
+                this._startCopyButtonsObserver?.();
+                this._installManualSelectionGuard?.();
+            });
         });
 
         onWillUnmount(() => {
@@ -239,10 +317,26 @@ export class AiSidebar extends Component {
                 this._tutorPushSubscribed = false;
             }
 
+            if (this._tutorHintSubscribed && this._onTutorHint) {
+                this.aiWs.unsubscribe(this._onTutorHint);
+                this._tutorHintSubscribed = false;
+            }
+
+            if (this._onTutorHintEvent) {
+                window.removeEventListener("ai:tutor_hint", this._onTutorHintEvent);
+                this._onTutorHintEvent = null;
+            }
+
             this._seenTutorPushIds = null;
+
+            if (this._copyButtonsObserver) {
+                this._copyButtonsObserver.disconnect();
+                this._copyButtonsObserver = null;
+            }
+
+            this._removeManualSelectionGuard?.();
         });
 
-        // Resize handle events
         this.onHandleMouseDown = useMouseListeners({
             onMouseDown: this.onMouseDown,
             onMouseMove: this.onMouseMove,
@@ -250,7 +344,397 @@ export class AiSidebar extends Component {
         });
     }
 
+    // =========================================================
+    // COPY BUTTON HELPERS
+    // =========================================================
+
+    _getChatContainer() {
+        return this.el?.querySelector?.("#chat-ui-container") || document.querySelector("#chat-ui-container");
+    }
+
+    _getMessageItems() {
+        const container = this._getChatContainer();
+        if (!container) return [];
+        return Array.from(
+            container.querySelectorAll(".nlux-comp-chatItem--received, .nlux-comp-chatItem--sent")
+        );
+    }
+
+    _getMessageHost(itemEl) {
+        if (!itemEl) return null;
+
+        return (
+            itemEl.querySelector(".nlux-comp-message") ||
+            itemEl.querySelector(".nlux-comp-bubble") ||
+            itemEl.querySelector('[class*="comp-message"]') ||
+            itemEl.querySelector('[class*="bubble"]') ||
+            null
+        );
+    }
+
+    _getMessageTextBlock(messageHost) {
+        if (!messageHost) return null;
+
+        return (
+            messageHost.querySelector(".nlux-markdown-container") ||
+            messageHost.querySelector(".nlux-comp-messageContent") ||
+            messageHost.querySelector(".nlux-comp-messageText") ||
+            messageHost.querySelector('[class*="messageContent"]') ||
+            messageHost.querySelector('[class*="messageText"]') ||
+            messageHost.querySelector('[class*="markdown"]') ||
+            messageHost.firstElementChild ||
+            null
+        );
+    }
+
+    _findFooterRow(messageHost) {
+        if (!messageHost) return null;
+        return messageHost.querySelector(".ai-msg-footer");
+    }
+
+    _ensureFooterRow(messageHost) {
+        let footer = this._findFooterRow(messageHost);
+        if (footer) return footer;
+
+        const textBlock = this._getMessageTextBlock(messageHost);
+        if (!textBlock) return null;
+
+        footer = document.createElement("div");
+        footer.className = "ai-msg-footer";
+        textBlock.insertAdjacentElement("afterend", footer);
+
+        return footer;
+    }
+
+    _findExistingFeedbackRows(messageHost) {
+        if (!messageHost) return [];
+        return Array.from(
+            messageHost.querySelectorAll(
+                ".nlux-comp-messageFeedback, .nlux-comp-chatItem-actions, .nlux-comp-message-actions"
+            )
+        );
+    }
+
+    _findExistingFeedbackButtons(messageHost) {
+        const rows = this._findExistingFeedbackRows(messageHost);
+        if (!rows.length) return [];
+
+        return rows.flatMap((row) =>
+            Array.from(row.querySelectorAll("button")).filter((btn) => !btn.classList.contains("ai-copy-btn"))
+        );
+    }
+
+    _moveFeedbackButtonsToFooter(messageHost, footer) {
+        if (!messageHost || !footer) return;
+
+        const buttons = this._findExistingFeedbackButtons(messageHost);
+        if (!buttons.length) return;
+
+        buttons.forEach((btn) => {
+            if (!footer.contains(btn)) {
+                footer.appendChild(btn);
+            }
+        });
+
+        const rows = this._findExistingFeedbackRows(messageHost);
+        rows.forEach((row) => {
+            if (row !== footer && !row.querySelector("button")) {
+                row.remove();
+            }
+        });
+    }
+
+    _findCommentButton(containerEl) {
+        if (!containerEl) return null;
+
+        const buttons = Array.from(containerEl.querySelectorAll("button"));
+        return buttons.find((btn) => {
+            const title = (btn.getAttribute("title") || "").toLowerCase();
+            const aria = (btn.getAttribute("aria-label") || "").toLowerCase();
+            const dataAct = (btn.dataset.act || "").toLowerCase();
+            const html = (btn.innerHTML || "").toLowerCase();
+
+            return (
+                title.includes("comment") ||
+                aria.includes("comment") ||
+                dataAct === "comment" ||
+                html.includes("fa-comment")
+            );
+        }) || null;
+    }
+
+    _getCopyTextFromItem(itemEl) {
+        const messageHost = this._getMessageHost(itemEl);
+        const textBlock = this._getMessageTextBlock(messageHost);
+
+        return (
+            textBlock?.innerText ||
+            textBlock?.textContent ||
+            messageHost?.innerText ||
+            ""
+        ).trim();
+    }
+
+    _buildCopyButton(itemEl) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "ai-msg-action ai-copy-btn";
+        btn.setAttribute("aria-label", "Copy message");
+        btn.setAttribute("title", "Copy");
+        btn.setAttribute("data-original-title", "Copy");
+        btn.setAttribute("data-copy-icon", this._copySvg());
+        btn.setAttribute("data-check-icon", this._checkSvg());
+
+        btn.innerHTML = btn.getAttribute("data-copy-icon");
+
+        btn.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+
+            const text = this._getCopyTextFromItem(itemEl);
+            if (!text) return;
+
+            const copied = await this._copyTextToClipboard(text);
+            this._flashCopyButton(btn, copied);
+        });
+
+        return btn;
+    }
+
+    _insertCopyButton(actionsRow, copyBtn) {
+        if (!actionsRow || !copyBtn) return;
+
+        const commentBtn = this._findCommentButton(actionsRow);
+
+        if (commentBtn && commentBtn.parentNode) {
+            commentBtn.insertAdjacentElement("afterend", copyBtn);
+            return;
+        }
+
+        actionsRow.appendChild(copyBtn);
+    }
+
+    _ensureCopyButtons() {
+        const items = this._getMessageItems();
+        if (!items.length) return;
+
+        items.forEach((itemEl) => {
+            const messageHost = this._getMessageHost(itemEl);
+            if (!messageHost) return;
+
+            const footer = this._ensureFooterRow(messageHost);
+            if (!footer) return;
+
+            this._moveFeedbackButtonsToFooter(messageHost, footer);
+
+            if (!footer.querySelector(".ai-copy-btn")) {
+                const copyBtn = this._buildCopyButton(itemEl);
+                this._insertCopyButton(footer, copyBtn);
+            }
+        });
+    }
+
+    _startCopyButtonsObserver() {
+        const container = this._getChatContainer();
+        if (!container) return;
+
+        this._ensureCopyButtons();
+
+        if (this._copyButtonsObserver) {
+            this._copyButtonsObserver.disconnect();
+        }
+
+        this._copyButtonsObserver = new MutationObserver(() => {
+            this._ensureCopyButtons();
+        });
+
+        this._copyButtonsObserver.observe(container, {
+            childList: true,
+            subtree: true,
+        });
+    }
+
+    _hasManualSelection() {
+        const sel = window.getSelection?.();
+        if (!sel) return false;
+        return !sel.isCollapsed && !!String(sel).trim();
+    }
+
+    _isSelectableMessageTarget(target) {
+        if (!target?.closest) return false;
+
+        return !!target.closest(
+            ".nlux-markdown-container, " +
+            ".nlux-comp-messageContent, " +
+            ".nlux-comp-messageText, " +
+            ".nlux-comp-message, " +
+            ".ai-inline-hint-text, " +
+            ".ai_push_body"
+        );
+    }
+
+    _isNonSelectableActionTarget(target) {
+        if (!target?.closest) return false;
+
+        return !!target.closest(
+            "button, a, input, textarea, select, label, " +
+            ".ai-msg-footer, .ai_feedback_bar, .ai_feedback_popover, " +
+            ".ai-copy-btn, .ai_feedback_btn"
+        );
+    }
+
+    _installManualSelectionGuard() {
+        const root = this._getChatContainer() || this.chatUiRef?.el;
+        if (!root || this._manualSelectionGuardInstalled) return;
+
+        this._onSelectionMouseDown = (ev) => {
+            if (this._isNonSelectableActionTarget(ev.target)) return;
+            if (!this._isSelectableMessageTarget(ev.target)) return;
+
+            this._manualSelecting = true;
+            ev.stopPropagation();
+        };
+
+        this._onSelectionMouseUp = (ev) => {
+            if (!this._manualSelecting) return;
+
+            ev.stopPropagation();
+
+            setTimeout(() => {
+                if (this._hasManualSelection()) {
+                    this._setComposerAutoFocus(false);
+
+                    const active = document.activeElement;
+                    if (active?.closest?.(".nlux-composer-container")) {
+                        active.blur();
+                    }
+                }
+                this._manualSelecting = false;
+            }, 0);
+        };
+
+        this._onSelectionClick = (ev) => {
+            if (this._isNonSelectableActionTarget(ev.target)) return;
+            if (!this._isSelectableMessageTarget(ev.target)) return;
+
+            if (this._hasManualSelection()) {
+                ev.stopPropagation();
+            }
+        };
+
+        root.addEventListener("mousedown", this._onSelectionMouseDown, true);
+        root.addEventListener("mouseup", this._onSelectionMouseUp, true);
+        root.addEventListener("click", this._onSelectionClick, true);
+
+        this._manualSelectionGuardInstalled = true;
+    }
+
+    _removeManualSelectionGuard() {
+        const root = this._getChatContainer() || this.chatUiRef?.el;
+        if (!root || !this._manualSelectionGuardInstalled) return;
+
+        if (this._onSelectionMouseDown) {
+            root.removeEventListener("mousedown", this._onSelectionMouseDown, true);
+        }
+        if (this._onSelectionMouseUp) {
+            root.removeEventListener("mouseup", this._onSelectionMouseUp, true);
+        }
+        if (this._onSelectionClick) {
+            root.removeEventListener("click", this._onSelectionClick, true);
+        }
+
+        this._onSelectionMouseDown = null;
+        this._onSelectionMouseUp = null;
+        this._onSelectionClick = null;
+        this._manualSelectionGuardInstalled = false;
+        this._manualSelecting = false;
+    }
+
+    get hintTimeAgo() {
+        return formatTimeAgo(this.state.hintTimestamp);
+    }
+
+    _copySvg() {
+        return `
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/>
+            </svg>
+        `;
+    }
+
+    _checkSvg() {
+        return `
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path
+                    fill="currentColor"
+                    d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
+                />
+            </svg>
+        `;
+    }
+
+    async _copyTextToClipboard(text) {
+        const value = (text || "").trim();
+        if (!value) return false;
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+        } catch {}
+
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = value;
+            ta.setAttribute("readonly", "readonly");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            ta.style.pointerEvents = "none";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            const ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            return !!ok;
+        } catch {
+            return false;
+        }
+    }
+
+    _flashCopyButton(btn, copied) {
+        if (!btn) return;
+
+        const originalTitle = btn.getAttribute("data-original-title") || "Copy";
+        const copyIcon = btn.getAttribute("data-copy-icon") || this._copySvg();
+        const checkIcon = btn.getAttribute("data-check-icon") || this._checkSvg();
+
+        btn.classList.remove("is-copied", "is-copy-failed");
+        clearTimeout(btn.__copyResetTimer);
+
+        if (copied) {
+            btn.classList.add("is-copied");
+            btn.setAttribute("title", "Copied");
+            btn.setAttribute("aria-label", "Copied");
+            btn.innerHTML = checkIcon;
+        } else {
+            btn.classList.add("is-copy-failed");
+            btn.setAttribute("title", "Copy failed");
+            btn.setAttribute("aria-label", "Copy failed");
+            btn.innerHTML = copyIcon;
+        }
+
+        btn.__copyResetTimer = setTimeout(() => {
+            btn.classList.remove("is-copied", "is-copy-failed");
+            btn.setAttribute("title", originalTitle);
+            btn.setAttribute("aria-label", originalTitle);
+            btn.innerHTML = copyIcon;
+        }, copied ? 1400 : 1200);
+    }
+
+    // =========================================================
     // Helpers for tutor_push
+    // =========================================================
 
     _escapeHtml(s) {
         return String(s)
@@ -261,30 +745,36 @@ export class AiSidebar extends Component {
             .replaceAll("'", "&#039;");
     }
 
-    _getLastAssistantTextFromDom() {
+    _getRecentAssistantTextsFromDom(limit = 10) {
         const root = this.chatUiRef?.el;
-        if (!root) return null;
+        if (!root) return [];
 
-        // último mensaje recibido (asistente)
-        const items = root.querySelectorAll(".nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-markdown-container");
-        const last = items?.[items.length - 1];
-        const text = (last?.innerText || last?.textContent || "").trim();
-        return text || null;
+        const items = Array.from(
+            root.querySelectorAll(".nlux-comp-chatItem.nlux-comp-chatItem--received .nlux-markdown-container")
+        );
+
+        return items
+            .slice(-limit)
+            .map((el) => normalizeAssistantTextForCompare(el?.innerText || el?.textContent || ""))
+            .filter(Boolean);
     }
 
     _isDuplicateAssistantText(text) {
-        const t = String(text || "").trim();
-        if (!t) return true;
+        const normalized = normalizeAssistantTextForCompare(text);
+        if (!normalized) return true;
 
-        // 1) check rápido contra lo último que inyectamos nosotros
         const now = Date.now();
-        if (this._lastInjectedTutorText === t && now - this._lastInjectedTutorAt < 6000) {
+        const lastInjectedNormalized = normalizeAssistantTextForCompare(this._lastInjectedTutorText || "");
+
+        if (
+            lastInjectedNormalized === normalized &&
+            now - this._lastInjectedTutorAt < 6000
+        ) {
             return true;
         }
 
-        // 2) check contra lo que YA renderizó NLUX en el DOM
-        const lastDom = this._getLastAssistantTextFromDom();
-        if (lastDom && lastDom === t) {
+        const recentDomTexts = this._getRecentAssistantTextsFromDom?.(12) || [];
+        if (recentDomTexts.includes(normalized)) {
             return true;
         }
 
@@ -292,7 +782,6 @@ export class AiSidebar extends Component {
     }
 
     _injectAssistantToNlux(text) {
-        // Encuentra el contenedor donde NLUX mete los mensajes
         const root = this.chatUiRef?.el;
         if (!root) return;
 
@@ -302,12 +791,9 @@ export class AiSidebar extends Component {
             return;
         }
 
-        // Crea un “chat item received” con estructura compatible
         const item = document.createElement("div");
         item.className = "nlux-comp-chatItem nlux-comp-chatItem--received";
 
-        // Usamos markdown container porque NLUX lo usa para render
-        // (no hacemos markdown real; sólo texto con saltos)
         const safe = this._escapeHtml(text).replaceAll("\n", "<br/>");
 
         item.innerHTML = `
@@ -320,13 +806,11 @@ export class AiSidebar extends Component {
 
         segments.appendChild(item);
 
-        // Tu lógica de anti-auto-scroll: simula “llegó assistant”
         try {
             this._anchorEl = item;
             this._startLockToAnchor();
         } catch (_) {}
 
-        // Reflow por si NLUX recalcula heights
         requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     }
 
@@ -343,7 +827,6 @@ export class AiSidebar extends Component {
 
     async _waitOffcanvasStable(el, timeout = 1200) {
         if (!el) return;
-        // Si bootstrap está animando, espera a que termine
         if (!el.classList.contains("hiding") && !el.classList.contains("showing")) return;
 
         await Promise.race([
@@ -392,7 +875,6 @@ export class AiSidebar extends Component {
     }
 
     _ensureBackdropVisible() {
-        // Por si quedó pick_mode colgado
         document.body.classList.remove("o_ai_pick_mode");
 
         const el = this._getOffcanvasEl();
@@ -415,33 +897,47 @@ export class AiSidebar extends Component {
         document.body.classList.add("offcanvas-open");
     }
 
+    _focusComposerInput() {
+        if (this._hasManualSelection()) return;
+
+        const composerInput =
+            this.chatUiRef?.el?.querySelector(".nlux-composer-container textarea, .nlux-composer-container input");
+        if (!composerInput) return;
+
+        requestAnimationFrame(() => {
+            if (this._hasManualSelection()) return;
+            try {
+                composerInput.focus({ preventScroll: true });
+            } catch {
+                composerInput.focus();
+            }
+        });
+    }
+
     _afterShown() {
         this._normalizeDomAfterTransitions();
         this._ensureBackdropVisible();
 
-        // reflow NLUX si estamos en chat
         if (!this.state.showRecorderPanel) {
             requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
         }
 
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
-        // ✅ al abrir: manda contexto actual si existe (por si la recarga no lo “flusheó”)
         try {
             const ctx = this.state.currentContext;
             if (ctx?.model) this.aiWs?.sendLiveContext?.({ context_model: ctx.model });
         } catch (_) {}
+
+        this._flushPendingTutorMessages?.();
+        this._focusComposerInput();
     }
 
     _afterHidden() {
         document.body.classList.remove("o_ai_pick_mode");
         this._normalizeDomAfterTransitions();
-
-        // ✅ Limpieza segura del backdrop / body
         this._forceOffcanvasCleanup();
-
         this._disposeBsOffcanvas();
-
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
     }
 
@@ -451,8 +947,6 @@ export class AiSidebar extends Component {
             if (!el) return;
 
             document.body.classList.remove("o_ai_pick_mode");
-
-            // ✅ espera si todavía está abriendo/cerrando
             await this._waitOffcanvasStable(el, 1200);
 
             const bs = this._getBsOffcanvas();
@@ -469,7 +963,6 @@ export class AiSidebar extends Component {
             const ok = await p;
 
             if (!ok) {
-                // fallback duro
                 el.classList.remove("show");
                 el.setAttribute("aria-hidden", "true");
                 el.removeAttribute("aria-modal");
@@ -486,14 +979,13 @@ export class AiSidebar extends Component {
             if (!el) return;
 
             document.body.classList.remove("o_ai_pick_mode");
-
-            // ✅ espera si todavía está en transición (clave del doble click)
             await this._waitOffcanvasStable(el, 1200);
 
             const bs = this._getBsOffcanvas();
             if (!bs) {
                 el.classList.add("show");
                 this._ensureBackdropVisible();
+                this._focusComposerInput();
                 return;
             }
 
@@ -501,6 +993,7 @@ export class AiSidebar extends Component {
             bs.show();
             await p;
             this._ensureBackdropVisible();
+            this._focusComposerInput();
         });
     }
 
@@ -511,6 +1004,7 @@ export class AiSidebar extends Component {
     // =========================================================
     // Recorder / Pick
     // =========================================================
+
     async _loadRecorderPermission() {
         try {
             this.state.canSeeRecorderToggle = await user.hasGroup("base.group_system");
@@ -525,10 +1019,10 @@ export class AiSidebar extends Component {
         this.state.showRecorderPanel = !this.state.showRecorderPanel;
         this._closeFeedbackPopover();
 
-        // reflow al volver a chat
         if (!this.state.showRecorderPanel) {
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
             window.dispatchEvent(new Event("resize"));
+            this._focusComposerInput();
         }
     }
 
@@ -549,7 +1043,6 @@ export class AiSidebar extends Component {
         try {
             await this.aiRecorder.finishRecording();
         } finally {
-            // ✅ Limpieza total para nuevo ejercicio
             this.state.recorderStatus = "idle";
             this.state.recorderSessionId = null;
             this.state.recorderPicked = null;
@@ -560,7 +1053,6 @@ export class AiSidebar extends Component {
             this._savedStepHashes = new Set();
             this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
-            // opcional: notifica al backend
             try {
                 await this.aiWs.sendEvent({
                     type: "exercise_event",
@@ -579,11 +1071,7 @@ export class AiSidebar extends Component {
         if (this.state.recorderStatus === "idle" || this.state.recorderPicking) return;
 
         this.state.recorderPicking = true;
-
-        // 1) cerrar el offcanvas “bien” (bootstrap)
         await this.hideSidebar();
-
-        // 2) activar pick mode SOLO mientras está cerrado
         document.body.classList.add("o_ai_pick_mode");
 
         try {
@@ -592,7 +1080,6 @@ export class AiSidebar extends Component {
         } catch (e) {
             console.warn("[ai_recorder] pick failed:", e);
         } finally {
-            // 3) quitar pick mode + reabrir
             document.body.classList.remove("o_ai_pick_mode");
             await this.showSidebar();
             this.state.recorderPicking = false;
@@ -616,7 +1103,7 @@ export class AiSidebar extends Component {
         const inst = this._getBsOffcanvasInstance({ create: false });
         if (!inst) return;
         try {
-            inst.dispose(); // ✅ resetea el “isShown” interno y handlers de bootstrap
+            inst.dispose();
         } catch (e) {}
     }
 
@@ -683,18 +1170,81 @@ export class AiSidebar extends Component {
         }
     }
 
+    _queueTutorMessage(text, timestamp = null) {
+        const cleaned = String(text || "").trim();
+        if (!cleaned) return;
+
+        const queue = getTutorPendingQueue();
+        const key = `${cleaned}__${timestamp || ""}`;
+
+        const alreadyQueued = queue.some((item) => item.key === key);
+        if (alreadyQueued) return;
+
+        queue.push({
+            key,
+            text: cleaned,
+            timestamp: timestamp || new Date().toISOString(),
+        });
+
+        if (queue.length > 50) {
+            queue.splice(0, queue.length - 50);
+        }
+    }
+
+    _flushPendingTutorMessages() {
+        if (!this.aiChat) return;
+        if (!this._isSidebarOpen()) return;
+
+        const queue = getTutorPendingQueue();
+        if (!queue.length) return;
+
+        const pending = queue.splice(0, queue.length);
+        const failed = [];
+
+        for (const item of pending) {
+            const cleaned = String(item.text || "").trim();
+            if (!cleaned) continue;
+
+            if (this._isDuplicateAssistantText(cleaned)) {
+                continue;
+            }
+
+            const inserted = this._pushAssistantMessageToNlux(cleaned);
+
+            if (inserted) {
+                this._lastInjectedTutorText = cleaned;
+                this._lastInjectedTutorAt = Date.now();
+            } else {
+                failed.push(item);
+            }
+        }
+
+        if (failed.length) {
+            queue.push(...failed);
+        }
+
+        requestAnimationFrame(() => {
+            this._ensureCopyButtons?.();
+            this._installManualSelectionGuard?.();
+        });
+    }
+
+    _isSidebarOpen() {
+        const el = this._getOffcanvasEl();
+        return !!el?.classList?.contains("show");
+    }
+
     // =========================================================
-    // WS Tutor Push (receive server-driven messages)
+    // WS Tutor Push
     // =========================================================
+
     _setupTutorPushListener() {
-        if (this._onTutorPush) return;
+        if (this._tutorPushSubscribed) return;
 
         this._onTutorPush = (ev) => {
-            // Soporta ambos formatos:
-            // 1) { kind: "tutor_push", data: {...} }
-            // 2) {...} crudo
-            const msg = ev?.kind === "tutor_push" ? ev.data : ev;
+            const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
+
             if (msg.type !== "tutor_push") return;
 
             const text =
@@ -702,26 +1252,56 @@ export class AiSidebar extends Component {
                 msg.message ||
                 msg.content ||
                 msg.text ||
-                (typeof msg === "string" ? msg : "");
+                "";
 
-            if (!text) return;
+            const cleaned = String(text || "").trim();
+            if (!cleaned) return;
 
-            // ✅ intenta inyectarlo en NLUX
-            const pushed = this._pushAssistantMessageToNlux(String(text));
+            const normalized = normalizeAssistantTextForCompare(cleaned);
+
+            console.log("[AI SIDEBAR tutor_push]", {
+                type: msg.type,
+                cleaned,
+                normalized,
+                chatReady: !!this.aiChat,
+                sidebarOpen: this._isSidebarOpen(),
+            });
+
+            if (this._isDuplicateAssistantText(cleaned)) {
+                return;
+            }
+
+            // Si el chat aún no está listo o el sidebar está cerrado,
+            // se guarda para mostrarlo después.
+            if (!this.aiChat || !this._isSidebarOpen()) {
+                this._queueTutorMessage(cleaned, msg.timestamp);
+                return;
+            }
+
+            // Si está abierto, intentamos insertarlo.
+            const inserted = this._pushAssistantMessageToNlux(cleaned);
+
+            if (inserted) {
+                this._lastInjectedTutorText = cleaned;
+                this._lastInjectedTutorAt = Date.now();
+            } else {
+                // Si falló, no lo perdemos.
+                this._queueTutorMessage(cleaned, msg.timestamp);
+            }
         };
 
-        // Suscribir al servicio
         try {
             this.aiWs?.subscribe?.(this._onTutorPush);
+            this._tutorPushSubscribed = true;
         } catch (e) {
             console.warn("[AiSidebar] aiWs.subscribe failed:", e);
         }
 
-        // Extra: escucha también el CustomEvent por si lo usas
         this._onTutorPushEvent = (e) => {
             const data = e?.detail;
             this._onTutorPush?.({ kind: "tutor_push", data });
         };
+
         try {
             window.addEventListener("ai:tutor_push", this._onTutorPushEvent);
         } catch {}
@@ -739,49 +1319,125 @@ export class AiSidebar extends Component {
         this._onTutorPushEvent = null;
     }
 
-    /**
-     * Intenta insertar un mensaje "assistant" en NLUX.
-     * Devuelve true si pudo; false si no encontró API compatible.
-     */
     _pushAssistantMessageToNlux(text) {
         if (!this.aiChat) return false;
 
-        // Variante 1: algunos builds tienen "addMessage"
+        // Intento 1: API directa de NLUX
         if (typeof this.aiChat.addMessage === "function") {
             try {
                 this.aiChat.addMessage({
                     role: "assistant",
                     content: text,
                 });
+
+                requestAnimationFrame(() => {
+                    this._ensureCopyButtons?.();
+                    this._installManualSelectionGuard?.();
+                });
+
                 return true;
             } catch (e) {
                 console.warn("[AiSidebar] aiChat.addMessage failed:", e);
             }
         }
 
-        // Variante 2: otros tienen "pushMessage"
+        // Intento 2: API alternativa de NLUX
         if (typeof this.aiChat.pushMessage === "function") {
             try {
                 this.aiChat.pushMessage({
                     role: "assistant",
                     content: text,
                 });
+
+                requestAnimationFrame(() => {
+                    this._ensureCopyButtons?.();
+                    this._installManualSelectionGuard?.();
+                });
+
                 return true;
             } catch (e) {
                 console.warn("[AiSidebar] aiChat.pushMessage failed:", e);
             }
         }
 
-        // Variante 3: ultra fallback: inyectar DOM (no recomendado, pero útil para verificar)
-        // Lo dejo apagado por defecto:
-        // return this._pushAssistantDomFallback(text);
+        // Intento 3: fallback DOM usando el último mensaje recibido como plantilla
+        const root = this.chatUiRef?.el;
+        if (!root) return false;
 
-        return false;
+        const segments = root.querySelector(".nlux-chatSegments-container");
+        if (!segments) return false;
+
+        const receivedItems = Array.from(
+            root.querySelectorAll(".nlux-comp-chatItem.nlux-comp-chatItem--received")
+        );
+        const templateItem = receivedItems[receivedItems.length - 1] || null;
+
+        let item = null;
+
+        if (templateItem) {
+            item = templateItem.cloneNode(true);
+
+            // limpiar elementos añadidos por nosotros
+            item.querySelectorAll(
+                ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover"
+            ).forEach((el) => el.remove());
+
+            const md =
+                item.querySelector(".nlux-markdown-container") ||
+                item.querySelector(".nlux-comp-messageContent") ||
+                item.querySelector(".nlux-comp-messageText");
+
+            if (md) {
+                md.innerHTML = this._escapeHtml(text).replace(/\n/g, "<br/>");
+                if (md.hasAttribute?.("nlux-message-id")) {
+                    md.setAttribute(
+                        "nlux-message-id",
+                        `tutor_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+                    );
+                }
+            } else {
+                const msgRoot =
+                    item.querySelector(".nlux-comp-message") ||
+                    item.querySelector(".nlux-comp-bubble") ||
+                    item;
+
+                const body = document.createElement("div");
+                body.className = "nlux-markdown-container";
+                body.innerHTML = this._escapeHtml(text).replace(/\n/g, "<br/>");
+                msgRoot.appendChild(body);
+            }
+        } else {
+            item = document.createElement("div");
+            item.className = "nlux-comp-chatItem nlux-comp-chatItem--received";
+            item.innerHTML = `
+                <div class="nlux-comp-message">
+                    <div class="nlux-markdown-container">
+                        ${this._escapeHtml(text).replace(/\n/g, "<br/>")}
+                    </div>
+                </div>
+            `;
+        }
+
+        segments.appendChild(item);
+
+        try {
+            this._anchorEl = item;
+            this._startLockToAnchor();
+        } catch {}
+
+        requestAnimationFrame(() => {
+            this._ensureCopyButtons?.();
+            this._installManualSelectionGuard?.();
+            window.dispatchEvent(new Event("resize"));
+        });
+
+        return true;
     }
 
     // =========================================================
     // Chat (NLUX)
     // =========================================================
+
     updateChatPlaceholder(newPlaceholder) {
         if (this.aiChat && this.aiChat.updateComposerOptions) {
             this.aiChat.updateComposerOptions({ placeholder: newPlaceholder });
@@ -823,17 +1479,24 @@ export class AiSidebar extends Component {
             })
             .withMessageOptions({ waitTimeBeforeStreamCompletion: "never" });
 
+        this._removeManualSelectionGuard?.();
+
         this.aiChat.mount(this.chatUiRef.el);
 
         this._waitAndInitAntiAutoScroll();
         this._initFeedbackObserver();
+
+        requestAnimationFrame(() => {
+            this._flushPendingTutorMessages?.();
+            this._startCopyButtonsObserver?.();
+            this._installManualSelectionGuard?.();
+            this._focusComposerInput();
+        });
     }
 
     async reset() {
-        // reset chat UI
         this.createAiChat();
 
-        // reset process UI
         if (this.state.timerInterval) clearInterval(this.state.timerInterval);
         this.state.showButtons = false;
         this.state.processActive = false;
@@ -841,29 +1504,34 @@ export class AiSidebar extends Component {
 
         window.__AI_TUTOR_OWL_PREVIEW__ = {
             message: "",
-            timestamp: null,
+            timestamp: "",
             visible: false,
         };
 
-        // notifica al floating button para que refresque al instante
         window.dispatchEvent(new CustomEvent("ai:preview_reset"));
 
-        // ✅ reinicia WS de verdad
         try {
             await this.aiWs.restart({ reason: "ui_reset" });
         } catch (e) {
             console.warn("[ai_sidebar] ws restart failed:", e);
         }
+
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
-        // ✅ fuerza enviar contexto actual tras reset (por si NLUX re-mount)
         try {
             const ctx = this.state.currentContext;
             if (ctx?.model) this.aiWs?.sendLiveContext?.({ context_model: ctx.model });
         } catch (_) {}
+
+        requestAnimationFrame(() => {
+            this._startCopyButtonsObserver?.();
+            this._focusComposerInput();
+        });
     }
 
     async batchText(message) {
+        this._expectingAssistant = true;
+
         try {
             const response = await this.sendMessage(message);
             const messageText = response.result.response;
@@ -873,18 +1541,29 @@ export class AiSidebar extends Component {
                 this.state.showButtons = true;
                 this.state.exerciseId = exercise_id;
             }
+
             return new String(messageText);
         } catch (error) {
             return `Error: ${error.message}`;
+        } finally {
+            setTimeout(() => {
+                this._expectingAssistant = false;
+            }, 0);
         }
     }
 
     async streamText(message, observer) {
+        this._expectingAssistant = true;
+
         try {
             this.onMessage = (content) => observer.next(String(content));
-            this.onStop = () => observer.complete();
+            this.onStop = () => {
+                this._expectingAssistant = false;
+                observer.complete();
+            };
 
             const response = await this.sendMessage(message);
+
             if (response.stream) {
                 response.stream.pipeTo(
                     new WritableStream({
@@ -892,15 +1571,19 @@ export class AiSidebar extends Component {
                         close: () => this.onStop(),
                     })
                 );
+            } else {
+                this._expectingAssistant = false;
             }
         } catch (error) {
+            this._expectingAssistant = false;
             observer.error(`AI Error: ${error.message}`);
         }
     }
 
     // =========================================================
-    // Process UI (timer + validate modal)
+    // Process UI
     // =========================================================
+
     startProcess() {
         this.state.processActive = true;
         this.state.timerSeconds = 0;
@@ -950,7 +1633,6 @@ export class AiSidebar extends Component {
                 this.state.result = "passed";
                 this.state.firstFailedStep = null;
 
-                // ✅ al pasar: limpia para nuevo ejercicio
                 this.cancelProcess();
                 this.state.recorderFeed = [];
                 this.state.recorderStepIndex = 0;
@@ -972,69 +1654,10 @@ export class AiSidebar extends Component {
         this.state.firstFailedStep = null;
     }
 
-    _pushAssistantMessageToNlux(text) {
-        const root = this.chatUiRef?.el;
-        if (!root) return;
-
-        const segs = root.querySelector(".nlux-chatSegments-container");
-        if (!segs) {
-            console.warn("[AiSidebar] NLUX segments container not found");
-            return;
-        }
-
-        // 1) Clona un mensaje recibido real para heredar EXACTO el estilo NLUX
-        const lastReceived =
-            segs.querySelector(".nlux-comp-chatItem.nlux-comp-chatItem--received:last-of-type") ||
-            segs.querySelector(".nlux-comp-chatItem.nlux-comp-chatItem--received");
-
-        let node = null;
-
-        if (lastReceived) {
-            node = lastReceived.cloneNode(true);
-
-            // Limpia cosas que NO quieres duplicar (tu feedback bar, popovers, etc.)
-            node.querySelectorAll(".ai_feedback_bar, .ai_feedback_popover").forEach((el) => el.remove());
-        } else {
-            // Fallback (raro): estructura mínima si aún no hay mensajes “received”
-            node = document.createElement("div");
-            node.className = "nlux-comp-chatItem nlux-comp-chatItem--received";
-            node.innerHTML = `
-                <div class="nlux-comp-message">
-                  <div class="nlux-markdown-container"></div>
-                </div>
-            `;
-        }
-
-        // 2) Reemplaza SOLO el contenido del contenedor markdown
-        const md = node.querySelector(".nlux-markdown-container") || node;
-
-        // Asegura un id para que tu feedback bar no colisione
-        const uid = `tutor_push_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        try {
-            md.setAttribute("nlux-message-id", uid);
-        } catch {}
-
-        // Si tu texto trae markdown (**bold**), NLUX normalmente lo renderiza internamente.
-        // Aquí para no romper, ponlo como texto plano (mantiene estilo). Si quieres markdown,
-        // podemos hacer un render simple luego.
-        md.textContent = text;
-
-        // 3) Inserta al final (como una respuesta normal)
-        segs.appendChild(node);
-
-        // 4) Reinyecta tu feedback bar sobre este nuevo mensaje
-        try {
-            this._injectFeedbackBar(node);
-        } catch {}
-
-        // 5) Opcional: engancha tu anti-auto-scroll para que “pegue” este mensaje
-        this._anchorEl = node;
-        this._startLockToAnchor();
-    }
-
     // =========================================================
     // Anti auto-scroll
     // =========================================================
+
     _waitAndInitAntiAutoScroll() {
         const root = this.chatUiRef?.el;
         if (!root) return;
@@ -1153,8 +1776,9 @@ export class AiSidebar extends Component {
     }
 
     // =========================================================
-    // Feedback (FULL: up/down + quick popover + textarea popover)
+    // Feedback
     // =========================================================
+
     _initFeedbackObserver() {
         if (this._feedbackObserver) return;
         const root = this.chatUiRef?.el;
@@ -1164,6 +1788,10 @@ export class AiSidebar extends Component {
             root
                 .querySelectorAll(".nlux-comp-chatItem.nlux-comp-chatItem--received")
                 .forEach((item) => this._injectFeedbackBar(item));
+
+            requestAnimationFrame(() => {
+                this._ensureCopyButtons?.();
+            });
         };
 
         attachToExisting();
@@ -1181,7 +1809,6 @@ export class AiSidebar extends Component {
     }
 
     _setComposerAutoFocus(enabled) {
-        // NLUX: evita que el textarea del popover pierda foco
         try {
             if (this.aiChat?.updateComposerOptions) {
                 this.aiChat.updateComposerOptions({ autoFocus: !!enabled });
@@ -1194,7 +1821,6 @@ export class AiSidebar extends Component {
     }
 
     _getNluxMessageUid(chatItemEl) {
-        // nlux pone nlux-message-id en el contenedor markdown
         const msg = chatItemEl.querySelector(".nlux-markdown-container[nlux-message-id]");
         return msg?.getAttribute("nlux-message-id") || null;
     }
@@ -1280,10 +1906,13 @@ export class AiSidebar extends Component {
         });
 
         messageRoot.appendChild(bar);
+
+        requestAnimationFrame(() => {
+            this._ensureCopyButtons?.();
+        });
     }
 
     _toggleFeedbackQuickPopover({ chatItemEl, anchorBtn, messageUid, messageHtml, messageText }) {
-        // si ya hay algo abierto, ciérralo primero
         if (this._activeFeedbackPopover) this._closeFeedbackPopover();
 
         const portal = this.chatUiRef?.el || this.containerRef?.el;
@@ -1319,7 +1948,6 @@ export class AiSidebar extends Component {
           </div>
         `;
 
-        // no romper NLUX
         const stopOnly = (e) => e.stopPropagation();
         pop.addEventListener("pointerdown", stopOnly, true);
         pop.addEventListener("mousedown", stopOnly, true);
@@ -1446,16 +2074,11 @@ export class AiSidebar extends Component {
     }
 
     _forceOffcanvasCleanup() {
-        // Si hay otro offcanvas abierto, NO limpies (evita romper otros)
         if (document.querySelector(".offcanvas.show")) return;
 
-        // Borra backdrops (bootstrap o manuales)
         document.querySelectorAll(".offcanvas-backdrop").forEach((b) => b.remove());
-
-        // Quita clases típicas
         document.body.classList.remove("offcanvas-open");
 
-        // Solo limpia modal-open/estilos si NO hay modales abiertos
         if (!document.querySelector(".modal.show")) {
             document.body.classList.remove("modal-open");
             document.body.style.removeProperty("overflow");
@@ -1474,7 +2097,6 @@ export class AiSidebar extends Component {
         placeholder = _t("Tell us what we can improve..."),
         presetVote = "",
     }) {
-        // toggle si es el mismo
         if (this._activeFeedbackPopover) {
             if (this._activeFeedbackPopover.dataset.messageUid === messageUid) {
                 this._closeFeedbackPopover();
@@ -1617,6 +2239,7 @@ export class AiSidebar extends Component {
 
         pop.remove();
         this._activeFeedbackPopover = null;
+        this._focusComposerInput();
     }
 
     async _submitAiFeedback(payload, opts = {}) {
@@ -1635,6 +2258,7 @@ export class AiSidebar extends Component {
     // =========================================================
     // Resize
     // =========================================================
+
     onMouseDown(event) {
         event.preventDefault();
         if (!this.containerRef.el || !this.handleRef.el) return;

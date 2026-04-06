@@ -181,6 +181,28 @@
                         <!-- OJO: no self-closing. Mejor siempre tag normal para mount de librerías -->
                         <div t-ref="chat-ui" id="chat-ui-container" class="h-100"></div>
 
+                        <t t-if="state.hintVisible and state.hintMessage">
+                            <div class="ai-inline-hint-container"
+                                 t-attf-style="bottom: {{ state.composerHeight + 16 }}px;">
+                                <div class="ai-inline-hint">
+                                    <button
+                                        type="button"
+                                        class="ai-inline-hint-close"
+                                        t-on-click.stop.prevent="closeInlineHint"
+                                        aria-label="Close hint"
+                                    >×</button>
+
+                                    <div class="ai-inline-hint-time">
+                                        <t t-esc="hintTimeAgo"/>
+                                    </div>
+
+                                    <div class="ai-inline-hint-text">
+                                        <t t-esc="state.hintMessage"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+
                         <div class="ai-buttons-container"
                              t-att-class="{'visible': state.showButtons}"
                              t-attf-style="bottom: {{ state.composerHeight + 25 }}px;">
