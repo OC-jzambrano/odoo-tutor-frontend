@@ -1,5 +1,101 @@
 /* ===== COPY + FOOTER ACTIONS ===== */
 
+/* ===== INLINE HINT ===== */
+
+#offcanvasAiSidebar .ai-inline-hint-container {
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    display: flex;
+    justify-content: flex-end;
+    z-index: 1001;
+    pointer-events: none;
+}
+
+#offcanvasAiSidebar .ai-inline-hint {
+    position: relative;
+    pointer-events: auto;
+    width: min(100%, 360px);
+    padding: 14px 40px 14px 14px;
+    border-radius: 16px;
+    border: 1px solid #f3d98b;
+    background: linear-gradient(180deg, #fff9e6 0%, #fff3c4 100%);
+    color: #5b4600;
+    box-shadow: 0 16px 36px rgba(95, 73, 0, 0.18);
+    backdrop-filter: blur(10px);
+}
+
+#offcanvasAiSidebar .ai-inline-hint-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(91, 70, 0, 0.08);
+    color: #7a5c00;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+#offcanvasAiSidebar .ai-inline-hint-close:hover {
+    background: rgba(91, 70, 0, 0.16);
+}
+
+#offcanvasAiSidebar .ai-inline-hint-close:active {
+    transform: scale(0.96);
+}
+
+#offcanvasAiSidebar .ai-inline-hint-time {
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #8a6a00;
+}
+
+#offcanvasAiSidebar .ai-inline-hint-text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: #4a3900;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+@media (prefers-color-scheme: dark) {
+    #offcanvasAiSidebar .ai-inline-hint {
+        border-color: #5f4a11;
+        background: linear-gradient(180deg, #3a3118 0%, #2f2813 100%);
+        color: #f8e7a6;
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38);
+    }
+
+    #offcanvasAiSidebar .ai-inline-hint-close {
+        background: rgba(248, 231, 166, 0.08);
+        color: #f2d774;
+    }
+
+    #offcanvasAiSidebar .ai-inline-hint-close:hover {
+        background: rgba(248, 231, 166, 0.16);
+    }
+
+    #offcanvasAiSidebar .ai-inline-hint-time {
+        color: #d6bf68;
+    }
+
+    #offcanvasAiSidebar .ai-inline-hint-text {
+        color: #f8e7a6;
+    }
+}
+
 /* Fila de acciones debajo del mensaje */
 #chat-ui-container .nlux-comp-messageFeedback,
 #chat-ui-container .nlux-comp-chatItem-actions,
