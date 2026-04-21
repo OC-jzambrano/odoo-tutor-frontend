@@ -49,6 +49,8 @@ function getTutorPendingQueue() {
     return window.__AI_TUTOR_PENDING_QUEUE__;
 }
 
+const TUTOR_ASSISTANT_AVATAR_URL = "/odoo_tutor/static/images/iabotv2.png";
+
 export class AiSidebar extends Component {
     static template = "ai_chat.AiSidebar";
     static props = {};
@@ -79,6 +81,8 @@ export class AiSidebar extends Component {
         this._activeFeedbackPopover = null;
         this._feedbackObserver = null;
         this._copyButtonsObserver = null;
+        this._composerOverflowInput = null;
+        this._composerOverflowHandler = null;
 
         this._seenTutorPush = new Map(); // key -> timestamp
         this._tutorPushTtlMs = 8000;
@@ -144,18 +148,19 @@ export class AiSidebar extends Component {
             hintMessage: "",
             hintTimestamp: null,
             hintVisible: false,
+            hintHovered: false,
+            hintExiting: false,
+            hintCycle: 0,
         });
 
         window.aiTutorDebug = window.aiTutorDebug || {};
 
         window.aiTutorDebug.showHint = (text, timestamp = new Date().toISOString()) => {
-            this.state.hintMessage = text;
-            this.state.hintTimestamp = timestamp;
-            this.state.hintVisible = true;
+            this._setInlineHint(text, timestamp);
         };
 
         window.aiTutorDebug.hideHint = () => {
-            this.state.hintVisible = false;
+            this.closeInlineHint();
         };
 
         // -------------------------
@@ -194,13 +199,68 @@ export class AiSidebar extends Component {
 
             if (!cleaned) return;
 
+            this._clearInlineHintTimers();
             this.state.hintMessage = cleaned;
             this.state.hintTimestamp = timestamp || new Date().toISOString();
+            this.state.hintHovered = false;
+            this.state.hintExiting = false;
+            this.state.hintCycle += 1;
             this.state.hintVisible = true;
+            this._scheduleInlineHintAutoHide();
+        };
+
+        this._resetInlineHintState = ({ clearMessage = false } = {}) => {
+            this._clearInlineHintTimers();
+            this.state.hintVisible = false;
+            this.state.hintExiting = false;
+            this.state.hintHovered = false;
+            if (clearMessage) {
+                this.state.hintMessage = "";
+                this.state.hintTimestamp = null;
+            }
         };
 
         this.closeInlineHint = () => {
-            this.state.hintVisible = false;
+            if (!this.state.hintVisible && !this.state.hintExiting) return;
+
+            this._clearInlineHintTimers();
+
+            if (this.state.hintExiting) return;
+
+            this.state.hintExiting = true;
+            this._hintExitTimer = setTimeout(() => {
+                this._resetInlineHintState();
+            }, 180);
+        };
+
+        this.pauseInlineHint = () => {
+            this.state.hintHovered = true;
+            this._clearInlineHintTimers();
+        };
+
+        this.resumeInlineHint = () => {
+            this.state.hintHovered = false;
+            if (!this.state.hintVisible || this.state.hintExiting) return;
+            this._scheduleInlineHintAutoHide(2200);
+        };
+
+        this._clearInlineHintTimers = () => {
+            if (this._hintAutoHideTimer) {
+                clearTimeout(this._hintAutoHideTimer);
+                this._hintAutoHideTimer = null;
+            }
+            if (this._hintExitTimer) {
+                clearTimeout(this._hintExitTimer);
+                this._hintExitTimer = null;
+            }
+        };
+
+        this._scheduleInlineHintAutoHide = (delay = 5600) => {
+            this._clearInlineHintTimers();
+            this._hintAutoHideTimer = setTimeout(() => {
+                if (this.state.hintHovered) return;
+                this.closeInlineHint();
+            }, delay);
         };
 
         // -------------------------
@@ -236,6 +296,8 @@ export class AiSidebar extends Component {
                     this.state.composerWidth = composer.offsetWidth;
                     this.state.composerHeight = composer.offsetHeight;
                 }
+                this._setupComposerOverflowTracking();
+                this._syncComposerOverflowState();
             });
 
             if (this.chatUiRef?.el) {
@@ -288,6 +350,8 @@ export class AiSidebar extends Component {
             requestAnimationFrame(() => {
                 this._startCopyButtonsObserver?.();
                 this._installManualSelectionGuard?.();
+                this._setupComposerOverflowTracking();
+                this._syncComposerOverflowState();
             });
         });
 
@@ -298,6 +362,7 @@ export class AiSidebar extends Component {
 
             clearInterval(this.contextInterval);
             this._teardownTutorPushListener();
+            this._resetInlineHintState({ clearMessage: true });
 
             if (this.observer) this.observer.disconnect();
             this.observer = null;
@@ -335,6 +400,7 @@ export class AiSidebar extends Component {
             }
 
             this._removeManualSelectionGuard?.();
+            this._teardownComposerOverflowTracking();
         });
 
         this.onHandleMouseDown = useMouseListeners({
@@ -392,16 +458,21 @@ export class AiSidebar extends Component {
         return messageHost.querySelector(".ai-msg-footer");
     }
 
-    _ensureFooterRow(messageHost) {
-        let footer = this._findFooterRow(messageHost);
-        if (footer) return footer;
-
+    _ensureFooterRow(messageHost, itemEl) {
         const textBlock = this._getMessageTextBlock(messageHost);
         if (!textBlock) return null;
 
+        let footer = this._findFooterRow(messageHost);
+        if (footer) {
+            if (footer.nextElementSibling !== textBlock) {
+                textBlock.insertAdjacentElement("beforebegin", footer);
+            }
+            return footer;
+        }
+
         footer = document.createElement("div");
         footer.className = "ai-msg-footer";
-        textBlock.insertAdjacentElement("afterend", footer);
+        textBlock.insertAdjacentElement("beforebegin", footer);
 
         return footer;
     }
@@ -425,23 +496,7 @@ export class AiSidebar extends Component {
     }
 
     _moveFeedbackButtonsToFooter(messageHost, footer) {
-        if (!messageHost || !footer) return;
-
-        const buttons = this._findExistingFeedbackButtons(messageHost);
-        if (!buttons.length) return;
-
-        buttons.forEach((btn) => {
-            if (!footer.contains(btn)) {
-                footer.appendChild(btn);
-            }
-        });
-
-        const rows = this._findExistingFeedbackRows(messageHost);
-        rows.forEach((row) => {
-            if (row !== footer && !row.querySelector("button")) {
-                row.remove();
-            }
-        });
+        return;
     }
 
     _findCommentButton(containerEl) {
@@ -503,26 +558,42 @@ export class AiSidebar extends Component {
 
     _insertCopyButton(actionsRow, copyBtn) {
         if (!actionsRow || !copyBtn) return;
+        actionsRow.insertAdjacentElement("afterbegin", copyBtn);
+    }
 
-        const commentBtn = this._findCommentButton(actionsRow);
+    _syncMessageSequenceClasses(items = null) {
+        const messageItems = items || this._getMessageItems();
+        if (!messageItems.length) return;
 
-        if (commentBtn && commentBtn.parentNode) {
-            commentBtn.insertAdjacentElement("afterend", copyBtn);
-            return;
-        }
+        messageItems.forEach((itemEl, index) => {
+            itemEl.classList.remove("ai-received-run-start");
 
-        actionsRow.appendChild(copyBtn);
+            if (!itemEl.classList.contains("nlux-comp-chatItem--received")) {
+                return;
+            }
+
+            const prevItem = messageItems[index - 1];
+            const nextItem = messageItems[index + 1];
+            const prevIsReceived = !!prevItem?.classList?.contains("nlux-comp-chatItem--received");
+            const nextIsReceived = !!nextItem?.classList?.contains("nlux-comp-chatItem--received");
+
+            if (!prevIsReceived && nextIsReceived) {
+                itemEl.classList.add("ai-received-run-start");
+            }
+        });
     }
 
     _ensureCopyButtons() {
         const items = this._getMessageItems();
         if (!items.length) return;
 
+        this._syncMessageSequenceClasses(items);
+
         items.forEach((itemEl) => {
             const messageHost = this._getMessageHost(itemEl);
             if (!messageHost) return;
 
-            const footer = this._ensureFooterRow(messageHost);
+            const footer = this._ensureFooterRow(messageHost, itemEl);
             if (!footer) return;
 
             this._moveFeedbackButtonsToFooter(messageHost, footer);
@@ -654,6 +725,40 @@ export class AiSidebar extends Component {
         return formatTimeAgo(this.state.hintTimestamp);
     }
 
+    get currentContextLabel() {
+        const model = this.state.currentContext?.model;
+        if (!model) return "";
+
+        const modelLabels = {
+            "sale.order": "Sales",
+            "account.move": "Accounting",
+            "project.task": "Project Tasks",
+        };
+
+        if (modelLabels[model]) return modelLabels[model];
+
+        return model
+            .split(".")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" / ");
+    }
+
+    get sidebarConnectionLabel() {
+        if (this.state.isLoading) return "Thinking";
+        if (this.state.processActive) return "Session live";
+        if (this.state.wsStatus === "online") return "Connected";
+        if (this.state.wsStatus === "offline") return "Offline";
+        return "Connecting";
+    }
+
+    get sidebarConnectionClass() {
+        if (this.state.isLoading) return "is-thinking";
+        if (this.state.processActive) return "is-live";
+        if (this.state.wsStatus === "online") return "is-online";
+        if (this.state.wsStatus === "offline") return "is-offline";
+        return "is-connecting";
+    }
+
     _copySvg() {
         return `
             <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -781,9 +886,21 @@ export class AiSidebar extends Component {
         return false;
     }
 
+    _ensureConversationVisible() {
+        const root = this.chatUiRef?.el;
+        if (!root) return;
+
+        const chatRoom = root.querySelector(".nlux-chatRoom-container");
+        if (chatRoom?.classList?.contains("nlux-chatRoom-starting")) {
+            chatRoom.classList.remove("nlux-chatRoom-starting");
+        }
+    }
+
     _injectAssistantToNlux(text) {
         const root = this.chatUiRef?.el;
         if (!root) return;
+
+        this._ensureConversationVisible();
 
         const segments = root.querySelector(".nlux-chatSegments-container");
         if (!segments) {
@@ -791,18 +908,7 @@ export class AiSidebar extends Component {
             return;
         }
 
-        const item = document.createElement("div");
-        item.className = "nlux-comp-chatItem nlux-comp-chatItem--received";
-
-        const safe = this._escapeHtml(text).replaceAll("\n", "<br/>");
-
-        item.innerHTML = `
-            <div class="nlux-comp-message">
-                <div class="nlux-markdown-container">
-                    ${safe}
-                </div>
-            </div>
-        `;
+        const item = this._buildManualReceivedItem(text);
 
         segments.appendChild(item);
 
@@ -812,6 +918,13 @@ export class AiSidebar extends Component {
         } catch (_) {}
 
         requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    }
+
+    _buildManualReceivedItem(text) {
+        const item = document.createElement("div");
+        item.className = "nlux-comp-chatItem nlux-comp-chatItem--received nlux-comp-chatItem--bubblesLayout";
+        item.innerHTML = `<div class="nlux-comp-chatItem-participantInfo"><div class="nlux-comp-avatar"><div class="nlux-comp-avatarContainer"><div class="nlux-comp-avatarPicture" style="background-image: url('${TUTOR_ASSISTANT_AVATAR_URL}')"></div></div></div></div><div class="nlux-comp-message"><div class="nlux-markdown-container">${this._escapeHtml(text).replace(/\n/g, "<br/>")}</div></div>`;
+        return item;
     }
 
     // =========================================================
@@ -897,6 +1010,47 @@ export class AiSidebar extends Component {
         document.body.classList.add("offcanvas-open");
     }
 
+    _setupComposerOverflowTracking() {
+        const composerInput = this.chatUiRef?.el?.querySelector(".nlux-composer-container textarea");
+        if (!composerInput) {
+            this._teardownComposerOverflowTracking();
+            return;
+        }
+
+        if (this._composerOverflowInput === composerInput) {
+            return;
+        }
+
+        this._teardownComposerOverflowTracking();
+
+        this._composerOverflowInput = composerInput;
+        this._composerOverflowHandler = () => {
+            requestAnimationFrame(() => this._syncComposerOverflowState());
+        };
+
+        composerInput.addEventListener("input", this._composerOverflowHandler);
+        composerInput.addEventListener("scroll", this._composerOverflowHandler);
+
+        requestAnimationFrame(() => this._syncComposerOverflowState());
+    }
+
+    _syncComposerOverflowState() {
+        const composerInput = this._composerOverflowInput || this.chatUiRef?.el?.querySelector(".nlux-composer-container textarea");
+        if (!composerInput) return;
+
+        const hasOverflow = composerInput.scrollHeight > composerInput.clientHeight + 2;
+        composerInput.classList.toggle("is-overflowing", hasOverflow);
+    }
+
+    _teardownComposerOverflowTracking() {
+        if (this._composerOverflowInput && this._composerOverflowHandler) {
+            this._composerOverflowInput.removeEventListener("input", this._composerOverflowHandler);
+            this._composerOverflowInput.removeEventListener("scroll", this._composerOverflowHandler);
+        }
+        this._composerOverflowInput = null;
+        this._composerOverflowHandler = null;
+    }
+
     _focusComposerInput() {
         if (this._hasManualSelection()) return;
 
@@ -930,6 +1084,9 @@ export class AiSidebar extends Component {
         } catch (_) {}
 
         this._flushPendingTutorMessages?.();
+        if (this.state.hintVisible && this.state.hintMessage && !this.state.hintExiting) {
+            this._scheduleInlineHintAutoHide?.();
+        }
         this._focusComposerInput();
     }
 
@@ -938,7 +1095,9 @@ export class AiSidebar extends Component {
         this._normalizeDomAfterTransitions();
         this._forceOffcanvasCleanup();
         this._disposeBsOffcanvas();
+        this.state.isLoading = false;
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
+        this._resetInlineHintState?.({ clearMessage: true });
     }
 
     async hideSidebar() {
@@ -1322,6 +1481,8 @@ export class AiSidebar extends Component {
     _pushAssistantMessageToNlux(text) {
         if (!this.aiChat) return false;
 
+        this._ensureConversationVisible();
+
         // Intento 1: API directa de NLUX
         if (typeof this.aiChat.addMessage === "function") {
             try {
@@ -1407,15 +1568,7 @@ export class AiSidebar extends Component {
                 msgRoot.appendChild(body);
             }
         } else {
-            item = document.createElement("div");
-            item.className = "nlux-comp-chatItem nlux-comp-chatItem--received";
-            item.innerHTML = `
-                <div class="nlux-comp-message">
-                    <div class="nlux-markdown-container">
-                        ${this._escapeHtml(text).replace(/\n/g, "<br/>")}
-                    </div>
-                </div>
-            `;
+            item = this._buildManualReceivedItem(text);
         }
 
         segments.appendChild(item);
@@ -1490,6 +1643,8 @@ export class AiSidebar extends Component {
             this._flushPendingTutorMessages?.();
             this._startCopyButtonsObserver?.();
             this._installManualSelectionGuard?.();
+            this._setupComposerOverflowTracking();
+            this._syncComposerOverflowState();
             this._focusComposerInput();
         });
     }
@@ -1498,6 +1653,7 @@ export class AiSidebar extends Component {
         this.createAiChat();
 
         if (this.state.timerInterval) clearInterval(this.state.timerInterval);
+        this.state.isLoading = false;
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.timerValue = "00:00:00";
@@ -1531,6 +1687,7 @@ export class AiSidebar extends Component {
 
     async batchText(message) {
         this._expectingAssistant = true;
+        this.state.isLoading = true;
 
         try {
             const response = await this.sendMessage(message);
@@ -1546,6 +1703,7 @@ export class AiSidebar extends Component {
         } catch (error) {
             return `Error: ${error.message}`;
         } finally {
+            this.state.isLoading = false;
             setTimeout(() => {
                 this._expectingAssistant = false;
             }, 0);
@@ -1554,10 +1712,12 @@ export class AiSidebar extends Component {
 
     async streamText(message, observer) {
         this._expectingAssistant = true;
+        this.state.isLoading = true;
 
         try {
             this.onMessage = (content) => observer.next(String(content));
             this.onStop = () => {
+                this.state.isLoading = false;
                 this._expectingAssistant = false;
                 observer.complete();
             };
@@ -1572,9 +1732,11 @@ export class AiSidebar extends Component {
                     })
                 );
             } else {
+                this.state.isLoading = false;
                 this._expectingAssistant = false;
             }
         } catch (error) {
+            this.state.isLoading = false;
             this._expectingAssistant = false;
             observer.error(`AI Error: ${error.message}`);
         }

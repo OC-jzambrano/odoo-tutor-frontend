@@ -10,56 +10,84 @@
             t-ref="container"
         >
             <div
-                class="handle"
+                class="handle ai-sidebar-handle"
                 t-ref="handle"
-                style="height: 100%; width: 5px; float: left; position: absolute; cursor: e-resize;"
                 t-on-mousedown="onHandleMouseDown"
             />
 
-            <div class="offcanvas-header">
-                <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo tutor</h5>
+            <div class="offcanvas-header ai-sidebar-header">
+                <div class="ai-sidebar-header-main">
+                    <div class="ai-sidebar-brand">
+                        <span class="ai-sidebar-brand-mark">
+                            <i t-att-class="state.showRecorderPanel ? 'fa fa-dot-circle-o' : 'fa fa-comments-o'"/>
+                        </span>
 
-                <button
-                    t-if="!state.showRecorderPanel"
-                    type="button"
-                    class="btn rounded-circle p-1 btn-refresh"
-                    aria-label="Reset"
-                    t-on-click.stop.prevent="reset"
-                    style="width:25px;height:25px;display:flex;align-items:center;justify-content:center;margin:5px;"
-                >
-                    <i class="fa fa-repeat"/>
-                </button>
+                        <div class="ai-sidebar-brand-copy">
+                            <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo Tutor</h5>
+                            <div class="ai-sidebar-subtitle">
+                                <t t-if="state.showRecorderPanel">Recorder workspace for guided flows</t>
+                                <t t-else="">
+                                    <t t-if="state.processActive">Guided session running in this window</t>
+                                    <t t-else="">Context-aware assistant for everyday Odoo work</t>
+                                </t>
+                            </div>
 
-                <!-- Toggle Recorder/Chat (solo admin) -->
-                <button
-                    t-if="state.canSeeRecorderToggle"
-                    type="button"
-                    class="btn btn-sm btn-recorder-toggle ms-1"
-                    t-on-click.stop.prevent="toggleRecorderPanel"
-                    t-att-title="state.showRecorderPanel ? 'Switch to Chat' : 'Switch to Recorder'"
-                >
-                    <i t-att-class="state.showRecorderPanel ? 'fa fa-comments me-1' : 'fa fa-dot-circle-o me-1'"/>
-                    <t t-esc="state.showRecorderPanel ? 'Chat' : 'Recorder'"/>
-                </button>
+                            <div t-if="!state.showRecorderPanel" class="ai-sidebar-meta-row">
+                                <span t-if="currentContextLabel" class="ai-sidebar-meta-chip is-context">
+                                    <i class="fa fa-crosshairs"/>
+                                    <t t-esc="currentContextLabel"/>
+                                </span>
 
-                <div t-if="state.processActive and !state.showRecorderPanel" class="d-flex align-items-center">
-                    <div class="timer-display me-2">
-                        <t t-esc="state.timerValue" t-if="state.timerValue"/>
-                        <t t-else="">00:00:00</t>
+                                <span class="ai-sidebar-meta-chip ai-sidebar-connection-chip"
+                                      t-att-class="sidebarConnectionClass">
+                                    <span class="ai-sidebar-connection-dot"/>
+                                    <t t-esc="sidebarConnectionLabel"/>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <button
-                    type="button"
-                    class="btn-close text-reset"
-                    aria-label="Close"
-                    t-on-click.stop.prevent="onCloseSidebar"
-                />
+                <div class="ai-sidebar-header-actions">
+                    <button
+                        t-if="!state.showRecorderPanel"
+                        type="button"
+                        class="btn rounded-circle p-1 btn-refresh ai-sidebar-reset"
+                        aria-label="Reset"
+                        t-on-click.stop.prevent="reset"
+                    >
+                        <i class="fa fa-repeat"/>
+                    </button>
+
+                    <button
+                        t-if="state.canSeeRecorderToggle"
+                        type="button"
+                        class="btn btn-sm btn-recorder-toggle"
+                        t-on-click.stop.prevent="toggleRecorderPanel"
+                        t-att-title="state.showRecorderPanel ? 'Switch to Chat' : 'Switch to Recorder'"
+                    >
+                        <i t-att-class="state.showRecorderPanel ? 'fa fa-comments me-1' : 'fa fa-dot-circle-o me-1'"/>
+                        <t t-esc="state.showRecorderPanel ? 'Chat' : 'Recorder'"/>
+                    </button>
+
+                    <div t-if="state.processActive and !state.showRecorderPanel" class="d-flex align-items-center">
+                        <div class="timer-display">
+                            <t t-esc="state.timerValue" t-if="state.timerValue"/>
+                            <t t-else="">00:00:00</t>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="btn-close text-reset"
+                        aria-label="Close"
+                        t-on-click.stop.prevent="onCloseSidebar"
+                    />
+                </div>
             </div>
 
-            <!-- BODY: ahora es flex y ocupa el resto (sin cambiar tu CSS, solo estructura/clases bootstrap) -->
-            <div class="offcanvas-body ms-2 flex-grow-1 d-flex flex-column">
-                <div class="flex-grow-1 d-flex flex-column h-100">
+            <div class="offcanvas-body ai-sidebar-body flex-grow-1 d-flex flex-column">
+                <div class="ai-sidebar-content flex-grow-1 d-flex flex-column h-100">
 
                     <!-- =========================
                          RECORDER PANEL (SIEMPRE MONTADO, SOLO SE OCULTA)
@@ -177,14 +205,41 @@
                     <!-- =========================
                          CHAT PANEL (SIEMPRE MONTADO, SOLO SE OCULTA)
                          ========================= -->
-                    <div t-att-class="state.showRecorderPanel ? 'd-none' : 'flex-grow-1 d-flex flex-column h-100 position-relative'">
+                    <div t-att-class="state.showRecorderPanel ? 'd-none' : 'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative'">
                         <!-- OJO: no self-closing. Mejor siempre tag normal para mount de librerías -->
-                        <div t-ref="chat-ui" id="chat-ui-container" class="h-100"></div>
+                        <div t-ref="chat-ui"
+                             id="chat-ui-container"
+                             t-att-class="{
+                                 'h-100': true,
+                                 'is-busy': state.isLoading,
+                                 'is-offline': state.wsStatus === 'offline',
+                             }"
+                             t-att-aria-busy="state.isLoading ? 'true' : 'false'"></div>
 
                         <t t-if="state.hintVisible and state.hintMessage">
                             <div class="ai-inline-hint-container"
                                  t-attf-style="bottom: {{ state.composerHeight + 16 }}px;">
-                                <div class="ai-inline-hint">
+                                <div class="ai-inline-hint"
+                                     t-key="state.hintCycle"
+                                     t-att-class="{
+                                         'is-exiting': state.hintExiting,
+                                         'is-paused': state.hintHovered,
+                                     }"
+                                     t-on-mouseenter="pauseInlineHint"
+                                     t-on-mouseleave="resumeInlineHint">
+                                    <div class="ai-inline-hint-header">
+                                        <div class="ai-inline-hint-badge">
+                                            <span class="ai-inline-hint-badge-icon">
+                                                <i class="fa fa-lightbulb-o"/>
+                                            </span>
+                                            <span class="ai-inline-hint-badge-text">Context hint</span>
+                                        </div>
+
+                                        <div class="ai-inline-hint-time">
+                                            <t t-esc="hintTimeAgo"/>
+                                        </div>
+                                    </div>
+
                                     <button
                                         type="button"
                                         class="ai-inline-hint-close"
@@ -192,27 +247,20 @@
                                         aria-label="Close hint"
                                     >×</button>
 
-                                    <div class="ai-inline-hint-time">
-                                        <t t-esc="hintTimeAgo"/>
-                                    </div>
-
                                     <div class="ai-inline-hint-text">
                                         <t t-esc="state.hintMessage"/>
+                                    </div>
+
+                                    <div class="ai-inline-hint-progress">
+                                        <span class="ai-inline-hint-progress-bar"/>
                                     </div>
                                 </div>
                             </div>
                         </t>
 
                         <div class="ai-buttons-container"
-                             t-att-class="{'visible': state.showButtons}"
+                             t-att-class="{'visible': state.showButtons and state.processActive}"
                              t-attf-style="bottom: {{ state.composerHeight + 25 }}px;">
-
-                            <button
-                                t-if="!state.processActive and state.showButtons"
-                                class="dk-btn dk-btn-primary"
-                                t-on-click.stop.prevent="startProcess">
-                                Start
-                            </button>
 
                             <div t-if="state.processActive" class="d-flex align-items-center">
                                 <button
@@ -237,409 +285,5 @@
             </div>
         </div>
 
-        <style>
-            .btn:disabled {
-                opacity: 0.7;
-                cursor: not-allowed;
-            }
-
-            .fa-spinner {
-                animation: fa-spin 1s infinite linear;
-            }
-
-            @keyframes fa-spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(359deg); }
-            }
-
-            .btn-refresh:active i {
-                animation: spin 0.6s linear;
-            }
-
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-
-            .timer-display {
-                background: rgba(0, 0, 0, 0.7);
-                color: white;
-                padding: 0px 15px;
-                border-radius: 20px;
-                font-family: monospace;
-                font-size: 15px;
-            }
-
-            .d-flex { display: flex; }
-            .align-items-center { align-items: center; }
-            .me-2 { margin-right: 0.5rem; }
-
-            /* Toggle button */
-            .btn-recorder-toggle {
-                border: 1px solid #d8dadd;
-                background: #fff;
-                color: #374151;
-                border-radius: 999px;
-                font-weight: 600;
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                padding: 4px 10px;
-                transition: all .2s ease;
-            }
-            .btn-recorder-toggle:hover { background: #f7f7f9; }
-            .btn-recorder-toggle:active { transform: translateY(1px); }
-
-            /* Result modal */
-            .result-modal-overlay {
-                position: fixed;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background-color: rgba(0, 0, 0, 0.5);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 1000;
-            }
-
-            .result-modal-content {
-                background: white;
-                padding: 20px;
-                border-radius: 8px;
-                width: 600px;
-                max-width: 90%;
-                max-height: 80vh;
-                overflow-y: auto;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            }
-
-            .result-title {
-                margin-top: 0;
-                border-bottom: 1px solid #eee;
-                padding-bottom: 10px;
-            }
-
-            .step-description {
-                background-color: #f8f9fa;
-                padding: 15px;
-                border-left: 4px solid #dc3545;
-                border-radius: 4px;
-                margin: 15px 0;
-            }
-
-            .step-details pre {
-                background-color: #f8f9fa;
-                padding: 10px;
-                border-radius: 4px;
-                max-height: 200px;
-                overflow-y: auto;
-                font-size: 13px;
-            }
-
-            .modal-footer {
-                margin-top: 20px;
-                text-align: right;
-            }
-
-            /* Chat floating exercise buttons */
-            .ai-buttons-container {
-                position: absolute;
-                right: 45px;
-                display: flex;
-                gap: 15px;
-                z-index: 1000;
-                transform: translateY(100%);
-                opacity: 0;
-                pointer-events: none;
-                transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
-            }
-
-            .ai-buttons-container.visible {
-                transform: translateY(0);
-                opacity: 0.75;
-                pointer-events: auto;
-            }
-
-            .dk-btn {
-                height: 35px;
-                padding: 0 15px;
-                border-radius: 24px;
-                font-weight: 600;
-                font-size: 15px;
-                letter-spacing: 0.5px;
-                border: none;
-                cursor: pointer;
-                transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                position: relative;
-                overflow: hidden;
-            }
-
-            .dk-btn:hover {
-                transform: translateY(-3px);
-                box-shadow: 0 6px 14px rgba(0, 0, 0, 0.16);
-            }
-
-            .dk-btn:active {
-                transform: translateY(1px);
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            }
-
-            .dk-btn-primary {
-                background: linear-gradient(135deg, #3498db, #2c3e50);
-                color: white;
-                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
-            }
-
-            .dk-btn-secondary {
-                background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-                color: #495057;
-                border: 1px solid #dee2e6;
-            }
-
-            .dk-btn-accent {
-                background: linear-gradient(135deg, #00c853, #1e88e5);
-                color: white;
-                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
-            }
-
-            .dk-btn::after {
-                content: '';
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                width: 5px;
-                height: 5px;
-                background: rgba(255, 255, 255, 0.5);
-                opacity: 0;
-                border-radius: 100%;
-                transform: scale(1, 1) translate(-50%);
-                transform-origin: 50% 50%;
-            }
-
-            .dk-btn:focus:not(:active)::after {
-                animation: ripple 1s ease-out;
-            }
-
-            @keyframes ripple {
-                0% { transform: scale(0, 0); opacity: 0.5; }
-                100% { transform: scale(25, 25); opacity: 0; }
-            }
-
-            /* Recorder panel styles */
-            .o_ai_recorder_panel {
-                background: #fff;
-                border: 1px solid #e6e8ee;
-                border-radius: 14px;
-                padding: 12px;
-                margin-right: 8px;
-                height: 100%;
-                min-height: 540px;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-
-            .o_ai_recorder_panel.is-recording {
-                border-color: #f3c4cc;
-                box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.08);
-            }
-
-            .o_ai_recorder_header {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 8px;
-            }
-
-            .o_ai_recorder_left {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-
-            .o_ai_rec_title {
-                font-weight: 700;
-                font-size: 22px;
-                line-height: 1;
-                color: #2e2f33;
-            }
-
-            .o_ai_rec_badge {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                padding: 4px 8px;
-                border-radius: 999px;
-                background: #fff2f2;
-                border: 1px solid #ffc9d2;
-                color: #dc3545;
-                font-size: 12px;
-                font-weight: 700;
-                letter-spacing: 0.2px;
-                text-transform: uppercase;
-            }
-
-            .o_ai_rec_badge .fa {
-                font-size: 9px;
-                animation: recPulse 1.2s infinite;
-            }
-
-            @keyframes recPulse {
-                0% { opacity: 0.35; }
-                50% { opacity: 1; }
-                100% { opacity: 0.35; }
-            }
-
-            .o_ai_recorder_right {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                flex-wrap: wrap;
-            }
-
-            .o_ai_recorder_meta {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 8px;
-            }
-
-            .o_ai_rec_meta_row {
-                background: #f6f7f9;
-                border: 1px solid #e6e8ee;
-                border-radius: 10px;
-                padding: 8px 10px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 8px;
-            }
-
-            .o_ai_rec_meta_row .lbl {
-                font-size: 12px;
-                color: #6b7280;
-                text-transform: uppercase;
-                letter-spacing: .2px;
-            }
-
-            .o_ai_rec_meta_row .val {
-                font-size: 13px;
-                font-weight: 700;
-                color: #20232a;
-            }
-
-            .o_ai_recorder_controls {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                flex-wrap: wrap;
-            }
-
-            .o_ai_recorder_pick {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                background: #f0f7ff;
-                border: 1px solid #cfe4ff;
-                color: #1e60a5;
-                border-radius: 999px;
-                padding: 4px 10px;
-                max-width: 100%;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                font-size: 12px;
-                font-weight: 600;
-            }
-
-            .o_ai_recorder_step textarea.form-control {
-                border-radius: 10px;
-                min-height: 72px;
-                resize: vertical;
-            }
-
-            .o_ai_rec_step_actions {
-                display: flex;
-                justify-content: flex-end;
-                margin-top: 8px;
-            }
-
-            .o_ai_recorder_feed {
-                border-top: 1px dashed #d8dbe4;
-                padding-top: 10px;
-                display: flex;
-                flex-direction: column;
-                min-height: 180px;
-                flex: 1 1 auto;
-            }
-
-            .o_ai_rec_feed_title {
-                font-size: 12px;
-                font-weight: 800;
-                letter-spacing: .5px;
-                color: #4b5563;
-                text-transform: uppercase;
-                margin-bottom: 8px;
-            }
-
-            .o_ai_rec_feed_list {
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-                overflow: auto;
-                max-height: 100%;
-                padding-right: 2px;
-            }
-
-            .o_ai_rec_feed_item {
-                border: 1px solid #e5e7eb;
-                border-radius: 10px;
-                padding: 8px 10px;
-                background: #fcfcfd;
-            }
-
-            .o_ai_rec_feed_item .line1,
-            .o_ai_rec_feed_item .line2 {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                gap: 8px;
-            }
-
-            .o_ai_rec_feed_item .typ {
-                font-weight: 800;
-                color: #1f2937;
-                text-transform: uppercase;
-                font-size: 12px;
-            }
-
-            .o_ai_rec_feed_item .tgt {
-                color: #374151;
-                font-size: 12px;
-                max-width: 52%;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                text-align: right;
-            }
-
-            .o_ai_rec_feed_item .ts {
-                font-size: 11px;
-                color: #6b7280;
-            }
-
-            .o_ai_rec_feed_item .err {
-                color: #b42318;
-                font-size: 12px;
-                font-weight: 700;
-                max-width: 60%;
-                text-align: right;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-        </style>
     </t>
 </templates>

@@ -5,14 +5,23 @@
             <div
                 class="ai-floating-button"
                 t-ref="floatingRoot"
-                t-att-class="state.dragging ? 'ai-floating-button is-dragging' : 'ai-floating-button'"
+                t-att-class="{
+                    'is-dragging': state.dragging,
+                    'is-open': state.chatOpen,
+                    'has-preview': state.previewVisible &amp;&amp; state.previewMessage &amp;&amp; !state.chatOpen &amp;&amp; !state.dragging,
+                    'has-attention': launcherHasAttention,
+                    'is-fresh': isPreviewFresh,
+                }"
                 t-att-style="
                     'transform: translate3d(' + state.dragX + 'px, ' + state.dragY + 'px, 0);' +
                     (state.chatOpen ? ' opacity:0; pointer-events:none;' : '')
                 "
             >
-                <t t-if="state.previewVisible and state.previewMessage and !state.chatOpen">
-                    <div class="ai-owl-preview">
+                <t t-if="state.previewVisible and state.previewMessage and !state.chatOpen and !state.dragging">
+                    <div class="ai-owl-preview"
+                         role="button"
+                         tabindex="0"
+                         t-on-click.stop.prevent="toggleChat">
                         <button
                             type="button"
                             class="ai-owl-preview-close"
@@ -21,7 +30,6 @@
                             t-on-click.stop.prevent="closePreview"
                             aria-label="Close preview"
                         >×</button>
-
                         <div class="ai-owl-preview-time">
                             <t t-esc="previewTimeAgo"/>
                         </div>
@@ -42,12 +50,22 @@
                     t-on-click="onIconClick"
                     data-ai-sidebar-toggle="1"
                     aria-controls="offcanvasAiSidebar"
+                    aria-label="Open Odoo Tutor"
+                    t-att-title="launcherHasAttention ? 'Open Odoo Tutor - new guidance available' : 'Open Odoo Tutor'"
                 >
-                    <img
-                        t-att-src="'/odoo_tutor/static/images/iabotv2.png'"
-                        alt="Asistente IA"
-                        class="ai-owl-trigger-img"
-                    />
+                    <span class="ai-owl-trigger-halo"/>
+                    <span class="ai-owl-trigger-shell">
+                        <span class="ai-owl-trigger-core">
+                            <img
+                                t-att-src="'/odoo_tutor/static/images/iabotv2.png'"
+                                alt="Asistente IA"
+                                class="ai-owl-trigger-img"
+                            />
+                        </span>
+                    </span>
+
+                    <span class="ai-owl-trigger-badge">AI</span>
+                    <span t-if="launcherHasAttention" class="ai-owl-trigger-status"/>
                 </button>
             </div>
         </t>

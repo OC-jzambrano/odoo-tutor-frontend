@@ -1223,6 +1223,25 @@ class AiFloatingButton extends Component {
         return formatTimeAgo(this.state.previewTimestamp);
     }
 
+    get isPreviewFresh() {
+        this.state.previewTick;
+        if (!this.state.previewTimestamp) {
+            return false;
+        }
+        const ts = new Date(this.state.previewTimestamp).getTime();
+        return Number.isFinite(ts) && Date.now() - ts < 2 * 60 * 1000;
+    }
+
+    get launcherHasAttention() {
+        return (
+            !!this.state.previewMessage &&
+            !this.state.chatOpen &&
+            !this.state.dragging &&
+            !this._previewDismissed &&
+            this.isPreviewFresh
+        );
+    }
+
     closePreview() {
         this._previewDismissed = true;
         this.state.previewVisible = false;
