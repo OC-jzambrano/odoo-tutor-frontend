@@ -1478,15 +1478,6 @@ export class AiSidebar extends Component {
         } catch (e) {
             console.warn("[AiSidebar] aiWs.subscribe failed:", e);
         }
-
-        this._onTutorPushEvent = (e) => {
-            const data = e?.detail;
-            this._onTutorPush?.({ kind: "tutor_push", data });
-        };
-
-        try {
-            window.addEventListener("ai:tutor_push", this._onTutorPushEvent);
-        } catch {}
     }
 
     _teardownTutorPushListener() {
@@ -1494,11 +1485,6 @@ export class AiSidebar extends Component {
             if (this._onTutorPush) this.aiWs?.unsubscribe?.(this._onTutorPush);
         } catch {}
         this._onTutorPush = null;
-
-        try {
-            if (this._onTutorPushEvent) window.removeEventListener("ai:tutor_push", this._onTutorPushEvent);
-        } catch {}
-        this._onTutorPushEvent = null;
     }
 
     _pushAssistantMessageToNlux(text) {
@@ -1673,6 +1659,11 @@ export class AiSidebar extends Component {
     }
 
     async reset() {
+        const pendingQueue = getTutorPendingQueue();
+        pendingQueue.splice(0, pendingQueue.length);
+        this._lastInjectedTutorText = null;
+        this._lastInjectedTutorAt = 0;
+
         this.createAiChat();
 
         if (this.state.timerInterval) clearInterval(this.state.timerInterval);

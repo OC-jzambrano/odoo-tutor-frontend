@@ -262,10 +262,14 @@ export const aiWsService = {
       // ⚠️ IMPORTANTE: reset wsSessionId por conexión nueva
       st.wsSessionId = null;
 
-      st.ws = new WebSocket(fullUrl);
+      const ws = new WebSocket(fullUrl);
+      st.ws = ws;
 
       st.connectPromise = new Promise((resolve, reject) => {
-        st.ws.onopen = () => {
+        ws.onopen = () => {
+          if (st.ws !== ws) {
+            return;
+          }
           st.isConnected = true;
           setStatus(st, "open");
           console.log("[ai_ws] connected");
@@ -274,7 +278,10 @@ export const aiWsService = {
           st.connectPromise = null;
         };
 
-        st.ws.onmessage = (ev) => {
+        ws.onmessage = (ev) => {
+          if (st.ws !== ws) {
+            return;
+          }
           console.log("[ai_ws] << raw:", ev.data);
 
           let data = null;
@@ -373,12 +380,18 @@ export const aiWsService = {
           }
         };
 
-        st.ws.onerror = (err) => {
+        ws.onerror = (err) => {
+          if (st.ws !== ws) {
+            return;
+          }
           console.error("[ai_ws] error:", err);
           setStatus(st, "error");
         };
 
-        st.ws.onclose = (ev) => {
+        ws.onclose = (ev) => {
+          if (st.ws !== ws) {
+            return;
+          }
           st.isConnected = false;
           setStatus(st, "closed");
           console.warn("[ai_ws] closed:", ev.code, ev.reason);
