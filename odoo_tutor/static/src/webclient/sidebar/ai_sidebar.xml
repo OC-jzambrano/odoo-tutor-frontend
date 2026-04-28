@@ -26,23 +26,7 @@
                             <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo Tutor</h5>
                             <div class="ai-sidebar-subtitle">
                                 <t t-if="state.showRecorderPanel">Recorder workspace for guided flows</t>
-                                <t t-else="">
-                                    <t t-if="state.processActive">Guided session running in this window</t>
-                                    <t t-else="">Context-aware assistant for everyday Odoo work</t>
-                                </t>
-                            </div>
-
-                            <div t-if="!state.showRecorderPanel" class="ai-sidebar-meta-row">
-                                <span t-if="currentContextLabel" class="ai-sidebar-meta-chip is-context">
-                                    <i class="fa fa-crosshairs"/>
-                                    <t t-esc="currentContextLabel"/>
-                                </span>
-
-                                <span class="ai-sidebar-meta-chip ai-sidebar-connection-chip"
-                                      t-att-class="sidebarConnectionClass">
-                                    <span class="ai-sidebar-connection-dot"/>
-                                    <t t-esc="sidebarConnectionLabel"/>
-                                </span>
+                                <t t-else="" t-esc="currentRouteLabel"/>
                             </div>
                         </div>
                     </div>
@@ -211,8 +195,6 @@
                              id="chat-ui-container"
                              t-att-class="{
                                  'h-100': true,
-                                 'is-busy': state.isLoading,
-                                 'is-offline': state.wsStatus === 'offline',
                              }"
                              t-att-aria-busy="state.isLoading ? 'true' : 'false'"></div>
 

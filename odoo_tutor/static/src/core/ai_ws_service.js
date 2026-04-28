@@ -6,6 +6,7 @@ import { rpc } from "@web/core/network/rpc";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
+const WS_SESSION_STORAGE_KEY = "odoo_tutor.ws_session_info";
 
 async function getUserLoginSafe() {
   const sess = (window.odoo && odoo.session_info) || {};
@@ -31,6 +32,74 @@ function isChatFinal(data) {
 /** ✅ NUEVO (mínimo): detectar tutor_push sin tocar tu flujo FIFO */
 function isTutorPush(data) {
   return !!(data && typeof data === "object" && data.type === "tutor_push");
+}
+
+function getBrowserStorage() {
+  try {
+    if (window.localStorage) return window.localStorage;
+  } catch {}
+  try {
+    if (window.sessionStorage) return window.sessionStorage;
+  } catch {}
+  return null;
+}
+
+function clearStoredWsSession() {
+  const storage = getBrowserStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(WS_SESSION_STORAGE_KEY);
+  } catch {}
+}
+
+function readStoredWsSession({ db, userLogin, odooSessionId } = {}) {
+  const storage = getBrowserStorage();
+  if (!storage) return null;
+
+  try {
+    const raw = storage.getItem(WS_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") {
+      clearStoredWsSession();
+      return null;
+    }
+
+    if (
+      data.db !== (db || null) ||
+      data.userLogin !== (userLogin || null) ||
+      data.odooSessionId !== (odooSessionId || null) ||
+      !data.wsSessionId
+    ) {
+      clearStoredWsSession();
+      return null;
+    }
+
+    return data.wsSessionId;
+  } catch {
+    clearStoredWsSession();
+    return null;
+  }
+}
+
+function persistWsSession({ db, userLogin, odooSessionId, wsSessionId }) {
+  if (!wsSessionId) return;
+
+  const storage = getBrowserStorage();
+  if (!storage) return;
+
+  try {
+    storage.setItem(
+      WS_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        db: db || null,
+        userLogin: userLogin || null,
+        odooSessionId: odooSessionId || null,
+        wsSessionId,
+      })
+    );
+  } catch {}
 }
 
 // ✅ Estado GLOBAL: aunque el archivo se ejecute 2 veces, SOLO hay 1 WS real.
@@ -134,6 +203,11 @@ export const aiWsService = {
       });
     }
 
+    function clearPersistedSession() {
+      clearStoredWsSession();
+      window.__AI_TUTOR_WS_SESSION_ID = null;
+    }
+
     // ✅ Bridge global para el resto del front
     window.aiTutorSend = (payload) => {
       const ok = safeSend(payload);
@@ -162,17 +236,25 @@ export const aiWsService = {
       const sess = (window.odoo && odoo.session_info) || {};
       const params = new URLSearchParams();
 
-      // ⚠️ NO CAMBIAR tu session_id (este es el de Odoo y va en el querystring)
-      if (sess.session_id) params.set("session_id", sess.session_id);
-      if (sess.db) params.set("db", sess.db);
-
       let login = null;
       try {
         login = await getUserLoginSafe();
       } catch (e) {
         console.warn("[ai_ws] getUserLoginSafe failed:", e);
       }
-      params.set("user_login", login || "user_not_found");
+      const sessionScope = {
+        db: sess.db || null,
+        userLogin: login || "user_not_found",
+        odooSessionId: sess.session_id || null,
+      };
+
+      if (sessionScope.db) params.set("db", sessionScope.db);
+      params.set("user_login", sessionScope.userLogin);
+
+      const restoredSessionId = readStoredWsSession(sessionScope);
+      if (restoredSessionId) {
+        params.set("session_id", restoredSessionId);
+      }
 
       const fullUrl = `${baseUrl}?${params.toString()}`;
       console.log("[ai_ws] connecting:", fullUrl);
@@ -213,6 +295,7 @@ export const aiWsService = {
           ) {
             st.wsSessionId = data.session_id;
             window.__AI_TUTOR_WS_SESSION_ID = data.session_id;
+            persistWsSession({ ...sessionScope, wsSessionId: data.session_id });
             console.log("[ai_ws] ✅ WS session_id captured:", data.session_id);
 
             // resolver waiters
@@ -403,11 +486,18 @@ export const aiWsService = {
       return safeSend(payload);
     }
 
-    async function disconnect({ code = 1000, reason = "client_disconnect" } = {}) {
+    async function disconnect({
+      code = 1000,
+      reason = "client_disconnect",
+      clearSession = false,
+    } = {}) {
       const sock = st.ws;
       st.ws = null;
       st.isConnected = false;
       st.wsSessionId = null;
+      if (clearSession) {
+        clearPersistedSession();
+      }
       setStatus(st, "closed");
 
       while (st.pendingChats.length) {
@@ -428,8 +518,8 @@ export const aiWsService = {
       }
     }
 
-    async function restart({ reason = "restart" } = {}) {
-      await disconnect({ code: 1000, reason });
+    async function restart({ reason = "restart", clearSession = false } = {}) {
+      await disconnect({ code: 1000, reason, clearSession });
       await new Promise((r) => setTimeout(r, 80));
       await connect();
     }
@@ -454,6 +544,7 @@ export const aiWsService = {
       get wsSessionId() {
         return st.wsSessionId;
       },
+      clearPersistedSession,
     };
 
     window.aiWs = api;

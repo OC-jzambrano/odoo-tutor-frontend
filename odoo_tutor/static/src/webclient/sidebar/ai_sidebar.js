@@ -49,6 +49,12 @@ function getTutorPendingQueue() {
     return window.__AI_TUTOR_PENDING_QUEUE__;
 }
 
+function cleanText(value) {
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
 const TUTOR_ASSISTANT_AVATAR_URL = "/odoo_tutor/static/images/iabotv2.png";
 
 export class AiSidebar extends Component {
@@ -116,6 +122,7 @@ export class AiSidebar extends Component {
             isLoading: false,
 
             currentContext: null,
+            breadcrumbPath: "",
             placeholder: this.modelPlaceholders.default,
             composerHeight: 0,
             composerWidth: 0,
@@ -278,6 +285,7 @@ export class AiSidebar extends Component {
             }
 
             this._loadRecorderPermission();
+            this.state.breadcrumbPath = this._getCurrentBreadcrumbPath();
 
             this.contextInterval = setInterval(() => {
                 const newContext = this.contextService.getContext();
@@ -285,6 +293,11 @@ export class AiSidebar extends Component {
 
                 if (!this.state.currentContext || JSON.stringify(newContext) !== JSON.stringify(this.state.currentContext)) {
                     this.state.currentContext = newContext;
+                }
+
+                const breadcrumbPath = this._getCurrentBreadcrumbPath();
+                if (breadcrumbPath !== this.state.breadcrumbPath) {
+                    this.state.breadcrumbPath = breadcrumbPath;
                 }
             }, 250);
 
@@ -725,6 +738,10 @@ export class AiSidebar extends Component {
         return formatTimeAgo(this.state.hintTimestamp);
     }
 
+    get currentRouteLabel() {
+        return this.state.breadcrumbPath || this.currentContextLabel || "";
+    }
+
     get currentContextLabel() {
         const model = this.state.currentContext?.model;
         if (!model) return "";
@@ -743,20 +760,26 @@ export class AiSidebar extends Component {
             .join(" / ");
     }
 
-    get sidebarConnectionLabel() {
-        if (this.state.isLoading) return "Thinking";
-        if (this.state.processActive) return "Session live";
-        if (this.state.wsStatus === "online") return "Connected";
-        if (this.state.wsStatus === "offline") return "Offline";
-        return "Connecting";
-    }
+    _getCurrentBreadcrumbPath() {
+        const roots = Array.from(
+            document.querySelectorAll(
+                ".o_control_panel_breadcrumbs .o_breadcrumb, .o_navbar_breadcrumbs .o_breadcrumb, .o_fallback_breadcrumbs .o_breadcrumb"
+            )
+        );
+        const root = roots.find((el) => el?.getClientRects?.().length) || roots[0];
+        if (!root) return "";
 
-    get sidebarConnectionClass() {
-        if (this.state.isLoading) return "is-thinking";
-        if (this.state.processActive) return "is-live";
-        if (this.state.wsStatus === "online") return "is-online";
-        if (this.state.wsStatus === "offline") return "is-offline";
-        return "is-connecting";
+        const parts = Array.from(root.querySelectorAll(".breadcrumb .breadcrumb-item a"), (el) =>
+            cleanText(el.textContent)
+        );
+        const currentLabel = cleanText(root.querySelector(".o_last_breadcrumb_item")?.textContent);
+        if (currentLabel) {
+            parts.push(currentLabel);
+        }
+
+        return parts
+            .filter((part, index, allParts) => part && part !== "..." && allParts[index - 1] !== part)
+            .join(" / ");
     }
 
     _copySvg() {
@@ -1667,7 +1690,7 @@ export class AiSidebar extends Component {
         window.dispatchEvent(new CustomEvent("ai:preview_reset"));
 
         try {
-            await this.aiWs.restart({ reason: "ui_reset" });
+            await this.aiWs.restart({ reason: "ui_reset", clearSession: true });
         } catch (e) {
             console.warn("[ai_sidebar] ws restart failed:", e);
         }
