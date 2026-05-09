@@ -55,6 +55,26 @@ function cleanText(value) {
         .trim();
 }
 
+function getCurrentColorScheme() {
+    const scheme = cookie.get("color_scheme");
+    if (scheme === "dark" || scheme === "light") {
+        return scheme;
+    }
+
+    const doc = document.documentElement;
+    const body = document.body;
+    const dataScheme = doc?.dataset?.colorScheme || body?.dataset?.colorScheme;
+    if (dataScheme === "dark" || dataScheme === "light") {
+        return dataScheme;
+    }
+
+    if (doc?.classList?.contains("o_dark") || body?.classList?.contains("o_dark")) {
+        return "dark";
+    }
+
+    return "light";
+}
+
 const TUTOR_ASSISTANT_AVATAR_URL = "/odoo_tutor/static/images/iabotv2.png";
 
 export class AiSidebar extends Component {
@@ -121,6 +141,7 @@ export class AiSidebar extends Component {
             isStreamingMode: false,
             isLoading: false,
 
+            colorScheme: getCurrentColorScheme(),
             currentContext: null,
             breadcrumbPath: "",
             placeholder: this.modelPlaceholders.default,
@@ -275,6 +296,7 @@ export class AiSidebar extends Component {
         // -------------------------
         onMounted(() => {
             this._setupTutorPushListener();
+            this._syncColorScheme();
 
             const el = this._getOffcanvasEl();
             if (el) {
@@ -288,6 +310,8 @@ export class AiSidebar extends Component {
             this.state.breadcrumbPath = this._getCurrentBreadcrumbPath();
 
             this.contextInterval = setInterval(() => {
+                this._syncColorScheme();
+
                 const newContext = this.contextService.getContext();
                 if (!newContext) return;
 
@@ -365,6 +389,7 @@ export class AiSidebar extends Component {
                 this._installManualSelectionGuard?.();
                 this._setupComposerOverflowTracking();
                 this._syncComposerOverflowState();
+                this._applyColorSchemeToChat();
             });
         });
 
@@ -1606,6 +1631,22 @@ export class AiSidebar extends Component {
         }
     }
 
+    _syncColorScheme() {
+        const colorScheme = getCurrentColorScheme();
+        if (this.state.colorScheme !== colorScheme) {
+            this.state.colorScheme = colorScheme;
+        }
+        this._applyColorSchemeToChat(colorScheme);
+    }
+
+    _applyColorSchemeToChat(colorScheme = this.state.colorScheme) {
+        const theme = colorScheme === "dark" ? "dark" : "light";
+        const root = this.chatUiRef?.el?.querySelector(".nlux-AiChat-root");
+        if (root && root.getAttribute("data-color-scheme") !== theme) {
+            root.setAttribute("data-color-scheme", theme);
+        }
+    }
+
     async sendMessage(message) {
         this._expectingAssistant = true;
         const data = await this.aiWs.chat({ message, context: this.state.currentContext });
@@ -1627,7 +1668,8 @@ export class AiSidebar extends Component {
 
         const { partnerId, writeDate } = user;
         const userAvatar = imageUrl("res.partner", partnerId, "avatar_256", { unique: writeDate });
-        const theme = cookie.get("color_scheme");
+        const theme = getCurrentColorScheme();
+        this.state.colorScheme = theme;
 
         this.aiChat = globalThis["@nlux/core"]
             .createAiChat()
@@ -1654,6 +1696,7 @@ export class AiSidebar extends Component {
             this._installManualSelectionGuard?.();
             this._setupComposerOverflowTracking();
             this._syncComposerOverflowState();
+            this._applyColorSchemeToChat();
             this._focusComposerInput();
         });
     }

@@ -367,105 +367,103 @@
     }
 }
 
-@media (prefers-color-scheme: dark) {
-    #offcanvasAiSidebar {
-        --tutor-surface: #151a23;
-        --tutor-surface-soft: #1b2230;
-        --tutor-surface-subtle: #202938;
-        --tutor-border: #2c3748;
-        --tutor-border-strong: #39465c;
-        --tutor-text: #f3f4f6;
-        --tutor-text-muted: #c7ced8;
-        --tutor-text-soft: #9da8b7;
-        --tutor-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.18);
-        --tutor-shadow-md: 0 14px 32px rgba(0, 0, 0, 0.26);
-        --tutor-shadow-lg: 0 24px 56px rgba(0, 0, 0, 0.34);
-        background:
-            radial-gradient(circle at top right, rgba(135, 90, 123, 0.16), transparent 32%),
-            linear-gradient(180deg, #161d29 0%, #121824 100%);
-    }
+#offcanvasAiSidebar.is-dark-theme {
+    --tutor-surface: #151a23;
+    --tutor-surface-soft: #1b2230;
+    --tutor-surface-subtle: #202938;
+    --tutor-border: #2c3748;
+    --tutor-border-strong: #39465c;
+    --tutor-text: #f3f4f6;
+    --tutor-text-muted: #c7ced8;
+    --tutor-text-soft: #9da8b7;
+    --tutor-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.18);
+    --tutor-shadow-md: 0 14px 32px rgba(0, 0, 0, 0.26);
+    --tutor-shadow-lg: 0 24px 56px rgba(0, 0, 0, 0.34);
+    background:
+        radial-gradient(circle at top right, rgba(135, 90, 123, 0.16), transparent 32%),
+        linear-gradient(180deg, #161d29 0%, #121824 100%);
+}
 
-    #offcanvasAiSidebar .offcanvas-header {
-        background: linear-gradient(180deg, rgba(38, 28, 39, 0.84) 0%, rgba(22, 29, 41, 0.94) 100%);
-        border-bottom-color: rgba(248, 250, 252, 0.06);
-    }
+#offcanvasAiSidebar.is-dark-theme .offcanvas-header {
+    background: linear-gradient(180deg, rgba(38, 28, 39, 0.84) 0%, rgba(22, 29, 41, 0.94) 100%);
+    border-bottom-color: rgba(248, 250, 252, 0.06);
+}
 
-    #offcanvasAiSidebar .ai-sidebar-brand-mark {
-        background: linear-gradient(135deg, rgba(135, 90, 123, 0.22) 0%, rgba(67, 183, 164, 0.2) 100%);
-        color: #f3d7eb;
-        box-shadow:
-            inset 0 0 0 1px rgba(248, 250, 252, 0.06),
-            0 10px 22px rgba(0, 0, 0, 0.24);
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-sidebar-brand-mark {
+    background: linear-gradient(135deg, rgba(135, 90, 123, 0.22) 0%, rgba(67, 183, 164, 0.2) 100%);
+    color: #f3d7eb;
+    box-shadow:
+        inset 0 0 0 1px rgba(248, 250, 252, 0.06),
+        0 10px 22px rgba(0, 0, 0, 0.24);
+}
 
-    #offcanvasAiSidebar .ai-sidebar-meta-chip {
-        background: rgba(27, 34, 48, 0.9);
-        border-color: rgba(248, 250, 252, 0.08);
-        color: var(--tutor-text-muted);
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-sidebar-meta-chip {
+    background: rgba(27, 34, 48, 0.9);
+    border-color: rgba(248, 250, 252, 0.08);
+    color: var(--tutor-text-muted);
+}
 
-    #offcanvasAiSidebar .ai-sidebar-meta-chip.is-context {
-        background: rgba(38, 28, 39, 0.92);
-        color: #ecd8e6;
-        border-color: rgba(248, 250, 252, 0.06);
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-sidebar-meta-chip.is-context {
+    background: rgba(38, 28, 39, 0.92);
+    color: #ecd8e6;
+    border-color: rgba(248, 250, 252, 0.06);
+}
 
-    #offcanvasAiSidebar .ai-sidebar-reset {
-        background: rgba(27, 34, 48, 0.92);
-        border-color: rgba(248, 250, 252, 0.08);
-        color: #dcb7d1;
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-sidebar-reset {
+    background: rgba(27, 34, 48, 0.92);
+    border-color: rgba(248, 250, 252, 0.08);
+    color: #dcb7d1;
+}
 
-    #offcanvasAiSidebar .btn-recorder-toggle,
-    #offcanvasAiSidebar .btn-close {
-        background-color: rgba(27, 34, 48, 0.9);
-        border-color: rgba(248, 250, 252, 0.08);
-        color: var(--tutor-text);
-    }
+#offcanvasAiSidebar.is-dark-theme .btn-recorder-toggle,
+#offcanvasAiSidebar.is-dark-theme .btn-close {
+    background-color: rgba(27, 34, 48, 0.9);
+    border-color: rgba(248, 250, 252, 0.08);
+    color: var(--tutor-text);
+}
 
-    #offcanvasAiSidebar .ai-inline-hint {
-        border-color: rgba(135, 90, 123, 0.18);
-        background: linear-gradient(180deg, rgba(29, 37, 51, 0.96) 0%, rgba(24, 31, 44, 0.98) 100%);
-        color: #eef2f7;
-        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint {
+    border-color: rgba(135, 90, 123, 0.18);
+    background: linear-gradient(180deg, rgba(29, 37, 51, 0.96) 0%, rgba(24, 31, 44, 0.98) 100%);
+    color: #eef2f7;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+}
 
-    #offcanvasAiSidebar .ai-inline-hint-badge-icon {
-        background: linear-gradient(135deg, rgba(135, 90, 123, 0.26) 0%, rgba(67, 183, 164, 0.18) 100%);
-        color: #ecd8e6;
-        box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.06);
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-badge-icon {
+    background: linear-gradient(135deg, rgba(135, 90, 123, 0.26) 0%, rgba(67, 183, 164, 0.18) 100%);
+    color: #ecd8e6;
+    box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.06);
+}
 
-    #offcanvasAiSidebar .ai-inline-hint-badge-text {
-        color: #e7cfe0;
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-badge-text {
+    color: #e7cfe0;
+}
 
-    #offcanvasAiSidebar .ai-inline-hint-close {
-        background: rgba(248, 250, 252, 0.08);
-        color: #c9d2df;
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-close {
+    background: rgba(248, 250, 252, 0.08);
+    color: #c9d2df;
+}
 
-    #offcanvasAiSidebar .ai-inline-hint-close:hover {
-        background: rgba(248, 250, 252, 0.14);
-        color: #f8fafc;
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-close:hover {
+    background: rgba(248, 250, 252, 0.14);
+    color: #f8fafc;
+}
 
-    #offcanvasAiSidebar .ai-inline-hint-time {
-        color: #9ca8ba;
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-time {
+    color: #9ca8ba;
+}
 
-    #offcanvasAiSidebar .ai-inline-hint-text {
-        color: #eef2f7;
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-text {
+    color: #eef2f7;
+}
 
-    #offcanvasAiSidebar .ai-inline-hint-progress {
-        background: rgba(248, 250, 252, 0.08);
-    }
+#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-progress {
+    background: rgba(248, 250, 252, 0.08);
+}
 
-    #offcanvasAiSidebar .timer-display {
-        background: rgba(248, 250, 252, 0.12);
-        color: #f8fafc;
-    }
+#offcanvasAiSidebar.is-dark-theme .timer-display {
+    background: rgba(248, 250, 252, 0.12);
+    color: #f8fafc;
 }
 
 @keyframes tutorInlineHintIn {
@@ -1253,6 +1251,66 @@
     text-overflow: ellipsis;
 }
 
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel {
+    background:
+        radial-gradient(circle at top right, rgba(135, 90, 123, 0.12) 0%, transparent 34%),
+        linear-gradient(180deg, rgba(29, 37, 51, 0.98) 0%, rgba(21, 26, 35, 0.98) 100%);
+    border-color: rgba(148, 163, 184, 0.16);
+    box-shadow:
+        0 18px 42px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel.is-recording {
+    border-color: rgba(248, 113, 113, 0.45);
+    box-shadow:
+        0 0 0 2px rgba(248, 113, 113, 0.12),
+        0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_badge {
+    background: rgba(248, 113, 113, 0.14);
+    border-color: rgba(248, 113, 113, 0.34);
+    color: #fecaca;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_meta_row,
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(148, 163, 184, 0.14);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_title,
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item .tgt {
+    color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item .err {
+    color: #fca5a5;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_pick {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(147, 197, 253, 0.24);
+    color: #bfdbfe;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_step textarea.form-control {
+    background: rgba(15, 23, 42, 0.62);
+    border-color: rgba(148, 163, 184, 0.22);
+    color: var(--tutor-text);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_step textarea.form-control::placeholder {
+    color: var(--tutor-text-soft);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_controls .btn-outline-secondary {
+    background: rgba(15, 23, 42, 0.52);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: var(--tutor-text-muted);
+}
+
 /* ===== COPY + FOOTER ACTIONS ===== */
 
 /* Fila de acciones debajo del mensaje */
@@ -1466,69 +1524,67 @@
    Dark mode
    ========================= */
 
-@media (prefers-color-scheme: dark) {
-    #chat-ui-container {
-        --ai-user-bubble-bg: #8a617d;
-        --ai-user-bubble-text: #f9fafb;
-        --ai-user-action-color: #d7b9ce;
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container {
+    --ai-user-bubble-bg: #8a617d;
+    --ai-user-bubble-text: #f9fafb;
+    --ai-user-action-color: #d7b9ce;
 
-        --ai-assistant-bubble-bg: linear-gradient(180deg, #273142 0%, #212a39 100%);
-        --ai-assistant-bubble-text: var(--tutor-text);
-        --ai-assistant-action-color: var(--tutor-text);
-    }
+    --ai-assistant-bubble-bg: linear-gradient(180deg, #273142 0%, #212a39 100%);
+    --ai-assistant-bubble-text: var(--tutor-text);
+    --ai-assistant-action-color: var(--tutor-text);
+}
 
-    #chat-ui-container .nlux-AiChat-root {
-        --nlux-PromptInput--BackgroundColor: rgba(27, 34, 48, 0.94);
-        --nlux-PromptInput-Active--BackgroundColor: rgba(32, 41, 56, 0.98);
-        --nlux-PromptInput--BorderColor: rgba(148, 163, 184, 0.12);
-        --nlux-PromptInput-Active--BorderColor: rgba(135, 90, 123, 0.3);
-        --nlux-PromptInput--TextColor: var(--tutor-text);
-        --nlux-PromptInput-Placeholder--TextColor: #8e99aa;
-        --nlux-SubmitButton-Disabled--BackgroundColor: rgba(148, 163, 184, 0.16);
-        --nlux-SubmitButton-Disabled--TextColor: rgba(243, 244, 246, 0.42);
-        --nlux-ChatRoom-Divider--Color: rgba(248, 250, 252, 0.08);
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-AiChat-root {
+    --nlux-PromptInput--BackgroundColor: rgba(27, 34, 48, 0.94);
+    --nlux-PromptInput-Active--BackgroundColor: rgba(32, 41, 56, 0.98);
+    --nlux-PromptInput--BorderColor: rgba(148, 163, 184, 0.12);
+    --nlux-PromptInput-Active--BorderColor: rgba(135, 90, 123, 0.3);
+    --nlux-PromptInput--TextColor: var(--tutor-text);
+    --nlux-PromptInput-Placeholder--TextColor: #8e99aa;
+    --nlux-SubmitButton-Disabled--BackgroundColor: rgba(148, 163, 184, 0.16);
+    --nlux-SubmitButton-Disabled--TextColor: rgba(243, 244, 246, 0.42);
+    --nlux-ChatRoom-Divider--Color: rgba(248, 250, 252, 0.08);
+}
 
-    #chat-ui-container .nlux-chatRoom-container {
-        background:
-            radial-gradient(circle at top right, rgba(135, 90, 123, 0.16) 0%, transparent 28%),
-            linear-gradient(180deg, rgba(21, 26, 35, 0.98) 0%, rgba(18, 24, 36, 0.98) 100%);
-        border-color: rgba(148, 163, 184, 0.14);
-        box-shadow:
-            0 24px 56px rgba(0, 0, 0, 0.32),
-            inset 0 1px 0 rgba(255, 255, 255, 0.03);
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-chatRoom-container {
+    background:
+        radial-gradient(circle at top right, rgba(135, 90, 123, 0.16) 0%, transparent 28%),
+        linear-gradient(180deg, rgba(21, 26, 35, 0.98) 0%, rgba(18, 24, 36, 0.98) 100%);
+    border-color: rgba(148, 163, 184, 0.14);
+    box-shadow:
+        0 24px 56px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
 
-    #chat-ui-container .nlux-chatRoom-container::before {
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-chatRoom-container::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
+}
 
-    #chat-ui-container:empty::after {
-        color: #c7ced8;
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container:empty::after {
+    color: #c7ced8;
+}
 
-    #chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container,
-    #chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble {
-        border-radius: 20px !important;
-        border-color: rgba(148, 163, 184, 0.12) !important;
-        box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container,
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble {
+    border-radius: 20px !important;
+    border-color: rgba(148, 163, 184, 0.12) !important;
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+}
 
-    #chat-ui-container .nlux-comp-bubble code,
-    #chat-ui-container .nlux-markdown-container code {
-        background: rgba(148, 163, 184, 0.14);
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-comp-bubble code,
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-markdown-container code {
+    background: rgba(148, 163, 184, 0.14);
+}
 
-    #chat-ui-container .nlux-comp-bubble pre,
-    #chat-ui-container .nlux-markdown-container pre {
-        background: #0f172a;
-        color: #f8fafc;
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-comp-bubble pre,
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-markdown-container pre {
+    background: #0f172a;
+    color: #f8fafc;
+}
 
-    #chat-ui-container .nlux-composer-container {
-        background:
-            linear-gradient(180deg, rgba(18, 24, 36, 0.14) 0%, rgba(18, 24, 36, 0.96) 18%);
-    }
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-composer-container {
+    background:
+        linear-gradient(180deg, rgba(18, 24, 36, 0.14) 0%, rgba(18, 24, 36, 0.96) 18%);
 }
 
 #chat-ui-container .ai-copy-btn {

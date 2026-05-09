@@ -3,6 +3,10 @@
     <t t-name="ai_chat.AiSidebar">
         <div
             class="offcanvas offcanvas-end d-flex flex-column"
+            t-att-class="{
+                'is-dark-theme': state.colorScheme === 'dark',
+                'is-light-theme': state.colorScheme !== 'dark',
+            }"
             tabindex="-1"
             id="offcanvasAiSidebar"
             aria-labelledby="offcanvasAiSidebarLabel"
