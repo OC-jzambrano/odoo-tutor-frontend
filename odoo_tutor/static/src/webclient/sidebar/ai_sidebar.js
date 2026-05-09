@@ -76,6 +76,8 @@ function getCurrentColorScheme() {
 }
 
 const TUTOR_ASSISTANT_AVATAR_URL = "/odoo_tutor/static/images/iabotv2.png";
+const ACTIVE_EXERCISE_STORAGE_KEY = "odoo_tutor.active_exercise_session";
+const ACTIVE_EXERCISE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 export class AiSidebar extends Component {
     static template = "ai_chat.AiSidebar";
@@ -109,11 +111,13 @@ export class AiSidebar extends Component {
         this._copyButtonsObserver = null;
         this._composerOverflowInput = null;
         this._composerOverflowHandler = null;
+        this._exerciseActionsScheduleVersion = 0;
 
         this._seenTutorPush = new Map(); // key -> timestamp
         this._tutorPushTtlMs = 8000;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
+        this._contextAckSubscribed = false;
 
         // anti-auto-scroll lock
         this._expectingAssistant = false;
@@ -157,6 +161,7 @@ export class AiSidebar extends Component {
 
             showResultModal: false,
             exerciseId: null,
+            exerciseChoicePending: false,
             firstFailedStep: null,
             finishLoading: false,
             result: "failed",
@@ -335,6 +340,7 @@ export class AiSidebar extends Component {
                 }
                 this._setupComposerOverflowTracking();
                 this._syncComposerOverflowState();
+                this._syncComposerDisabledState();
             });
 
             if (this.chatUiRef?.el) {
@@ -353,6 +359,7 @@ export class AiSidebar extends Component {
             this.aiRecorder.subscribe(this._recListener);
 
             this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
+            this._restoreActiveExerciseSession();
 
             this._onTutorHint = (ev) => {
                 const msg = ev?.kind ? ev.data : ev;
@@ -376,6 +383,23 @@ export class AiSidebar extends Component {
                 this._tutorHintSubscribed = true;
             }
 
+            this._onContextAck = (ev) => {
+                const msg = ev?.kind ? ev.data : ev;
+                if (!msg || typeof msg !== "object") return;
+                if (msg.type !== "context_ack") return;
+                if (
+                    msg.mode === "awaiting_resume_confirmation" ||
+                    msg.reason === "awaiting_resume_confirmation"
+                ) {
+                    this._restoreActiveExerciseSession();
+                }
+            };
+
+            if (!this._contextAckSubscribed) {
+                this.aiWs.subscribe(this._onContextAck);
+                this._contextAckSubscribed = true;
+            }
+
             this._onTutorHintEvent = (e) => {
                 const data = e?.detail;
                 if (!data) return;
@@ -390,6 +414,7 @@ export class AiSidebar extends Component {
                 this._setupComposerOverflowTracking();
                 this._syncComposerOverflowState();
                 this._applyColorSchemeToChat();
+                this._syncComposerDisabledState();
             });
         });
 
@@ -425,9 +450,19 @@ export class AiSidebar extends Component {
                 this._tutorHintSubscribed = false;
             }
 
+            if (this._contextAckSubscribed && this._onContextAck) {
+                this.aiWs.unsubscribe(this._onContextAck);
+                this._contextAckSubscribed = false;
+            }
+
             if (this._onTutorHintEvent) {
                 window.removeEventListener("ai:tutor_hint", this._onTutorHintEvent);
                 this._onTutorHintEvent = null;
+            }
+
+            if (this.state.timerInterval) {
+                clearInterval(this.state.timerInterval);
+                this.state.timerInterval = null;
             }
 
             this._seenTutorPushIds = null;
@@ -688,7 +723,7 @@ export class AiSidebar extends Component {
         return !!target.closest(
             "button, a, input, textarea, select, label, " +
             ".ai-msg-footer, .ai_feedback_bar, .ai_feedback_popover, " +
-            ".ai-copy-btn, .ai_feedback_btn"
+            ".ai-copy-btn, .ai_feedback_btn, .ai-exercise-actions"
         );
     }
 
@@ -975,6 +1010,343 @@ export class AiSidebar extends Component {
         return item;
     }
 
+    _normalizeExerciseId(value) {
+        if (value === null || value === undefined || value === false) return null;
+        if (typeof value !== "string" && typeof value !== "number") return null;
+        if (typeof value === "number" && !Number.isFinite(value)) return null;
+        const normalized = String(value).trim();
+        const lowered = normalized.toLowerCase();
+        if (!normalized || normalized === "0") return null;
+        if (["false", "null", "undefined", "none", "nan"].includes(lowered)) return null;
+        if (/^0+$/.test(normalized.replace(/[-_]/g, ""))) return null;
+        return normalized;
+    }
+
+    _extractExerciseId(payload) {
+        if (!payload || typeof payload !== "object") return null;
+
+        const candidates = [
+            payload.exercise_id,
+            payload.exerciseId,
+            payload.result?.exercise_id,
+            payload.result?.exerciseId,
+            payload.data?.exercise_id,
+            payload.data?.exerciseId,
+            payload.payload?.exercise_id,
+            payload.payload?.exerciseId,
+            payload.exercise?.id,
+        ];
+
+        for (const candidate of candidates) {
+            const exerciseId = this._normalizeExerciseId(candidate);
+            if (exerciseId) return exerciseId;
+        }
+
+        return null;
+    }
+
+    _extractResponseText(payload) {
+        if (!payload) return "";
+        if (typeof payload === "string") return payload.trim();
+        if (typeof payload !== "object") return "";
+
+        return String(
+            payload.response ||
+            payload.message ||
+            payload.content ||
+            payload.text ||
+            (typeof payload.result === "string" ? payload.result : "") ||
+            payload.result?.response ||
+            payload.result?.message ||
+            payload.result?.content ||
+            payload.data?.response ||
+            payload.data?.message ||
+            payload.data?.content ||
+            ""
+        ).trim();
+    }
+
+    _isExerciseResumePromptText(text) {
+        const normalized = String(text || "").toLowerCase();
+        return (
+            normalized.includes("do you want to continue the exercise") ||
+            normalized.includes("quieres continuar el ejercicio") ||
+            normalized.includes("deseas continuar el ejercicio") ||
+            normalized.includes("continuar el ejercicio") ||
+            normalized.includes("yes / later / cancel") ||
+            normalized.includes("yes/later/cancel")
+        );
+    }
+
+    _getPromptExerciseId(exerciseId, options = {}) {
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
+        if (!normalizedExerciseId) return null;
+        if (this.state.processActive && !options.allowWhileActive) return null;
+        return normalizedExerciseId;
+    }
+
+    _registerExercisePrompt(exerciseId, options = {}) {
+        const normalizedExerciseId = this._getPromptExerciseId(exerciseId, options);
+        if (!normalizedExerciseId) {
+            this._cancelPendingExerciseActions();
+            return null;
+        }
+        this.state.exerciseId = normalizedExerciseId;
+        this.state.showButtons = true;
+        this.state.exerciseChoicePending = true;
+        this._syncComposerDisabledState();
+        return normalizedExerciseId;
+    }
+
+    _cancelPendingExerciseActions() {
+        this._exerciseActionsScheduleVersion += 1;
+        this.state.exerciseChoicePending = false;
+        this._syncComposerDisabledState();
+    }
+
+    _syncComposerDisabledState() {
+        const disabled = !!this.state.exerciseChoicePending;
+        const container = this._getChatContainer();
+        const root = this.chatUiRef?.el || container;
+
+        container?.classList?.toggle("is-exercise-input-locked", disabled);
+
+        const inputs = root?.querySelectorAll?.(
+            ".nlux-composer-container textarea, " +
+            ".nlux-composer-container input, " +
+            ".nlux-comp-composer textarea, " +
+            ".nlux-comp-composer input"
+        ) || [];
+
+        inputs.forEach((input) => {
+            input.disabled = disabled;
+            input.readOnly = disabled;
+            input.setAttribute("aria-disabled", disabled ? "true" : "false");
+            if (disabled) input.blur();
+        });
+
+        const buttons = root?.querySelectorAll?.(
+            ".nlux-composer-container button, " +
+            ".nlux-comp-composer button"
+        ) || [];
+
+        buttons.forEach((button) => {
+            button.disabled = disabled;
+            button.setAttribute("aria-disabled", disabled ? "true" : "false");
+        });
+    }
+
+    _getLatestReceivedMessageItem() {
+        const root = this.chatUiRef?.el;
+        if (!root) return null;
+
+        const items = Array.from(
+            root.querySelectorAll(".nlux-comp-chatItem.nlux-comp-chatItem--received")
+        );
+        return items[items.length - 1] || null;
+    }
+
+    _getReceivedMessageCount() {
+        const root = this.chatUiRef?.el;
+        if (!root) return 0;
+        return root.querySelectorAll(".nlux-comp-chatItem.nlux-comp-chatItem--received").length;
+    }
+
+    _scheduleExerciseActionsForLastMessage(
+        exerciseId,
+        attempts = 24,
+        minReceivedCount = 0,
+        scheduleVersion = null,
+        options = {}
+    ) {
+        const normalizedExerciseId = this._getPromptExerciseId(exerciseId, options);
+        if (!normalizedExerciseId || attempts <= 0) return;
+
+        const version = scheduleVersion || ++this._exerciseActionsScheduleVersion;
+
+        requestAnimationFrame(() => {
+            if (version !== this._exerciseActionsScheduleVersion) return;
+            if (this.state.processActive && !options.allowWhileActive) return;
+
+            const item = this._getLatestReceivedMessageItem();
+            const receivedCount = this._getReceivedMessageCount();
+            if (item && receivedCount >= minReceivedCount && !item.querySelector(".ai-exercise-actions")) {
+                this._attachExerciseActions(item, normalizedExerciseId, options);
+                return;
+            }
+            this._scheduleExerciseActionsForLastMessage(
+                normalizedExerciseId,
+                attempts - 1,
+                minReceivedCount,
+                version,
+                options
+            );
+        });
+    }
+
+    _attachExerciseActions(itemEl, exerciseId, options = {}) {
+        const normalizedExerciseId = this._getPromptExerciseId(exerciseId, options);
+        if (!itemEl || !normalizedExerciseId) return false;
+        if (itemEl.querySelector(".ai-exercise-actions")) return true;
+
+        const messageHost = this._getMessageHost(itemEl);
+        const textBlock = this._getMessageTextBlock(messageHost);
+        if (!messageHost || !textBlock) return false;
+
+        itemEl.dataset.exerciseId = normalizedExerciseId;
+        this._trimMessageBlockEnd(textBlock);
+
+        const actions = document.createElement("div");
+        actions.className = "ai-exercise-actions";
+        actions.dataset.exerciseId = normalizedExerciseId;
+        actions.innerHTML = `
+            <div class="ai-exercise-actions-buttons">
+                <button type="button" class="ai-exercise-choice ai-exercise-choice-yes" data-action="start">
+                    ${this._escapeHtml(_t("Yes"))}
+                </button>
+                <button type="button" class="ai-exercise-choice ai-exercise-choice-cancel" data-action="cancel">
+                    ${this._escapeHtml(_t("Cancelar"))}
+                </button>
+            </div>
+        `;
+
+        const yesBtn = actions.querySelector('[data-action="start"]');
+        const cancelBtn = actions.querySelector('[data-action="cancel"]');
+
+        yesBtn?.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            this._handleExerciseChoice({
+                exerciseId: normalizedExerciseId,
+                answer: "Yes",
+                action: "start",
+                card: actions,
+            });
+        });
+
+        cancelBtn?.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            this._handleExerciseChoice({
+                exerciseId: normalizedExerciseId,
+                answer: "No",
+                action: "cancel",
+                card: actions,
+            });
+        });
+
+        textBlock.appendChild(actions);
+        return true;
+    }
+
+    _trimMessageBlockEnd(textBlock) {
+        if (!textBlock) return;
+
+        while (textBlock.lastChild) {
+            const node = textBlock.lastChild;
+
+            if (node.nodeType === Node.TEXT_NODE) {
+                const trimmed = node.textContent.replace(/\s+$/g, "");
+                if (trimmed) {
+                    node.textContent = trimmed;
+                    break;
+                }
+                node.remove();
+                continue;
+            }
+
+            if (
+                node.nodeType === Node.ELEMENT_NODE &&
+                (node.tagName === "BR" || !String(node.textContent || "").trim())
+            ) {
+                node.remove();
+                continue;
+            }
+
+            break;
+        }
+    }
+
+    _setExerciseActionsState(card, status) {
+        if (!card) return;
+
+        card.dataset.status = status || "";
+        card.querySelectorAll("button").forEach((btn) => {
+            btn.disabled = status === "sending" || status === "accepted" || status === "cancelled";
+        });
+    }
+
+    async _sendExerciseChoiceToWs({ exerciseId, answer, action }) {
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
+        if (!normalizedExerciseId) return null;
+
+        const context = {
+            ...(this.state.currentContext || {}),
+            exercise_id: normalizedExerciseId,
+            exercise_action: action,
+        };
+
+        return await this.aiWs.chat({
+            message: answer,
+            context,
+            payloadExtra: {
+                exercise_id: normalizedExerciseId,
+                exercise_action: action,
+            },
+        });
+    }
+
+    async _handleExerciseChoice({ exerciseId, answer, action, card }) {
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
+        if (!normalizedExerciseId || card?.dataset?.status === "sending") return;
+
+        this._setExerciseActionsState(
+            card,
+            "sending",
+            action === "start" ? _t("Starting...") : _t("Cancelling...")
+        );
+
+        if (action === "start") {
+            const wasProcessActive = !!this.state.processActive;
+            this.state.exerciseChoicePending = false;
+            this._syncComposerDisabledState();
+            if (wasProcessActive) {
+                this.state.exerciseId = normalizedExerciseId;
+                this.state.showButtons = false;
+                this._persistActiveExercise({
+                    exerciseId: normalizedExerciseId,
+                    startedAt: Date.now() - (this.state.timerSeconds || 0) * 1000,
+                });
+            } else {
+                this.startProcess(normalizedExerciseId);
+            }
+        } else {
+            this.cancelProcess();
+        }
+
+        try {
+            const response = await this._sendExerciseChoiceToWs({ exerciseId: normalizedExerciseId, answer, action });
+            const responseText = this._extractResponseText(response);
+
+            if (responseText && !this._isDuplicateAssistantText(responseText)) {
+                this._pushAssistantMessageToNlux(responseText);
+            }
+
+            this._setExerciseActionsState(
+                card,
+                action === "start" ? "accepted" : "cancelled",
+                action === "start" ? _t("Guide started.") : _t("Cancelled.")
+            );
+        } catch (e) {
+            console.warn("[AiSidebar] exercise choice failed:", e);
+            this._setExerciseActionsState(card, "error", _t("Could not send the answer."));
+            card?.querySelectorAll("button")?.forEach((btn) => {
+                btn.disabled = false;
+            });
+            this.notification.add(_t("Could not send the exercise answer to WebSocket."), { type: "danger" });
+        }
+    }
+
     // =========================================================
     // Bootstrap Offcanvas helpers
     // =========================================================
@@ -1100,6 +1472,7 @@ export class AiSidebar extends Component {
     }
 
     _focusComposerInput() {
+        if (this.state.exerciseChoicePending) return;
         if (this._hasManualSelection()) return;
 
         const composerInput =
@@ -1107,6 +1480,7 @@ export class AiSidebar extends Component {
         if (!composerInput) return;
 
         requestAnimationFrame(() => {
+            if (this.state.exerciseChoicePending) return;
             if (this._hasManualSelection()) return;
             try {
                 composerInput.focus({ preventScroll: true });
@@ -1377,12 +1751,14 @@ export class AiSidebar extends Component {
         }
     }
 
-    _queueTutorMessage(text, timestamp = null) {
+    _queueTutorMessage(text, timestamp = null, meta = {}) {
         const cleaned = String(text || "").trim();
         if (!cleaned) return;
 
         const queue = getTutorPendingQueue();
-        const key = `${cleaned}__${timestamp || ""}`;
+        const exerciseId = this._normalizeExerciseId(meta.exerciseId);
+        const allowExercisePromptWhileActive = !!meta.allowExercisePromptWhileActive;
+        const key = `${cleaned}__${timestamp || ""}__${exerciseId || ""}`;
 
         const alreadyQueued = queue.some((item) => item.key === key);
         if (alreadyQueued) return;
@@ -1391,6 +1767,8 @@ export class AiSidebar extends Component {
             key,
             text: cleaned,
             timestamp: timestamp || new Date().toISOString(),
+            exerciseId,
+            allowExercisePromptWhileActive,
         });
 
         if (queue.length > 50) {
@@ -1413,10 +1791,22 @@ export class AiSidebar extends Component {
             if (!cleaned) continue;
 
             if (this._isDuplicateAssistantText(cleaned)) {
+                if (item.exerciseId) {
+                    this._scheduleExerciseActionsForLastMessage(
+                        item.exerciseId,
+                        24,
+                        0,
+                        null,
+                        { allowWhileActive: !!item.allowExercisePromptWhileActive }
+                    );
+                }
                 continue;
             }
 
-            const inserted = this._pushAssistantMessageToNlux(cleaned);
+            const inserted = this._pushAssistantMessageToNlux(cleaned, {
+                exerciseId: item.exerciseId || null,
+                allowExercisePromptWhileActive: !!item.allowExercisePromptWhileActive,
+            });
 
             if (inserted) {
                 this._lastInjectedTutorText = cleaned;
@@ -1464,6 +1854,11 @@ export class AiSidebar extends Component {
             const cleaned = String(text || "").trim();
             if (!cleaned) return;
 
+            const allowExercisePromptWhileActive = this._isExerciseResumePromptText(cleaned);
+            const exerciseId = this._registerExercisePrompt(this._extractExerciseId(msg), {
+                allowWhileActive: allowExercisePromptWhileActive,
+            });
+
             const normalized = normalizeAssistantTextForCompare(cleaned);
 
             console.log("[AI SIDEBAR tutor_push]", {
@@ -1475,25 +1870,43 @@ export class AiSidebar extends Component {
             });
 
             if (this._isDuplicateAssistantText(cleaned)) {
+                if (exerciseId) {
+                    this._scheduleExerciseActionsForLastMessage(
+                        exerciseId,
+                        24,
+                        0,
+                        null,
+                        { allowWhileActive: allowExercisePromptWhileActive }
+                    );
+                }
                 return;
             }
 
             // Si el chat aún no está listo o el sidebar está cerrado,
             // se guarda para mostrarlo después.
             if (!this.aiChat || !this._isSidebarOpen()) {
-                this._queueTutorMessage(cleaned, msg.timestamp);
+                this._queueTutorMessage(cleaned, msg.timestamp, {
+                    exerciseId,
+                    allowExercisePromptWhileActive,
+                });
                 return;
             }
 
             // Si está abierto, intentamos insertarlo.
-            const inserted = this._pushAssistantMessageToNlux(cleaned);
+            const inserted = this._pushAssistantMessageToNlux(cleaned, {
+                exerciseId,
+                allowExercisePromptWhileActive,
+            });
 
             if (inserted) {
                 this._lastInjectedTutorText = cleaned;
                 this._lastInjectedTutorAt = Date.now();
             } else {
                 // Si falló, no lo perdemos.
-                this._queueTutorMessage(cleaned, msg.timestamp);
+                this._queueTutorMessage(cleaned, msg.timestamp, {
+                    exerciseId,
+                    allowExercisePromptWhileActive,
+                });
             }
         };
 
@@ -1512,10 +1925,16 @@ export class AiSidebar extends Component {
         this._onTutorPush = null;
     }
 
-    _pushAssistantMessageToNlux(text) {
+    _pushAssistantMessageToNlux(text, options = {}) {
         if (!this.aiChat) return false;
 
+        const allowExercisePromptWhileActive = !!options.allowExercisePromptWhileActive;
+        const exerciseId = this._registerExercisePrompt(options.exerciseId, {
+            allowWhileActive: allowExercisePromptWhileActive,
+        });
+
         this._ensureConversationVisible();
+        const receivedCountBefore = this._getReceivedMessageCount();
 
         // Intento 1: API directa de NLUX
         if (typeof this.aiChat.addMessage === "function") {
@@ -1526,6 +1945,15 @@ export class AiSidebar extends Component {
                 });
 
                 requestAnimationFrame(() => {
+                    if (exerciseId) {
+                        this._scheduleExerciseActionsForLastMessage(
+                            exerciseId,
+                            24,
+                            receivedCountBefore + 1,
+                            null,
+                            { allowWhileActive: allowExercisePromptWhileActive }
+                        );
+                    }
                     this._ensureCopyButtons?.();
                     this._installManualSelectionGuard?.();
                 });
@@ -1545,6 +1973,15 @@ export class AiSidebar extends Component {
                 });
 
                 requestAnimationFrame(() => {
+                    if (exerciseId) {
+                        this._scheduleExerciseActionsForLastMessage(
+                            exerciseId,
+                            24,
+                            receivedCountBefore + 1,
+                            null,
+                            { allowWhileActive: allowExercisePromptWhileActive }
+                        );
+                    }
                     this._ensureCopyButtons?.();
                     this._installManualSelectionGuard?.();
                 });
@@ -1574,7 +2011,7 @@ export class AiSidebar extends Component {
 
             // limpiar elementos añadidos por nosotros
             item.querySelectorAll(
-                ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover"
+                ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover, .ai-exercise-actions"
             ).forEach((el) => el.remove());
 
             const md =
@@ -1606,6 +2043,12 @@ export class AiSidebar extends Component {
         }
 
         segments.appendChild(item);
+
+        if (exerciseId) {
+            this._attachExerciseActions(item, exerciseId, {
+                allowWhileActive: allowExercisePromptWhileActive,
+            });
+        }
 
         try {
             this._anchorEl = item;
@@ -1650,11 +2093,13 @@ export class AiSidebar extends Component {
     async sendMessage(message) {
         this._expectingAssistant = true;
         const data = await this.aiWs.chat({ message, context: this.state.currentContext });
-        const text = data?.response || "";
-        return { result: { response: text, exercise_id: data?.exercise_id || null } };
+        const text = this._extractResponseText(data);
+        return { result: { response: text, exercise_id: this._extractExerciseId(data) } };
     }
 
     createAiChat() {
+        this._cancelPendingExerciseActions();
+
         if (this.aiChat) {
             try {
                 this.aiChat.unmount();
@@ -1706,6 +2151,8 @@ export class AiSidebar extends Component {
         pendingQueue.splice(0, pendingQueue.length);
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
+        this._clearStoredActiveExercise();
+        this._cancelPendingExerciseActions();
 
         this.createAiChat();
 
@@ -1713,7 +2160,12 @@ export class AiSidebar extends Component {
         this.state.isLoading = false;
         this.state.showButtons = false;
         this.state.processActive = false;
+        this.state.exerciseId = null;
+        this.state.exerciseChoicePending = false;
+        this.state.timerInterval = null;
+        this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
+        this._syncComposerDisabledState();
 
         window.__AI_TUTOR_OWL_PREVIEW__ = {
             message: "",
@@ -1745,15 +2197,24 @@ export class AiSidebar extends Component {
     async batchText(message) {
         this._expectingAssistant = true;
         this.state.isLoading = true;
+        this._cancelPendingExerciseActions();
+        const receivedCountBefore = this._getReceivedMessageCount();
 
         try {
             const response = await this.sendMessage(message);
             const messageText = response.result.response;
-            const exercise_id = response.result.exercise_id;
+            const exercise_id = this._getPromptExerciseId(response.result.exercise_id);
 
             if (exercise_id) {
-                this.state.showButtons = true;
-                this.state.exerciseId = exercise_id;
+                this._registerExercisePrompt(exercise_id);
+                setTimeout(
+                    () => this._scheduleExerciseActionsForLastMessage(exercise_id, 24, receivedCountBefore + 1),
+                    0
+                );
+            } else if (!this.state.processActive) {
+                this._cancelPendingExerciseActions();
+                this.state.showButtons = false;
+                this.state.exerciseId = null;
             }
 
             return new String(messageText);
@@ -1799,32 +2260,158 @@ export class AiSidebar extends Component {
         }
     }
 
+    _getExerciseStorage() {
+        try {
+            if (window.localStorage) return window.localStorage;
+        } catch {}
+        try {
+            if (window.sessionStorage) return window.sessionStorage;
+        } catch {}
+        return null;
+    }
+
+    _getActiveExerciseStorageKey() {
+        const sess = (window.odoo && odoo.session_info) || {};
+        const db = sess.db || "default_db";
+        const uid = sess.uid || user.userId || user.id || "default_user";
+        return `${ACTIVE_EXERCISE_STORAGE_KEY}:${db}:${uid}`;
+    }
+
+    _readStoredActiveExercise() {
+        const storage = this._getExerciseStorage();
+        if (!storage) return null;
+
+        const key = this._getActiveExerciseStorageKey();
+        try {
+            const raw = storage.getItem(key);
+            if (!raw) return null;
+
+            const data = JSON.parse(raw);
+            const exerciseId = this._normalizeExerciseId(data?.exerciseId || data?.exercise_id);
+            const startedAt = Number(data?.startedAt);
+            const now = Date.now();
+
+            if (!exerciseId || !Number.isFinite(startedAt)) {
+                storage.removeItem(key);
+                return null;
+            }
+
+            if (startedAt > now + 60000 || now - startedAt > ACTIVE_EXERCISE_MAX_AGE_MS) {
+                storage.removeItem(key);
+                return null;
+            }
+
+            return { exerciseId, startedAt };
+        } catch {
+            try {
+                storage.removeItem(key);
+            } catch {}
+            return null;
+        }
+    }
+
+    _persistActiveExercise({ exerciseId, startedAt }) {
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
+        if (!normalizedExerciseId || !Number.isFinite(Number(startedAt))) return;
+
+        const storage = this._getExerciseStorage();
+        if (!storage) return;
+
+        try {
+            storage.setItem(
+                this._getActiveExerciseStorageKey(),
+                JSON.stringify({
+                    exerciseId: normalizedExerciseId,
+                    startedAt: Number(startedAt),
+                    wsSessionId: window.__AI_TUTOR_WS_SESSION_ID || null,
+                    contextModel: this.state.currentContext?.model || null,
+                })
+            );
+        } catch {}
+    }
+
+    _clearStoredActiveExercise() {
+        const storage = this._getExerciseStorage();
+        if (!storage) return;
+        try {
+            storage.removeItem(this._getActiveExerciseStorageKey());
+        } catch {}
+    }
+
+    _formatTimerValue(totalSeconds) {
+        const safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+        const hours = Math.floor(safeSeconds / 3600);
+        const minutes = Math.floor((safeSeconds % 3600) / 60);
+        const seconds = safeSeconds % 60;
+        return (
+            `${hours.toString().padStart(2, "0")}:` +
+            `${minutes.toString().padStart(2, "0")}:` +
+            `${seconds.toString().padStart(2, "0")}`
+        );
+    }
+
+    _setTimerSeconds(totalSeconds) {
+        const safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+        this.state.timerSeconds = safeSeconds;
+        this.state.timerValue = this._formatTimerValue(safeSeconds);
+    }
+
+    _startExerciseTimer(startedAt = Date.now()) {
+        const startedAtMs = Number(startedAt) || Date.now();
+        if (this.state.timerInterval) {
+            clearInterval(this.state.timerInterval);
+            this.state.timerInterval = null;
+        }
+
+        const tick = () => {
+            this._setTimerSeconds((Date.now() - startedAtMs) / 1000);
+        };
+
+        tick();
+        this.state.timerInterval = setInterval(tick, 1000);
+    }
+
+    _restoreActiveExerciseSession() {
+        const stored = this._readStoredActiveExercise();
+        if (!stored || this.state.processActive) return false;
+
+        this._cancelPendingExerciseActions();
+        this.state.exerciseId = stored.exerciseId;
+        this.state.showButtons = false;
+        this.state.processActive = true;
+        this.state.exerciseChoicePending = false;
+        this._syncComposerDisabledState();
+        this._startExerciseTimer(stored.startedAt);
+        return true;
+    }
+
     // =========================================================
     // Process UI
     // =========================================================
 
-    startProcess() {
+    startProcess(exerciseId = null, options = {}) {
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId) || this._normalizeExerciseId(this.state.exerciseId);
+        const startedAt = Number(options.startedAt) || Date.now();
+        this._cancelPendingExerciseActions();
+        if (normalizedExerciseId) {
+            this.state.exerciseId = normalizedExerciseId;
+        }
+        this.state.showButtons = false;
         this.state.processActive = true;
-        this.state.timerSeconds = 0;
-        this.state.timerValue = "00:00:00";
-
-        this.state.timerInterval = setInterval(() => {
-            this.state.timerSeconds++;
-            const hours = Math.floor(this.state.timerSeconds / 3600);
-            const minutes = Math.floor((this.state.timerSeconds % 3600) / 60);
-            const seconds = this.state.timerSeconds % 60;
-            this.state.timerValue =
-                `${hours.toString().padStart(2, "0")}:` +
-                `${minutes.toString().padStart(2, "0")}:` +
-                `${seconds.toString().padStart(2, "0")}`;
-        }, 1000);
+        this.state.exerciseChoicePending = false;
+        this._syncComposerDisabledState();
+        this._startExerciseTimer(startedAt);
+        this._persistActiveExercise({ exerciseId: normalizedExerciseId, startedAt });
     }
 
     cancelProcess() {
         if (this.state.timerInterval) clearInterval(this.state.timerInterval);
+        this._clearStoredActiveExercise();
+        this._cancelPendingExerciseActions();
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.exerciseId = null;
+        this.state.timerInterval = null;
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
     }

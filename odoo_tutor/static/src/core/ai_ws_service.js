@@ -415,9 +415,9 @@ export const aiWsService = {
       return st.connectPromise;
     }
 
-    async function chat({ message, context = {}, timeoutMs = 30000 }) {
+    async function chat({ message, context = {}, timeoutMs = 30000, payloadExtra = {} }) {
       await connect();
-      const payload = { type: "chat", message, context };
+      const payload = { ...payloadExtra, type: "chat", message, context };
 
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
