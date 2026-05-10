@@ -162,6 +162,7 @@ export class AiSidebar extends Component {
             showResultModal: false,
             exerciseId: null,
             exerciseChoicePending: false,
+            exerciseCancelLoading: false,
             firstFailedStep: null,
             finishLoading: false,
             result: "failed",
@@ -206,9 +207,7 @@ export class AiSidebar extends Component {
                 const model = currentContext.model;
                 const newPlaceholder = this.modelPlaceholders[model] || this.modelPlaceholders.default;
 
-                try {
-                    this.aiWs?.sendLiveContext?.({ context_model: model });
-                } catch (_) {}
+                this._sendCurrentLiveContext();
 
                 if (!this.state.isChatInitialized) {
                     this.state.placeholder = newPlaceholder;
@@ -327,6 +326,7 @@ export class AiSidebar extends Component {
                 const breadcrumbPath = this._getCurrentBreadcrumbPath();
                 if (breadcrumbPath !== this.state.breadcrumbPath) {
                     this.state.breadcrumbPath = breadcrumbPath;
+                    this._sendCurrentLiveContext();
                 }
             }, 250);
 
@@ -800,6 +800,22 @@ export class AiSidebar extends Component {
 
     get currentRouteLabel() {
         return this.state.breadcrumbPath || this.currentContextLabel || "";
+    }
+
+    _getLiveContextRoute() {
+        return this.state.breadcrumbPath || this._getCurrentBreadcrumbPath() || this.currentContextLabel || "";
+    }
+
+    _sendCurrentLiveContext({ force = false } = {}) {
+        const ctx = this.state.currentContext;
+        if (!ctx?.model) return;
+        try {
+            this.aiWs?.sendLiveContext?.({
+                context_model: ctx.model,
+                route: this._getLiveContextRoute(),
+                force,
+            });
+        } catch (_) {}
     }
 
     get currentContextLabel() {
@@ -1347,6 +1363,31 @@ export class AiSidebar extends Component {
         }
     }
 
+    async onTimerCancelExercise() {
+        if (!this.state.processActive || this.state.exerciseCancelLoading) return;
+
+        const normalizedExerciseId = this._normalizeExerciseId(this.state.exerciseId);
+        if (!normalizedExerciseId) {
+            this.cancelProcess();
+            return;
+        }
+
+        this.state.exerciseCancelLoading = true;
+        try {
+            await this._sendExerciseChoiceToWs({
+                exerciseId: normalizedExerciseId,
+                answer: "No",
+                action: "cancel",
+            });
+            this.cancelProcess();
+        } catch (e) {
+            console.warn("[AiSidebar] timer cancel failed:", e);
+            this.notification.add(_t("Could not cancel the exercise through WebSocket."), { type: "danger" });
+        } finally {
+            this.state.exerciseCancelLoading = false;
+        }
+    }
+
     // =========================================================
     // Bootstrap Offcanvas helpers
     // =========================================================
@@ -1500,10 +1541,7 @@ export class AiSidebar extends Component {
 
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
-        try {
-            const ctx = this.state.currentContext;
-            if (ctx?.model) this.aiWs?.sendLiveContext?.({ context_model: ctx.model });
-        } catch (_) {}
+        this._sendCurrentLiveContext();
 
         this._flushPendingTutorMessages?.();
         if (this.state.hintVisible && this.state.hintMessage && !this.state.hintExiting) {
@@ -2162,6 +2200,7 @@ export class AiSidebar extends Component {
         this.state.processActive = false;
         this.state.exerciseId = null;
         this.state.exerciseChoicePending = false;
+        this.state.exerciseCancelLoading = false;
         this.state.timerInterval = null;
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
@@ -2183,10 +2222,7 @@ export class AiSidebar extends Component {
 
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
-        try {
-            const ctx = this.state.currentContext;
-            if (ctx?.model) this.aiWs?.sendLiveContext?.({ context_model: ctx.model });
-        } catch (_) {}
+        this._sendCurrentLiveContext({ force: true });
 
         requestAnimationFrame(() => {
             this._startCopyButtonsObserver?.();
@@ -2411,6 +2447,7 @@ export class AiSidebar extends Component {
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.exerciseId = null;
+        this.state.exerciseCancelLoading = false;
         this.state.timerInterval = null;
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";

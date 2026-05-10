@@ -8,6 +8,36 @@ const WS_CONNECTING = 0;
 const WS_OPEN = 1;
 const WS_SESSION_STORAGE_KEY = "odoo_tutor.ws_session_info";
 
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function getCurrentRouteFromDom() {
+  try {
+    const roots = Array.from(
+      document.querySelectorAll(
+        ".o_control_panel_breadcrumbs .o_breadcrumb, .o_navbar_breadcrumbs .o_breadcrumb, .o_fallback_breadcrumbs .o_breadcrumb"
+      )
+    );
+    const root = roots.find((el) => el?.getClientRects?.().length) || roots[0];
+    if (!root) return "";
+
+    const parts = Array.from(root.querySelectorAll(".breadcrumb .breadcrumb-item a"), (el) =>
+      cleanText(el.textContent)
+    );
+    const currentLabel = cleanText(root.querySelector(".o_last_breadcrumb_item")?.textContent);
+    if (currentLabel) {
+      parts.push(currentLabel);
+    }
+
+    return parts
+      .filter((part, index, allParts) => part && part !== "..." && allParts[index - 1] !== part)
+      .join(" / ");
+  } catch {
+    return "";
+  }
+}
+
 async function getUserLoginSafe() {
   const sess = (window.odoo && odoo.session_info) || {};
   if (sess.username) return sess.username;
@@ -129,6 +159,7 @@ function getState() {
 
     // contexto: solo guardamos el ÚLTIMO (evita enviar "desfasado")
     pendingContextModel: null,
+    lastSentContextRoute: null,
     lastSentContextModel: null,
     lastSentContextAt: 0,
   };
@@ -319,7 +350,11 @@ export const aiWsService = {
               st.pendingContextModel = null;
 
               // 🔥 fuerza envío aunque el dedupe crea que ya lo mandó
-              sendLiveContext({ context_model: m, force: true }).catch(() => {});
+              if (typeof m === "object") {
+                sendLiveContext({ ...m, force: true }).catch(() => {});
+              } else {
+                sendLiveContext({ context_model: m, force: true }).catch(() => {});
+              }
             }
           }
 
@@ -446,15 +481,17 @@ export const aiWsService = {
     }
 
     // ✅ CONTEXTO (formato correcto + session_id del backend)
-    async function sendLiveContext({ context_model, force = false } = {}) {
+    async function sendLiveContext({ context_model, route = null, force = false } = {}) {
       if (!context_model) return false;
 
       const now = Date.now();
+      const contextRoute = cleanText(route) || getCurrentRouteFromDom();
 
       // ✅ dedupe rápido (pero si force=true, saltamos dedupe)
       if (!force) {
         if (
           context_model === st.lastSentContextModel &&
+          contextRoute === st.lastSentContextRoute &&
           now - st.lastSentContextAt < 800
         ) {
           return true;
@@ -466,14 +503,14 @@ export const aiWsService = {
 
       // ✅ si no hay WS abierto, guardo SOLO el último contexto y conecto
       if (!isOpen()) {
-        st.pendingContextModel = context_model;
+        st.pendingContextModel = { context_model, route: contextRoute };
         connect().catch(() => {});
         return false;
       }
 
       // ✅ si está abierto pero aún no llegó connection_established, guardo el último
       if (!st.wsSessionId) {
-        st.pendingContextModel = context_model;
+        st.pendingContextModel = { context_model, route: contextRoute };
         return false;
       }
 
@@ -482,7 +519,7 @@ export const aiWsService = {
       try {
         sid = st.wsSessionId || (await waitWsSessionId(2500));
       } catch (e) {
-        st.pendingContextModel = context_model;
+        st.pendingContextModel = { context_model, route: contextRoute };
         return false;
       }
 
@@ -490,10 +527,12 @@ export const aiWsService = {
         type: "live_context",
         session_id: sid,
         context_model,
+        route: contextRoute || null,
         timestamp: new Date().toISOString(),
       };
 
       st.lastSentContextModel = context_model;
+      st.lastSentContextRoute = contextRoute;
       st.lastSentContextAt = now;
 
       return safeSend(payload);

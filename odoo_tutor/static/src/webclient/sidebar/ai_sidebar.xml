@@ -59,10 +59,19 @@
                     </button>
 
                     <div t-if="state.processActive and !state.showRecorderPanel" class="d-flex align-items-center">
-                        <div class="timer-display">
+                        <button
+                            type="button"
+                            class="timer-display"
+                            title="Cancel exercise"
+                            aria-label="Cancel exercise"
+                            t-att-disabled="state.exerciseCancelLoading"
+                            t-on-click.stop.prevent="onTimerCancelExercise"
+                        >
                             <t t-esc="state.timerValue" t-if="state.timerValue"/>
                             <t t-else="">00:00:00</t>
-                        </div>
+                            <i t-if="state.exerciseCancelLoading" class="fa fa-spinner fa-spin timer-cancel-icon"/>
+                            <i t-else="" class="fa fa-times timer-cancel-icon"/>
+                        </button>
                     </div>
 
                     <button
