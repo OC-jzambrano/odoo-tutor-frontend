@@ -1374,12 +1374,21 @@ export class AiSidebar extends Component {
 
         this.state.exerciseCancelLoading = true;
         try {
-            await this._sendExerciseChoiceToWs({
+            const response = await this._sendExerciseChoiceToWs({
                 exerciseId: normalizedExerciseId,
                 answer: "No",
                 action: "cancel",
             });
+            const responseText = this._extractResponseText(response);
             this.cancelProcess();
+
+            if (responseText && !this._isDuplicateAssistantText(responseText)) {
+                const inserted = this._pushAssistantMessageToNlux(responseText);
+                if (inserted) {
+                    this._lastInjectedTutorText = responseText;
+                    this._lastInjectedTutorAt = Date.now();
+                }
+            }
         } catch (e) {
             console.warn("[AiSidebar] timer cancel failed:", e);
             this.notification.add(_t("Could not cancel the exercise through WebSocket."), { type: "danger" });
