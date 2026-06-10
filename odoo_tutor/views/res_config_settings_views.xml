@@ -12,13 +12,6 @@
                 >
                     <div class="content-group mt16">
                         <label
-                            for="chatbot_base_url"
-                            class="o_light_label mr8"
-                        >API URL</label>
-                        <field name="chatbot_base_url" />
-                    </div>
-                    <div class="content-group mt16">
-                        <label
                             for="chatbot_ws_base_url"
                             class="o_light_label mr8"
                         >WebSocket URL</label>
@@ -33,13 +26,6 @@
                             class="o_light_label mr8"
                         >API Key</label>
                         <field name="chatbot_api_key" password="True" />
-                    </div>
-                    <div class="content-group mt16">
-                        <label
-                            for="chatbot_session_token"
-                            class="o_light_label mr8"
-                        >Session Token</label>
-                        <field name="chatbot_session_token" password="True" />
                     </div>
                 </setting>
             </xpath>
