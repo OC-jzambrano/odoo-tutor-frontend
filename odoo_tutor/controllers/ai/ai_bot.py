@@ -2,6 +2,8 @@ import json
 import logging
 from odoo.http import request
 
+from ...constants import DEFAULT_CHATBOT_WS_BASE_URL
+
 _logger = logging.getLogger(__name__)
 
 try:
@@ -14,7 +16,13 @@ class AiBot:
     def __init__(self, env, ws_session_id=None):
         self.env = env
         self.ws_session_id = ws_session_id
-        self.ws_base_url = "wss://tutor-backend.odooconcept.com/ws"
+        self.ws_base_url = (
+            self.env["ir.config_parameter"]
+            .sudo()
+            .get_param("odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL)
+            .strip()
+            or DEFAULT_CHATBOT_WS_BASE_URL
+        )
         self.api_key = self.env["ir.config_parameter"].sudo().get_param(
             "odoo_tutor.chatbot_api_key", "your_super_secret_key_123"
         )

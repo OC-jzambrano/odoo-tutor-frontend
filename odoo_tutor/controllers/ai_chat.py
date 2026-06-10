@@ -3,10 +3,23 @@ import requests
 from odoo import http
 from odoo.http import request
 
+from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
 from .ai.ai_bot import AiBot
 
 
 class AiChatController(http.Controller):
+    def _get_ws_base_url(self):
+        ws_base_url = (
+            request.env["ir.config_parameter"]
+            .sudo()
+            .get_param("odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL)
+        )
+        return (ws_base_url or "").strip() or DEFAULT_CHATBOT_WS_BASE_URL
+
+    @http.route("/ai_chat/ws_config", type="json", auth="user")
+    def ws_config(self, **kwargs):
+        return {"ws_base_url": self._get_ws_base_url()}
+
     @http.route("/ai_chat/chat", type="json", auth="user", methods=["POST"])
     def get_quickboard_item(self, **kwargs):
         """Endpoint principal para el chatbot AI"""
@@ -89,4 +102,3 @@ class AiChatController(http.Controller):
         }
         rec = env["ai.chat.feedback"].sudo().create(vals)
         return {"id": rec.id}
-

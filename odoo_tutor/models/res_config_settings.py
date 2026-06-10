@@ -1,10 +1,13 @@
 from odoo import fields, models
 
+from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
+
 
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
     chatbot_base_url = fields.Char(string="API URL")
+    chatbot_ws_base_url = fields.Char(string="WebSocket URL")
     chatbot_api_key = fields.Char(string="API Key")
     chatbot_session_token = fields.Char(string="Session Token")
 
@@ -13,6 +16,10 @@ class ResConfigSettings(models.TransientModel):
         self.env["ir.config_parameter"].sudo().set_param(
             "odoo_tutor.chatbot_base_url",
             self.chatbot_base_url or "http://0.0.0.0:8001/chat",
+        )
+        self.env["ir.config_parameter"].sudo().set_param(
+            "odoo_tutor.chatbot_ws_base_url",
+            (self.chatbot_ws_base_url or DEFAULT_CHATBOT_WS_BASE_URL).strip(),
         )
         self.env["ir.config_parameter"].sudo().set_param(
             "odoo_tutor.chatbot_api_key",
@@ -29,6 +36,9 @@ class ResConfigSettings(models.TransientModel):
         res.update(
             chatbot_base_url=params.get_param(
                 "odoo_tutor.chatbot_base_url", "http://0.0.0.0:8001/chat"
+            ),
+            chatbot_ws_base_url=params.get_param(
+                "odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL
             ),
             chatbot_api_key=params.get_param(
                 "odoo_tutor.chatbot_api_key", "your_super_secret_key_123"

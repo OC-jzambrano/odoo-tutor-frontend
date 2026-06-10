@@ -171,6 +171,15 @@ function setStatus(st, status) {
   window.__AI_TUTOR_WS_STATUS = st.status;
 }
 
+async function getConfiguredWsBaseUrl() {
+  const config = await rpc("/ai_chat/ws_config", {});
+  const wsBaseUrl = String(config?.ws_base_url || "").trim();
+  if (!wsBaseUrl) {
+    throw new Error("Missing WebSocket URL configuration");
+  }
+  return wsBaseUrl;
+}
+
 export const aiWsService = {
   async start(env) {
     // ✅ Singleton real: si ya existe API, reúsala (no más conexiones duplicadas)
@@ -178,7 +187,7 @@ export const aiWsService = {
       return window.__AI_TUTOR_WS_API_SINGLETON;
     }
 
-    const baseUrl = "wss://tutor-backend.odooconcept.com/ws";
+    const baseUrl = await getConfiguredWsBaseUrl();
     const st = getState();
 
     function isOpen() {
