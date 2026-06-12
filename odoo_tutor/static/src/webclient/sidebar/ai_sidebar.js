@@ -18,20 +18,20 @@ function formatTimeAgo(ts) {
 
     const diffSec = Math.max(0, Math.floor((now - then) / 1000));
 
-    if (diffSec < 10) return "just now";
-    if (diffSec < 60) return `${diffSec} seconds ago`;
+    if (diffSec < 10) return _t("just now");
+    if (diffSec < 60) return _t("%s seconds ago", diffSec);
 
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin === 1) return "1 minute ago";
-    if (diffMin < 60) return `${diffMin} minutes ago`;
+    if (diffMin === 1) return _t("1 minute ago");
+    if (diffMin < 60) return _t("%s minutes ago", diffMin);
 
     const diffHour = Math.floor(diffMin / 60);
-    if (diffHour === 1) return "1 hour ago";
-    if (diffHour < 24) return `${diffHour} hours ago`;
+    if (diffHour === 1) return _t("1 hour ago");
+    if (diffHour < 24) return _t("%s hours ago", diffHour);
 
     const diffDay = Math.floor(diffHour / 24);
-    if (diffDay === 1) return "1 day ago";
-    return `${diffDay} days ago`;
+    if (diffDay === 1) return _t("1 day ago");
+    return _t("%s days ago", diffDay);
 }
 
 function normalizeAssistantTextForCompare(text) {
@@ -53,6 +53,50 @@ function cleanText(value) {
     return String(value || "")
         .replace(/\s+/g, " ")
         .trim();
+}
+
+function translateKnownTutorText(value) {
+    const cleaned = cleanText(value);
+    const normalized = normalizeAssistantTextForCompare(cleaned);
+
+    if (normalized === "do you want to continue the exercise?") {
+        return _t("Do you want to continue the exercise?");
+    }
+
+    return cleaned;
+}
+
+function normalizeTutorTimestamp(ts) {
+    const now = Date.now();
+
+    if (!ts) {
+        return new Date(now).toISOString();
+    }
+
+    let parsed = NaN;
+
+    if (typeof ts === "number") {
+        parsed = ts < 1e12 ? ts * 1000 : ts;
+    } else {
+        const raw = String(ts).trim();
+
+        if (/^\d+(\.\d+)?$/.test(raw)) {
+            const n = Number(raw);
+            parsed = n < 1e12 ? n * 1000 : n;
+        } else {
+            parsed = new Date(raw).getTime();
+        }
+    }
+
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return new Date(now).toISOString();
+    }
+
+    if (parsed > now + 5 * 60 * 1000 || parsed < now - 30 * 24 * 60 * 60 * 1000) {
+        return new Date(now).toISOString();
+    }
+
+    return new Date(parsed).toISOString();
 }
 
 function getCurrentColorScheme() {
@@ -78,6 +122,20 @@ function getCurrentColorScheme() {
 const TUTOR_ASSISTANT_AVATAR_URL = "/odoo_tutor/static/images/iabotv2.png";
 const ACTIVE_EXERCISE_STORAGE_KEY = "odoo_tutor.active_exercise_session";
 const ACTIVE_EXERCISE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const EXERCISE_CTA_STATE_KEY = "__AI_TUTOR_EXERCISE_CTA__";
+const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
+const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
+const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
+
+function getExerciseCtaState() {
+    window[EXERCISE_CTA_STATE_KEY] = window[EXERCISE_CTA_STATE_KEY] || {
+        exerciseId: null,
+        visible: false,
+        status: "",
+        updatedAt: null,
+    };
+    return window[EXERCISE_CTA_STATE_KEY];
+}
 
 export class AiSidebar extends Component {
     static template = "ai_chat.AiSidebar";
@@ -93,6 +151,7 @@ export class AiSidebar extends Component {
         this.notification = useService("notification");
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
+        this.aiChatStore = useService("ai_chat_store");
 
         // -------------------------
         // Refs
@@ -112,6 +171,9 @@ export class AiSidebar extends Component {
         this._composerOverflowInput = null;
         this._composerOverflowHandler = null;
         this._exerciseActionsScheduleVersion = 0;
+        this._timerStartedAtMs = null;
+        this._chatLayoutSyncRaf = null;
+        this._conversationReadSyncTimer = null;
 
         this._seenTutorPush = new Map(); // key -> timestamp
         this._tutorPushTtlMs = 8000;
@@ -124,16 +186,19 @@ export class AiSidebar extends Component {
         this._lockActive = false;
         this._lockRaf = null;
         this._anchorEl = null;
+        this._userScrollingUntil = 0;
+        this._onManualConversationScroll = null;
+        this._onConversationReadScroll = null;
 
         // recorder step dedupe
         this._savedStepHashes = new Set();
 
         // placeholders per model
         this.modelPlaceholders = {
-            "sale.order": "You're creating a Quotation, want help?",
-            "account.move": "Need help with this Invoice?",
-            "project.task": "What do you need to know about this Task?",
-            default: "How can I help you today?",
+            "sale.order": _t("You're creating a Quotation, want help?"),
+            "account.move": _t("Need help with this Invoice?"),
+            "project.task": _t("What do you need to know about this Task?"),
+            default: _t("How can I help you today?"),
         };
 
         // -------------------------
@@ -157,11 +222,14 @@ export class AiSidebar extends Component {
             timerValue: "00:00:00",
             timerInterval: null,
             timerSeconds: 0,
+            timerPaused: false,
+            timerPausedReason: "",
             showButtons: false,
 
             showResultModal: false,
             exerciseId: null,
             exerciseChoicePending: false,
+            exerciseCtaStatus: "",
             exerciseCancelLoading: false,
             firstFailedStep: null,
             finishLoading: false,
@@ -232,13 +300,12 @@ export class AiSidebar extends Component {
             if (!cleaned) return;
 
             this._clearInlineHintTimers();
-            this.state.hintMessage = cleaned;
-            this.state.hintTimestamp = timestamp || new Date().toISOString();
+            this.state.hintMessage = translateKnownTutorText(cleaned);
+            this.state.hintTimestamp = normalizeTutorTimestamp(timestamp);
             this.state.hintHovered = false;
             this.state.hintExiting = false;
             this.state.hintCycle += 1;
             this.state.hintVisible = true;
-            this._scheduleInlineHintAutoHide();
         };
 
         this._resetInlineHintState = ({ clearMessage = false } = {}) => {
@@ -272,8 +339,6 @@ export class AiSidebar extends Component {
 
         this.resumeInlineHint = () => {
             this.state.hintHovered = false;
-            if (!this.state.hintVisible || this.state.hintExiting) return;
-            this._scheduleInlineHintAutoHide(2200);
         };
 
         this._clearInlineHintTimers = () => {
@@ -287,13 +352,7 @@ export class AiSidebar extends Component {
             }
         };
 
-        this._scheduleInlineHintAutoHide = (delay = 5600) => {
-            this._clearInlineHintTimers();
-            this._hintAutoHideTimer = setTimeout(() => {
-                if (this.state.hintHovered) return;
-                this.closeInlineHint();
-            }, delay);
-        };
+        this._scheduleInlineHintAutoHide = () => {};
 
         // -------------------------
         // Lifecycle
@@ -330,18 +389,7 @@ export class AiSidebar extends Component {
                 }
             }, 250);
 
-            this.observer = new MutationObserver(() => {
-                const root = this.chatUiRef?.el;
-                if (!root) return;
-                const composer = root.querySelector(".nlux-composer-container");
-                if (composer) {
-                    this.state.composerWidth = composer.offsetWidth;
-                    this.state.composerHeight = composer.offsetHeight;
-                }
-                this._setupComposerOverflowTracking();
-                this._syncComposerOverflowState();
-                this._syncComposerDisabledState();
-            });
+            this.observer = new MutationObserver(() => this._scheduleChatLayoutSync());
 
             if (this.chatUiRef?.el) {
                 this.observer.observe(this.chatUiRef.el, { childList: true, subtree: true });
@@ -408,6 +456,19 @@ export class AiSidebar extends Component {
 
             window.addEventListener("ai:tutor_hint", this._onTutorHintEvent);
 
+            this._onExerciseChoiceEvent = (e) => {
+                const detail = e?.detail || {};
+                const action = detail.action === "cancel" ? "cancel" : "start";
+
+                this._handleExerciseChoice({
+                    exerciseId: detail.exerciseId || this.state.exerciseId,
+                    answer: detail.answer || (action === "start" ? "Yes" : "No"),
+                    action,
+                });
+            };
+
+            window.addEventListener(EXERCISE_CHOICE_EVENT, this._onExerciseChoiceEvent);
+
             requestAnimationFrame(() => {
                 this._startCopyButtonsObserver?.();
                 this._installManualSelectionGuard?.();
@@ -429,6 +490,15 @@ export class AiSidebar extends Component {
 
             if (this.observer) this.observer.disconnect();
             this.observer = null;
+
+            if (this._chatLayoutSyncRaf) {
+                cancelAnimationFrame(this._chatLayoutSyncRaf);
+                this._chatLayoutSyncRaf = null;
+            }
+            if (this._conversationReadSyncTimer) {
+                clearTimeout(this._conversationReadSyncTimer);
+                this._conversationReadSyncTimer = null;
+            }
 
             this._teardownAntiAutoScroll();
             this._teardownFeedbackObserver();
@@ -458,6 +528,11 @@ export class AiSidebar extends Component {
             if (this._onTutorHintEvent) {
                 window.removeEventListener("ai:tutor_hint", this._onTutorHintEvent);
                 this._onTutorHintEvent = null;
+            }
+
+            if (this._onExerciseChoiceEvent) {
+                window.removeEventListener(EXERCISE_CHOICE_EVENT, this._onExerciseChoiceEvent);
+                this._onExerciseChoiceEvent = null;
             }
 
             if (this.state.timerInterval) {
@@ -798,6 +873,42 @@ export class AiSidebar extends Component {
         return formatTimeAgo(this.state.hintTimestamp);
     }
 
+    get unreadCount() {
+        return this.aiChatStore?.state?.unreadCount || 0;
+    }
+
+    get showUnreadIndicator() {
+        return (
+            !this.state.showRecorderPanel &&
+            this.unreadCount > 0 &&
+            !this.aiChatStore?.state?.isAtBottom
+        );
+    }
+
+    get unreadIndicatorLabel() {
+        return this.unreadCount > 1 ? _t("%s new messages", this.unreadCount) : _t("New message");
+    }
+
+    get wsStatusLabel() {
+        const status = String(this.state.wsStatus || "unknown").toLowerCase();
+        const labels = {
+            online: _t("online"),
+            offline: _t("offline"),
+            unknown: _t("unknown"),
+        };
+        return labels[status] || this.state.wsStatus || labels.unknown;
+    }
+
+    translate(text) {
+        return _t(text);
+    }
+
+    jumpToNewestMessage() {
+        this._scrollConversationToBottom({ smooth: true });
+        this.aiChatStore?.markRead?.();
+        this.aiChatStore?.setAtBottom?.(true);
+    }
+
     get currentRouteLabel() {
         return this.state.breadcrumbPath || this.currentContextLabel || "";
     }
@@ -823,9 +934,9 @@ export class AiSidebar extends Component {
         if (!model) return "";
 
         const modelLabels = {
-            "sale.order": "Sales",
-            "account.move": "Accounting",
-            "project.task": "Project Tasks",
+            "sale.order": _t("Sales"),
+            "account.move": _t("Accounting"),
+            "project.task": _t("Project Tasks"),
         };
 
         if (modelLabels[model]) return modelLabels[model];
@@ -1050,6 +1161,16 @@ export class AiSidebar extends Component {
             payload.data?.exerciseId,
             payload.payload?.exercise_id,
             payload.payload?.exerciseId,
+            payload.cta_metadata?.exercise_id,
+            payload.cta_metadata?.exerciseId,
+            payload.ctaMetadata?.exercise_id,
+            payload.ctaMetadata?.exerciseId,
+            payload.result?.cta_metadata?.exercise_id,
+            payload.result?.cta_metadata?.exerciseId,
+            payload.data?.cta_metadata?.exercise_id,
+            payload.data?.cta_metadata?.exerciseId,
+            payload.payload?.cta_metadata?.exercise_id,
+            payload.payload?.cta_metadata?.exerciseId,
             payload.exercise?.id,
         ];
 
@@ -1082,6 +1203,69 @@ export class AiSidebar extends Component {
         ).trim();
     }
 
+    _isWelcomePromptPayload(payload) {
+        if (!payload || typeof payload !== "object") return false;
+
+        const candidates = [
+            payload.is_welcome,
+            payload.isWelcome,
+            payload.result?.is_welcome,
+            payload.result?.isWelcome,
+            payload.data?.is_welcome,
+            payload.data?.isWelcome,
+            payload.payload?.is_welcome,
+            payload.payload?.isWelcome,
+        ];
+
+        return candidates.some((value) => {
+            if (value === true || value === 1) return true;
+            if (typeof value === "string") {
+                return ["true", "1", "yes"].includes(value.trim().toLowerCase());
+            }
+            return false;
+        });
+    }
+
+    _isExerciseCompletedPayload(payload) {
+        if (!payload) return false;
+
+        const responseText = this._extractResponseText(payload);
+        const candidates = [];
+
+        if (typeof payload === "string") {
+            candidates.push(payload);
+        } else if (typeof payload === "object") {
+            candidates.push(
+                payload.status,
+                payload.exercise_status,
+                payload.exerciseStatus,
+                payload.event,
+                payload.event_name,
+                payload.result?.status,
+                payload.result?.exercise_status,
+                payload.result?.exerciseStatus,
+                payload.data?.status,
+                payload.data?.exercise_status,
+                payload.data?.exerciseStatus,
+                payload.payload?.status,
+                payload.payload?.exercise_status,
+                payload.payload?.exerciseStatus,
+                responseText
+            );
+        }
+
+        return candidates.some((value) => {
+            const normalized = normalizeAssistantTextForCompare(value || "").replace(/[\s-]+/g, "_");
+            return (
+                normalized === "exercise_completed" ||
+                normalized === "completed" ||
+                normalized.includes("exercise_completed") ||
+                normalized.includes("exercise_completado") ||
+                normalized.includes("ejercicio_completado")
+            );
+        });
+    }
+
     _isExerciseResumePromptText(text) {
         const normalized = String(text || "").toLowerCase();
         return (
@@ -1101,6 +1285,34 @@ export class AiSidebar extends Component {
         return normalizedExerciseId;
     }
 
+    _publishExerciseCtaState({ exerciseId = this.state.exerciseId, status = this.state.exerciseCtaStatus } = {}) {
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
+        const visible = !!normalizedExerciseId && !!this.state.exerciseChoicePending;
+        const payload = {
+            exerciseId: visible ? normalizedExerciseId : null,
+            visible,
+            status: visible ? String(status || "") : "",
+            updatedAt: Date.now(),
+        };
+
+        this.state.exerciseCtaStatus = payload.status;
+        Object.assign(getExerciseCtaState(), payload);
+        window.dispatchEvent(new CustomEvent(EXERCISE_CTA_EVENT, { detail: payload }));
+    }
+
+    _clearExerciseCtaState() {
+        const payload = {
+            exerciseId: null,
+            visible: false,
+            status: "",
+            updatedAt: Date.now(),
+        };
+
+        this.state.exerciseCtaStatus = "";
+        Object.assign(getExerciseCtaState(), payload);
+        window.dispatchEvent(new CustomEvent(EXERCISE_CTA_EVENT, { detail: payload }));
+    }
+
     _registerExercisePrompt(exerciseId, options = {}) {
         const normalizedExerciseId = this._getPromptExerciseId(exerciseId, options);
         if (!normalizedExerciseId) {
@@ -1110,13 +1322,19 @@ export class AiSidebar extends Component {
         this.state.exerciseId = normalizedExerciseId;
         this.state.showButtons = true;
         this.state.exerciseChoicePending = true;
+        this.state.exerciseCtaStatus = "";
         this._syncComposerDisabledState();
+        this._publishExerciseCtaState({ exerciseId: normalizedExerciseId });
         return normalizedExerciseId;
     }
 
     _cancelPendingExerciseActions() {
+        const hadPendingCta = this.state.exerciseChoicePending || !!getExerciseCtaState().visible;
         this._exerciseActionsScheduleVersion += 1;
         this.state.exerciseChoicePending = false;
+        if (hadPendingCta) {
+            this._clearExerciseCtaState();
+        }
         this._syncComposerDisabledState();
     }
 
@@ -1221,7 +1439,7 @@ export class AiSidebar extends Component {
                     ${this._escapeHtml(_t("Yes"))}
                 </button>
                 <button type="button" class="ai-exercise-choice ai-exercise-choice-cancel" data-action="cancel">
-                    ${this._escapeHtml(_t("Cancelar"))}
+                    ${this._escapeHtml(_t("Cancel"))}
                 </button>
             </div>
         `;
@@ -1314,7 +1532,18 @@ export class AiSidebar extends Component {
 
     async _handleExerciseChoice({ exerciseId, answer, action, card }) {
         const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
-        if (!normalizedExerciseId || card?.dataset?.status === "sending") return;
+        if (
+            !normalizedExerciseId ||
+            card?.dataset?.status === "sending" ||
+            this.state.exerciseCtaStatus === "sending"
+        ) {
+            return;
+        }
+
+        this._publishExerciseCtaState({
+            exerciseId: normalizedExerciseId,
+            status: "sending",
+        });
 
         this._setExerciseActionsState(
             card,
@@ -1329,10 +1558,17 @@ export class AiSidebar extends Component {
             if (wasProcessActive) {
                 this.state.exerciseId = normalizedExerciseId;
                 this.state.showButtons = false;
-                this._persistActiveExercise({
-                    exerciseId: normalizedExerciseId,
-                    startedAt: Date.now() - (this.state.timerSeconds || 0) * 1000,
-                });
+                this._clearExerciseCtaState();
+                if (this.state.timerPaused) {
+                    this._resumeExerciseTimer({ exerciseId: normalizedExerciseId });
+                } else {
+                    this._persistActiveExercise({
+                        exerciseId: normalizedExerciseId,
+                        startedAt: Date.now() - (this.state.timerSeconds || 0) * 1000,
+                        paused: false,
+                        elapsedSeconds: this.state.timerSeconds,
+                    });
+                }
             } else {
                 this.startProcess(normalizedExerciseId);
             }
@@ -1480,6 +1716,33 @@ export class AiSidebar extends Component {
         document.body.classList.add("offcanvas-open");
     }
 
+    _scheduleChatLayoutSync() {
+        if (this._chatLayoutSyncRaf) return;
+
+        this._chatLayoutSyncRaf = requestAnimationFrame(() => {
+            this._chatLayoutSyncRaf = null;
+
+            const root = this.chatUiRef?.el;
+            if (!root) return;
+
+            const composer = root.querySelector(".nlux-composer-container");
+            if (composer) {
+                const nextWidth = composer.offsetWidth;
+                const nextHeight = composer.offsetHeight;
+                if (this.state.composerWidth !== nextWidth) {
+                    this.state.composerWidth = nextWidth;
+                }
+                if (this.state.composerHeight !== nextHeight) {
+                    this.state.composerHeight = nextHeight;
+                }
+            }
+
+            this._setupComposerOverflowTracking();
+            this._syncComposerOverflowState();
+            this._syncComposerDisabledState();
+        });
+    }
+
     _setupComposerOverflowTracking() {
         const composerInput = this.chatUiRef?.el?.querySelector(".nlux-composer-container textarea");
         if (!composerInput) {
@@ -1543,6 +1806,8 @@ export class AiSidebar extends Component {
     _afterShown() {
         this._normalizeDomAfterTransitions();
         this._ensureBackdropVisible();
+        this.aiChatStore?.markOpen?.(true);
+        this._syncConversationReadState();
 
         if (!this.state.showRecorderPanel) {
             requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
@@ -1553,6 +1818,7 @@ export class AiSidebar extends Component {
         this._sendCurrentLiveContext();
 
         this._flushPendingTutorMessages?.();
+        this._scheduleConversationReadStateSync?.();
         if (this.state.hintVisible && this.state.hintMessage && !this.state.hintExiting) {
             this._scheduleInlineHintAutoHide?.();
         }
@@ -1561,6 +1827,7 @@ export class AiSidebar extends Component {
 
     _afterHidden() {
         document.body.classList.remove("o_ai_pick_mode");
+        this.aiChatStore?.markOpen?.(false);
         this._normalizeDomAfterTransitions();
         this._forceOffcanvasCleanup();
         this._disposeBsOffcanvas();
@@ -1627,6 +1894,9 @@ export class AiSidebar extends Component {
 
     async onCloseSidebar() {
         await this.hideSidebar();
+        window.dispatchEvent(new CustomEvent(SIDEBAR_CLOSED_EVENT, {
+            detail: { source: "header_close" },
+        }));
     }
 
     // =========================================================
@@ -1801,18 +2071,19 @@ export class AiSidebar extends Component {
     _queueTutorMessage(text, timestamp = null, meta = {}) {
         const cleaned = String(text || "").trim();
         if (!cleaned) return;
+        const displayText = translateKnownTutorText(cleaned);
 
         const queue = getTutorPendingQueue();
         const exerciseId = this._normalizeExerciseId(meta.exerciseId);
         const allowExercisePromptWhileActive = !!meta.allowExercisePromptWhileActive;
-        const key = `${cleaned}__${timestamp || ""}__${exerciseId || ""}`;
+        const key = `${displayText}__${timestamp || ""}__${exerciseId || ""}`;
 
         const alreadyQueued = queue.some((item) => item.key === key);
         if (alreadyQueued) return;
 
         queue.push({
             key,
-            text: cleaned,
+            text: displayText,
             timestamp: timestamp || new Date().toISOString(),
             exerciseId,
             allowExercisePromptWhileActive,
@@ -1836,8 +2107,9 @@ export class AiSidebar extends Component {
         for (const item of pending) {
             const cleaned = String(item.text || "").trim();
             if (!cleaned) continue;
+            const displayText = translateKnownTutorText(cleaned);
 
-            if (this._isDuplicateAssistantText(cleaned)) {
+            if (this._isDuplicateAssistantText(displayText)) {
                 if (item.exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         item.exerciseId,
@@ -1850,13 +2122,15 @@ export class AiSidebar extends Component {
                 continue;
             }
 
-            const inserted = this._pushAssistantMessageToNlux(cleaned, {
+            const preserveScroll = this._shouldPreserveScrollForIncomingMessage();
+            const inserted = this._pushAssistantMessageToNlux(displayText, {
                 exerciseId: item.exerciseId || null,
                 allowExercisePromptWhileActive: !!item.allowExercisePromptWhileActive,
+                preserveScroll,
             });
 
             if (inserted) {
-                this._lastInjectedTutorText = cleaned;
+                this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
             } else {
                 failed.push(item);
@@ -1870,6 +2144,7 @@ export class AiSidebar extends Component {
         requestAnimationFrame(() => {
             this._ensureCopyButtons?.();
             this._installManualSelectionGuard?.();
+            this._scheduleConversationReadStateSync?.();
         });
     }
 
@@ -1900,11 +2175,22 @@ export class AiSidebar extends Component {
 
             const cleaned = String(text || "").trim();
             if (!cleaned) return;
+            const displayText = translateKnownTutorText(cleaned);
+            const isExerciseCompleted = this._isExerciseCompletedPayload(msg);
 
             const allowExercisePromptWhileActive = this._isExerciseResumePromptText(cleaned);
             const exerciseId = this._registerExercisePrompt(this._extractExerciseId(msg), {
                 allowWhileActive: allowExercisePromptWhileActive,
             });
+            const isWelcomePrompt = this._isWelcomePromptPayload(msg);
+
+            if (exerciseId && isWelcomePrompt) {
+                this._pauseExerciseTimer({ reason: "welcome" });
+            }
+
+            if (isExerciseCompleted) {
+                this.completeProcess();
+            }
 
             const normalized = normalizeAssistantTextForCompare(cleaned);
 
@@ -1916,7 +2202,7 @@ export class AiSidebar extends Component {
                 sidebarOpen: this._isSidebarOpen(),
             });
 
-            if (this._isDuplicateAssistantText(cleaned)) {
+            if (this._isDuplicateAssistantText(displayText)) {
                 if (exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         exerciseId,
@@ -1929,10 +2215,15 @@ export class AiSidebar extends Component {
                 return;
             }
 
+            const preserveScroll = this._shouldPreserveScrollForIncomingMessage();
+            this.aiChatStore?.addTutorPush?.(msg, {
+                unread: !this._isSidebarOpen() || preserveScroll,
+            });
+
             // Si el chat aún no está listo o el sidebar está cerrado,
             // se guarda para mostrarlo después.
             if (!this.aiChat || !this._isSidebarOpen()) {
-                this._queueTutorMessage(cleaned, msg.timestamp, {
+                this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
                     allowExercisePromptWhileActive,
                 });
@@ -1940,17 +2231,18 @@ export class AiSidebar extends Component {
             }
 
             // Si está abierto, intentamos insertarlo.
-            const inserted = this._pushAssistantMessageToNlux(cleaned, {
+            const inserted = this._pushAssistantMessageToNlux(displayText, {
                 exerciseId,
                 allowExercisePromptWhileActive,
+                preserveScroll,
             });
 
             if (inserted) {
-                this._lastInjectedTutorText = cleaned;
+                this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
             } else {
                 // Si falló, no lo perdemos.
-                this._queueTutorMessage(cleaned, msg.timestamp, {
+                this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
                     allowExercisePromptWhileActive,
                 });
@@ -1974,8 +2266,11 @@ export class AiSidebar extends Component {
 
     _pushAssistantMessageToNlux(text, options = {}) {
         if (!this.aiChat) return false;
+        const displayText = translateKnownTutorText(text);
 
         const allowExercisePromptWhileActive = !!options.allowExercisePromptWhileActive;
+        const preserveScroll = !!options.preserveScroll;
+        const preservedScrollTop = preserveScroll ? this._captureConversationScrollTop() : null;
         const exerciseId = this._registerExercisePrompt(options.exerciseId, {
             allowWhileActive: allowExercisePromptWhileActive,
         });
@@ -1988,10 +2283,14 @@ export class AiSidebar extends Component {
             try {
                 this.aiChat.addMessage({
                     role: "assistant",
-                    content: text,
+                    content: displayText,
                 });
 
                 requestAnimationFrame(() => {
+                    if (preserveScroll) {
+                        this._restoreConversationScrollTop(preservedScrollTop);
+                    }
+                    this._scheduleConversationReadStateSync();
                     if (exerciseId) {
                         this._scheduleExerciseActionsForLastMessage(
                             exerciseId,
@@ -2016,10 +2315,14 @@ export class AiSidebar extends Component {
             try {
                 this.aiChat.pushMessage({
                     role: "assistant",
-                    content: text,
+                    content: displayText,
                 });
 
                 requestAnimationFrame(() => {
+                    if (preserveScroll) {
+                        this._restoreConversationScrollTop(preservedScrollTop);
+                    }
+                    this._scheduleConversationReadStateSync();
                     if (exerciseId) {
                         this._scheduleExerciseActionsForLastMessage(
                             exerciseId,
@@ -2098,11 +2401,20 @@ export class AiSidebar extends Component {
         }
 
         try {
-            this._anchorEl = item;
-            this._startLockToAnchor();
+            if (preserveScroll) {
+                this._restoreConversationScrollTop(preservedScrollTop);
+            } else {
+                this._anchorEl = item;
+                this._startLockToAnchor();
+                this._syncConversationReadState();
+            }
         } catch {}
 
         requestAnimationFrame(() => {
+            if (preserveScroll) {
+                this._restoreConversationScrollTop(preservedScrollTop);
+            }
+            this._scheduleConversationReadStateSync();
             this._ensureCopyButtons?.();
             this._installManualSelectionGuard?.();
             window.dispatchEvent(new Event("resize"));
@@ -2141,7 +2453,7 @@ export class AiSidebar extends Component {
         this._expectingAssistant = true;
         const data = await this.aiWs.chat({ message, context: this.state.currentContext });
         const text = this._extractResponseText(data);
-        return { result: { response: text, exercise_id: this._extractExerciseId(data) } };
+        return { result: { response: text, exercise_id: this._extractExerciseId(data) }, raw: data };
     }
 
     createAiChat() {
@@ -2200,10 +2512,13 @@ export class AiSidebar extends Component {
         this._lastInjectedTutorAt = 0;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this.aiChatStore?.markRead?.();
+        this.aiChatStore?.clearTutorPushes?.();
 
         this.createAiChat();
 
         if (this.state.timerInterval) clearInterval(this.state.timerInterval);
+        this._timerStartedAtMs = null;
         this.state.isLoading = false;
         this.state.showButtons = false;
         this.state.processActive = false;
@@ -2211,6 +2526,8 @@ export class AiSidebar extends Component {
         this.state.exerciseChoicePending = false;
         this.state.exerciseCancelLoading = false;
         this.state.timerInterval = null;
+        this.state.timerPaused = false;
+        this.state.timerPausedReason = "";
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
         this._syncComposerDisabledState();
@@ -2249,9 +2566,14 @@ export class AiSidebar extends Component {
             const response = await this.sendMessage(message);
             const messageText = response.result.response;
             const exercise_id = this._getPromptExerciseId(response.result.exercise_id);
+            const isWelcomePrompt = this._isWelcomePromptPayload(response.result || response);
+            const isExerciseCompleted = this._isExerciseCompletedPayload(response.raw || response.result || response);
 
             if (exercise_id) {
                 this._registerExercisePrompt(exercise_id);
+                if (isWelcomePrompt) {
+                    this._pauseExerciseTimer({ reason: "welcome" });
+                }
                 setTimeout(
                     () => this._scheduleExerciseActionsForLastMessage(exercise_id, 24, receivedCountBefore + 1),
                     0
@@ -2262,7 +2584,11 @@ export class AiSidebar extends Component {
                 this.state.exerciseId = null;
             }
 
-            return new String(messageText);
+            if (isExerciseCompleted) {
+                this.completeProcess();
+            }
+
+            return new String(translateKnownTutorText(messageText));
         } catch (error) {
             return `Error: ${error.message}`;
         } finally {
@@ -2334,19 +2660,30 @@ export class AiSidebar extends Component {
             const data = JSON.parse(raw);
             const exerciseId = this._normalizeExerciseId(data?.exerciseId || data?.exercise_id);
             const startedAt = Number(data?.startedAt);
+            const paused = data?.paused === true || data?.timerPaused === true;
+            const elapsedSeconds = Math.max(0, Math.floor(Number(data?.elapsedSeconds) || 0));
             const now = Date.now();
 
-            if (!exerciseId || !Number.isFinite(startedAt)) {
+            if (!exerciseId || (!Number.isFinite(startedAt) && !paused)) {
                 storage.removeItem(key);
                 return null;
             }
 
-            if (startedAt > now + 60000 || now - startedAt > ACTIVE_EXERCISE_MAX_AGE_MS) {
+            const effectiveStartedAt = Number.isFinite(startedAt)
+                ? startedAt
+                : now - elapsedSeconds * 1000;
+
+            if (effectiveStartedAt > now + 60000 || now - effectiveStartedAt > ACTIVE_EXERCISE_MAX_AGE_MS) {
                 storage.removeItem(key);
                 return null;
             }
 
-            return { exerciseId, startedAt };
+            return {
+                exerciseId,
+                startedAt: effectiveStartedAt,
+                paused,
+                elapsedSeconds: paused ? elapsedSeconds : Math.max(0, Math.floor((now - effectiveStartedAt) / 1000)),
+            };
         } catch {
             try {
                 storage.removeItem(key);
@@ -2355,7 +2692,7 @@ export class AiSidebar extends Component {
         }
     }
 
-    _persistActiveExercise({ exerciseId, startedAt }) {
+    _persistActiveExercise({ exerciseId, startedAt, paused = false, elapsedSeconds = null }) {
         const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
         if (!normalizedExerciseId || !Number.isFinite(Number(startedAt))) return;
 
@@ -2368,6 +2705,9 @@ export class AiSidebar extends Component {
                 JSON.stringify({
                     exerciseId: normalizedExerciseId,
                     startedAt: Number(startedAt),
+                    paused: !!paused,
+                    elapsedSeconds: Math.max(0, Math.floor(Number(elapsedSeconds) || 0)),
+                    updatedAt: Date.now(),
                     wsSessionId: window.__AI_TUTOR_WS_SESSION_ID || null,
                     contextModel: this.state.currentContext?.model || null,
                 })
@@ -2403,6 +2743,9 @@ export class AiSidebar extends Component {
 
     _startExerciseTimer(startedAt = Date.now()) {
         const startedAtMs = Number(startedAt) || Date.now();
+        this._timerStartedAtMs = startedAtMs;
+        this.state.timerPaused = false;
+        this.state.timerPausedReason = "";
         if (this.state.timerInterval) {
             clearInterval(this.state.timerInterval);
             this.state.timerInterval = null;
@@ -2416,6 +2759,52 @@ export class AiSidebar extends Component {
         this.state.timerInterval = setInterval(tick, 1000);
     }
 
+    _pauseExerciseTimer({ reason = "" } = {}) {
+        if (!this.state.processActive || this.state.timerPaused) return;
+
+        const elapsedSeconds = this._timerStartedAtMs
+            ? (Date.now() - this._timerStartedAtMs) / 1000
+            : this.state.timerSeconds;
+
+        if (this.state.timerInterval) {
+            clearInterval(this.state.timerInterval);
+            this.state.timerInterval = null;
+        }
+
+        this._setTimerSeconds(elapsedSeconds);
+        this.state.timerPaused = true;
+        this.state.timerPausedReason = reason;
+        this._timerStartedAtMs = null;
+
+        const normalizedExerciseId = this._normalizeExerciseId(this.state.exerciseId);
+        if (normalizedExerciseId) {
+            this._persistActiveExercise({
+                exerciseId: normalizedExerciseId,
+                startedAt: Date.now() - this.state.timerSeconds * 1000,
+                paused: true,
+                elapsedSeconds: this.state.timerSeconds,
+            });
+        }
+    }
+
+    _resumeExerciseTimer({ exerciseId = this.state.exerciseId } = {}) {
+        if (!this.state.processActive) return;
+
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
+        if (normalizedExerciseId) {
+            this.state.exerciseId = normalizedExerciseId;
+        }
+
+        const startedAt = Date.now() - (this.state.timerSeconds || 0) * 1000;
+        this._startExerciseTimer(startedAt);
+        this._persistActiveExercise({
+            exerciseId: normalizedExerciseId,
+            startedAt,
+            paused: false,
+            elapsedSeconds: this.state.timerSeconds,
+        });
+    }
+
     _restoreActiveExerciseSession() {
         const stored = this._readStoredActiveExercise();
         if (!stored || this.state.processActive) return false;
@@ -2426,7 +2815,15 @@ export class AiSidebar extends Component {
         this.state.processActive = true;
         this.state.exerciseChoicePending = false;
         this._syncComposerDisabledState();
-        this._startExerciseTimer(stored.startedAt);
+        if (stored.paused) {
+            this._setTimerSeconds(stored.elapsedSeconds);
+            this.state.timerPaused = true;
+            this.state.timerPausedReason = "welcome";
+            this.state.timerInterval = null;
+            this._timerStartedAtMs = null;
+        } else {
+            this._startExerciseTimer(stored.startedAt);
+        }
         return true;
     }
 
@@ -2444,13 +2841,21 @@ export class AiSidebar extends Component {
         this.state.showButtons = false;
         this.state.processActive = true;
         this.state.exerciseChoicePending = false;
+        this.state.timerPaused = false;
+        this.state.timerPausedReason = "";
         this._syncComposerDisabledState();
         this._startExerciseTimer(startedAt);
-        this._persistActiveExercise({ exerciseId: normalizedExerciseId, startedAt });
+        this._persistActiveExercise({
+            exerciseId: normalizedExerciseId,
+            startedAt,
+            paused: false,
+            elapsedSeconds: 0,
+        });
     }
 
     cancelProcess() {
         if (this.state.timerInterval) clearInterval(this.state.timerInterval);
+        this._timerStartedAtMs = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
         this.state.showButtons = false;
@@ -2458,8 +2863,28 @@ export class AiSidebar extends Component {
         this.state.exerciseId = null;
         this.state.exerciseCancelLoading = false;
         this.state.timerInterval = null;
+        this.state.timerPaused = false;
+        this.state.timerPausedReason = "";
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
+    }
+
+    completeProcess() {
+        if (this.state.timerInterval) {
+            clearInterval(this.state.timerInterval);
+        }
+
+        this._timerStartedAtMs = null;
+        this._clearStoredActiveExercise();
+        this._cancelPendingExerciseActions();
+        this.state.showButtons = false;
+        this.state.processActive = false;
+        this.state.exerciseChoicePending = false;
+        this.state.exerciseCancelLoading = false;
+        this.state.timerInterval = null;
+        this.state.timerPaused = false;
+        this.state.timerPausedReason = "";
+        this.state.exerciseId = null;
     }
 
     async showResultModal() {
@@ -2532,6 +2957,107 @@ export class AiSidebar extends Component {
         this._containerFinderTimer = setTimeout(() => this._disconnectContainerFinder(), 10000);
     }
 
+    _getConversationContainer() {
+        return this._conv || this.chatUiRef?.el?.querySelector(".nlux-conversation-container") || null;
+    }
+
+    _isConversationNearBottom(threshold = 72) {
+        const conv = this._getConversationContainer();
+        if (!conv) return true;
+        const distance = conv.scrollHeight - conv.scrollTop - conv.clientHeight;
+        return distance <= threshold;
+    }
+
+    _getNewestConversationItem() {
+        const conv = this._getConversationContainer();
+        if (!conv) return null;
+        const items = conv.querySelectorAll(".nlux-comp-chatItem");
+        return items.length ? items[items.length - 1] : null;
+    }
+
+    _isNewestConversationItemVisible() {
+        const conv = this._getConversationContainer();
+        const newest = this._getNewestConversationItem();
+        if (!conv || !newest) return true;
+
+        const convRect = conv.getBoundingClientRect();
+        const newestRect = newest.getBoundingClientRect();
+        const visibleTop = Math.max(newestRect.top, convRect.top);
+        const visibleBottom = Math.min(newestRect.bottom, convRect.bottom);
+        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+        const minimumVisibleHeight = Math.min(96, Math.max(32, newestRect.height * 0.2));
+
+        return visibleHeight >= minimumVisibleHeight || newestRect.bottom <= convRect.bottom + 96;
+    }
+
+    _syncConversationReadState() {
+        const atBottom = this._isConversationNearBottom() || this._isNewestConversationItemVisible();
+        this.aiChatStore?.setAtBottom?.(atBottom);
+        return atBottom;
+    }
+
+    _scheduleConversationReadStateSync() {
+        if (this._conversationReadSyncTimer) {
+            clearTimeout(this._conversationReadSyncTimer);
+            this._conversationReadSyncTimer = null;
+        }
+
+        requestAnimationFrame(() => {
+            this._syncConversationReadState();
+            this._conversationReadSyncTimer = setTimeout(() => {
+                this._conversationReadSyncTimer = null;
+                this._syncConversationReadState();
+            }, 180);
+        });
+    }
+
+    _shouldPreserveScrollForIncomingMessage() {
+        return (
+            this._isSidebarOpen() &&
+            !!this._getConversationContainer() &&
+            !this._isConversationNearBottom(96) &&
+            !this._isNewestConversationItemVisible()
+        );
+    }
+
+    _captureConversationScrollTop() {
+        const conv = this._getConversationContainer();
+        return conv ? conv.scrollTop : null;
+    }
+
+    _restoreConversationScrollTop(scrollTop) {
+        const conv = this._getConversationContainer();
+        if (!conv || scrollTop === null || scrollTop === undefined) return;
+        conv.scrollTop = scrollTop;
+        requestAnimationFrame(() => {
+            const latestConv = this._getConversationContainer();
+            if (latestConv) {
+                latestConv.scrollTop = scrollTop;
+            }
+        });
+    }
+
+    _scrollConversationToBottom({ smooth = false } = {}) {
+        const conv = this._getConversationContainer();
+        if (!conv) {
+            this.aiChatStore?.markRead?.();
+            this.aiChatStore?.setAtBottom?.(true);
+            return;
+        }
+
+        try {
+            conv.scrollTo({
+                top: conv.scrollHeight,
+                behavior: smooth ? "smooth" : "auto",
+            });
+        } catch {
+            conv.scrollTop = conv.scrollHeight;
+        }
+
+        this.aiChatStore?.markRead?.();
+        this.aiChatStore?.setAtBottom?.(true);
+    }
+
     _disconnectContainerFinder() {
         if (this._containerFinderObs) {
             this._containerFinderObs.disconnect();
@@ -2551,6 +3077,23 @@ export class AiSidebar extends Component {
         this._conv.style.maxHeight = "100%";
         this._conv.style.overflowAnchor = "none";
         this._conv.style.scrollBehavior = "auto";
+
+        this._onManualConversationScroll = () => {
+            this._userScrollingUntil = performance.now() + 1200;
+            if (this._lockActive) {
+                this._stopLock();
+            }
+        };
+
+        this._conv.addEventListener("wheel", this._onManualConversationScroll, { passive: true });
+        this._conv.addEventListener("touchstart", this._onManualConversationScroll, { passive: true });
+        this._conv.addEventListener("pointerdown", this._onManualConversationScroll, { passive: true });
+
+        this._onConversationReadScroll = () => {
+            this._syncConversationReadState();
+        };
+        this._conv.addEventListener("scroll", this._onConversationReadScroll, { passive: true });
+        this._syncConversationReadState();
 
         this._observerAA = new MutationObserver((mutations) => {
             let addedBotMsg = null;
@@ -2572,12 +3115,23 @@ export class AiSidebar extends Component {
                 this._startLockToAnchor();
             }
             if (this._lockActive && this._anchorEl) this._stickToAnchor();
+            this._scheduleConversationReadStateSync();
         });
 
         this._observerAA.observe(this._segments, { childList: true, subtree: true });
     }
 
     _teardownAntiAutoScroll() {
+        if (this._conv && this._onManualConversationScroll) {
+            this._conv.removeEventListener("wheel", this._onManualConversationScroll);
+            this._conv.removeEventListener("touchstart", this._onManualConversationScroll);
+            this._conv.removeEventListener("pointerdown", this._onManualConversationScroll);
+        }
+        this._onManualConversationScroll = null;
+        if (this._conv && this._onConversationReadScroll) {
+            this._conv.removeEventListener("scroll", this._onConversationReadScroll);
+        }
+        this._onConversationReadScroll = null;
         if (this._observerAA) {
             this._observerAA.disconnect();
             this._observerAA = null;
@@ -2595,20 +3149,25 @@ export class AiSidebar extends Component {
 
     _stickToAnchor() {
         if (!this._conv || !this._anchorEl) return;
+        if (performance.now() < this._userScrollingUntil) return;
         const target = Math.max(0, this._topWithin(this._anchorEl, this._conv) - 8);
         this._conv.scrollTop = target;
-        requestAnimationFrame(() => (this._conv.scrollTop = target));
     }
 
     _startLockToAnchor() {
         if (!this._anchorEl || !this._conv) return;
+        if (performance.now() < this._userScrollingUntil) return;
         this._lockActive = true;
 
-        const lockMs = 2500;
+        const lockMs = 900;
         const start = performance.now();
 
         const tick = () => {
             if (!this._lockActive) return;
+            if (performance.now() < this._userScrollingUntil) {
+                this._stopLock();
+                return;
+            }
             this._stickToAnchor();
 
             if (performance.now() - start < lockMs) {

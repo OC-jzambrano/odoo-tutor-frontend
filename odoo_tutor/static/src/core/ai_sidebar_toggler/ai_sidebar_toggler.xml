@@ -9,6 +9,7 @@
                     'is-dragging': state.dragging,
                     'is-open': state.chatOpen,
                     'has-preview': state.previewVisible &amp;&amp; state.previewMessage &amp;&amp; !state.chatOpen &amp;&amp; !state.dragging,
+                    'has-exercise-cta': launcherExerciseCtaVisible,
                     'has-attention': launcherHasAttention,
                     'is-fresh': isPreviewFresh,
                 }"
@@ -28,7 +29,7 @@
                             t-on-mousedown.stop.prevent="noop"
                             t-on-touchstart.stop.prevent="noop"
                             t-on-click.stop.prevent="closePreview"
-                            aria-label="Close preview"
+                            t-att-aria-label="translate('Close preview')"
                         >×</button>
                         <div class="ai-owl-preview-time">
                             <t t-esc="previewTimeAgo"/>
@@ -37,6 +38,35 @@
                         <div class="ai-owl-preview-text">
                             <t t-esc="state.previewMessage"/>
                         </div>
+
+                        <t t-if="launcherExerciseCtaVisible">
+                            <div class="ai-owl-exercise-actions"
+                                 role="group"
+                                 t-att-aria-label="translate('Exercise invitation actions')">
+                                <button
+                                    type="button"
+                                    class="ai-owl-exercise-choice ai-owl-exercise-choice-yes"
+                                    t-att-disabled="exerciseCtaBusy"
+                                    t-on-mousedown.stop.prevent="noop"
+                                    t-on-touchstart.stop.prevent="noop"
+                                    t-on-click.stop.prevent="onExerciseCtaStart"
+                                >
+                                    <t t-if="exerciseCtaBusy" t-esc="translate('Starting...')"/>
+                                    <t t-else="" t-esc="translate('Yes')"/>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="ai-owl-exercise-choice ai-owl-exercise-choice-cancel"
+                                    t-att-disabled="exerciseCtaBusy"
+                                    t-on-mousedown.stop.prevent="noop"
+                                    t-on-touchstart.stop.prevent="noop"
+                                    t-on-click.stop.prevent="onExerciseCtaCancel"
+                                >
+                                    <t t-esc="translate('Cancel')"/>
+                                </button>
+                            </div>
+                        </t>
 
                         <div class="ai-owl-preview-tail"/>
                     </div>
@@ -50,8 +80,8 @@
                     t-on-click="onIconClick"
                     data-ai-sidebar-toggle="1"
                     aria-controls="offcanvasAiSidebar"
-                    aria-label="Open Odoo Tutor"
-                    t-att-title="launcherHasAttention ? 'Open Odoo Tutor - new guidance available' : 'Open Odoo Tutor'"
+                    t-att-aria-label="openTutorLabel"
+                    t-att-title="openTutorTitle"
                 >
                     <span class="ai-owl-trigger-halo"/>
                     <span class="ai-owl-trigger-shell">

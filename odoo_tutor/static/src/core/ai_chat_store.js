@@ -9,17 +9,31 @@ export const aiChatStoreService = {
       tutorPushes: [],     // <- aquí pintaremos
       unreadCount: 0,
       isChatOpen: false,
+      isAtBottom: true,
     });
 
     function markOpen(isOpen) {
       state.isChatOpen = !!isOpen;
-      if (state.isChatOpen) state.unreadCount = 0;
+      if (state.isChatOpen && state.isAtBottom) {
+        markRead();
+      }
     }
 
-    function addTutorPush(push) {
+    function setAtBottom(isAtBottom) {
+      state.isAtBottom = !!isAtBottom;
+      if (state.isChatOpen && state.isAtBottom) {
+        markRead();
+      }
+    }
+
+    function markRead() {
+      state.unreadCount = 0;
+    }
+
+    function addTutorPush(push, options = {}) {
       const item = {
         id: crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        response: String(push?.response || ""),
+        response: String(push?.response || push?.message || push?.content || push?.text || ""),
         exercise_id: push?.exercise_id ?? null,
         current_step: push?.current_step ?? null,
         ts: new Date().toISOString(),
@@ -27,7 +41,17 @@ export const aiChatStoreService = {
 
       state.tutorPushes.push(item);
 
-      if (!state.isChatOpen) state.unreadCount += 1;
+      const shouldMarkUnread =
+        typeof options.unread === "boolean"
+          ? options.unread
+          : !state.isChatOpen || !state.isAtBottom;
+
+      if (shouldMarkUnread) {
+        state.unreadCount += 1;
+      } else if (state.isChatOpen) {
+        markRead();
+      }
+
       return item;
     }
 
@@ -35,7 +59,7 @@ export const aiChatStoreService = {
       state.tutorPushes.splice(0, state.tutorPushes.length);
     }
 
-    return { state, markOpen, addTutorPush, clearTutorPushes };
+    return { state, markOpen, setAtBottom, markRead, addTutorPush, clearTutorPushes };
   },
 };
 

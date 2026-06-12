@@ -25,3 +25,391 @@ msgstr "Feedback enviado. Gracias 🙌"
 #: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
 msgid "Could not send the feedback."
 msgstr "No se pudo enviar el feedback."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "just now"
+msgstr "ahora mismo"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "%s seconds ago"
+msgstr "hace %s segundos"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "New message"
+msgstr "Mensaje nuevo"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "%s new messages"
+msgstr "%s mensajes nuevos"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "1 minute ago"
+msgstr "hace 1 minuto"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "%s minutes ago"
+msgstr "hace %s minutos"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "1 hour ago"
+msgstr "hace 1 hora"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "%s hours ago"
+msgstr "hace %s horas"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "1 day ago"
+msgstr "hace 1 día"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "%s days ago"
+msgstr "hace %s días"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "Do you want to continue the exercise?"
+msgstr "¿Quieres continuar el ejercicio?"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "You're creating a Quotation, want help?"
+msgstr "Estás creando una cotización, ¿quieres ayuda?"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Need help with this Invoice?"
+msgstr "¿Necesitas ayuda con esta factura?"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "What do you need to know about this Task?"
+msgstr "¿Qué necesitas saber sobre esta tarea?"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "How can I help you today?"
+msgstr "¿Cómo puedo ayudarte hoy?"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Sales"
+msgstr "Ventas"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Accounting"
+msgstr "Contabilidad"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Project Tasks"
+msgstr "Tareas del proyecto"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Recorder workspace for guided flows"
+msgstr "Espacio de grabación para flujos guiados"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Reset"
+msgstr "Restablecer"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Switch to Chat"
+msgstr "Cambiar al chat"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Switch to Recorder"
+msgstr "Cambiar al grabador"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Chat"
+msgstr "Chat"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Recorder"
+msgstr "Grabador"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Cancel exercise"
+msgstr "Cancelar ejercicio"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Close"
+msgstr "Cerrar"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Recording"
+msgstr "Grabando"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Start"
+msgstr "Iniciar"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Pause"
+msgstr "Pausar"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Finish"
+msgstr "Finalizar"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Session ID:"
+msgstr "ID de sesión:"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "WebSocket:"
+msgstr "WebSocket:"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "online"
+msgstr "en línea"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "offline"
+msgstr "sin conexión"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "unknown"
+msgstr "desconocido"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Picking..."
+msgstr "Seleccionando..."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Pick element"
+msgstr "Seleccionar elemento"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Clear"
+msgstr "Limpiar"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Step instruction (optional)..."
+msgstr "Instrucción del paso (opcional)..."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Save step"
+msgstr "Guardar paso"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Real-time event feed"
+msgstr "Eventos en tiempo real"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Context hint"
+msgstr "Pista de contexto"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Close hint"
+msgstr "Cerrar pista"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
+msgid "Close preview"
+msgstr "Cerrar vista previa"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
+msgid "Exercise invitation actions"
+msgstr "Acciones de invitación al ejercicio"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
+msgid "Open Odoo Tutor"
+msgstr "Abrir Odoo Tutor"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
+msgid "Open Odoo Tutor - new guidance available"
+msgstr "Abrir Odoo Tutor - hay una nueva guía disponible"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
+msgid "Yes"
+msgstr "Sí"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
+msgid "Cancel"
+msgstr "Cancelar"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+#: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
+msgid "Starting..."
+msgstr "Iniciando..."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Cancelling..."
+msgstr "Cancelando..."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Guide started."
+msgstr "Guía iniciada."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Cancelled."
+msgstr "Cancelado."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Could not send the answer."
+msgstr "No se pudo enviar la respuesta."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Could not send the exercise answer to WebSocket."
+msgstr "No se pudo enviar la respuesta del ejercicio al WebSocket."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Could not cancel the exercise through WebSocket."
+msgstr "No se pudo cancelar el ejercicio mediante WebSocket."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Add an instruction or pick an element first."
+msgstr "Agrega una instrucción o selecciona un elemento primero."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Duplicate step ignored."
+msgstr "Paso duplicado ignorado."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Step saved."
+msgstr "Paso guardado."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Could not save step to WebSocket."
+msgstr "No se pudo guardar el paso en WebSocket."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Helpful answer"
+msgstr "Respuesta útil"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Not helpful"
+msgstr "No fue útil"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Leave a comment"
+msgstr "Dejar un comentario"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Quick feedback"
+msgstr "Comentarios rápidos"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Excellent"
+msgstr "Excelente"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Unclear"
+msgstr "Poco claro"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Technical issue"
+msgstr "Problema técnico"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Comment"
+msgstr "Comentario"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "What was unclear?"
+msgstr "¿Qué no quedó claro?"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Tell us what felt confusing or incomplete..."
+msgstr "Cuéntanos qué fue confuso o incompleto..."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Describe the technical issue"
+msgstr "Describe el problema técnico"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "What went wrong? (error, stuck, wrong output, etc.)"
+msgstr "¿Qué salió mal? (error, bloqueo, salida incorrecta, etc.)"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Feedback about this answer"
+msgstr "Comentarios sobre esta respuesta"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Tell us what we can improve..."
+msgstr "Cuéntanos qué podemos mejorar..."
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Send"
+msgstr "Enviar"

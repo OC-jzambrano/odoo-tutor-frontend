@@ -5,6 +5,7 @@ import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
+import { _t } from "@web/core/l10n/translation";
 import { normalizeDomEvent } from "../normalize_ui_event";
 
 // ---------------------
@@ -12,6 +13,11 @@ import { normalizeDomEvent } from "../normalize_ui_event";
 // ---------------------
 
 const AI_DOC = window.top?.document || document;
+const EXERCISE_CTA_STATE_KEY = "__AI_TUTOR_EXERCISE_CTA__";
+const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
+const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
+const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
+const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
 
 function normalizePreviewTimestamp(ts) {
     const now = Date.now();
@@ -27,7 +33,7 @@ function normalizePreviewTimestamp(ts) {
     } else {
         const raw = String(ts).trim();
 
-        if (/^\d+$/.test(raw)) {
+        if (/^\d+(\.\d+)?$/.test(raw)) {
             const n = Number(raw);
             parsed = n < 1e12 ? n * 1000 : n;
         } else {
@@ -59,6 +65,23 @@ function cleanPreviewText(text) {
         .trim();
 }
 
+function translateKnownTutorText(value) {
+    const cleaned = cleanPreviewText(value);
+    const normalized = cleaned
+        .replace(/\*\*/g, "")
+        .replace(/`/g, "")
+        .replace(/\n+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+
+    if (normalized === "do you want to continue the exercise?") {
+        return _t("Do you want to continue the exercise?");
+    }
+
+    return cleaned;
+}
+
 function formatTimeAgo(ts) {
     if (!ts) return "";
     const now = Date.now();
@@ -67,20 +90,20 @@ function formatTimeAgo(ts) {
 
     const diffSec = Math.max(0, Math.floor((now - then) / 1000));
 
-    if (diffSec < 10) return "just now";
-    if (diffSec < 60) return `${diffSec} seconds ago`;
+    if (diffSec < 10) return _t("just now");
+    if (diffSec < 60) return _t("%s seconds ago", diffSec);
 
     const diffMin = Math.floor(diffSec / 60);
-    if (diffMin === 1) return "1 minute ago";
-    if (diffMin < 60) return `${diffMin} minutes ago`;
+    if (diffMin === 1) return _t("1 minute ago");
+    if (diffMin < 60) return _t("%s minutes ago", diffMin);
 
     const diffHour = Math.floor(diffMin / 60);
-    if (diffHour === 1) return "1 hour ago";
-    if (diffHour < 24) return `${diffHour} hours ago`;
+    if (diffHour === 1) return _t("1 hour ago");
+    if (diffHour < 24) return _t("%s hours ago", diffHour);
 
     const diffDay = Math.floor(diffHour / 24);
-    if (diffDay === 1) return "1 day ago";
-    return `${diffDay} days ago`;
+    if (diffDay === 1) return _t("1 day ago");
+    return _t("%s days ago", diffDay);
 }
 
 function getOwlPreviewState() {
@@ -90,6 +113,16 @@ function getOwlPreviewState() {
         visible: false,
     };
     return window.__AI_TUTOR_OWL_PREVIEW__;
+}
+
+function getExerciseCtaState() {
+    window[EXERCISE_CTA_STATE_KEY] = window[EXERCISE_CTA_STATE_KEY] || {
+        exerciseId: null,
+        visible: false,
+        status: "",
+        updatedAt: null,
+    };
+    return window[EXERCISE_CTA_STATE_KEY];
 }
 
 async function getUserLogin() {
@@ -387,6 +420,7 @@ class AiFloatingButton extends Component {
         this._dragPos = { x: 0, y: 0 };
         this._suppressNextClick = false;
         this._rafDrag = null;
+        this._showButtonGraceUntil = 0;
 
         this.state = useState({
             showButton: false,
@@ -400,13 +434,20 @@ class AiFloatingButton extends Component {
             previewTimestamp: null,
             previewVisible: false,
             previewTick: Date.now(),
+            exerciseCtaVisible: false,
+            exerciseCtaId: null,
+            exerciseCtaStatus: "",
         });
 
         const previewState = getOwlPreviewState();
+        const exerciseCtaState = getExerciseCtaState();
 
         this.state.previewMessage = previewState.message || "";
         this.state.previewTimestamp = previewState.timestamp || null;
         this.state.previewVisible = !!previewState.visible;
+        this.state.exerciseCtaVisible = !!exerciseCtaState.visible;
+        this.state.exerciseCtaId = exerciseCtaState.exerciseId || null;
+        this.state.exerciseCtaStatus = exerciseCtaState.status || "";
 
         this._syncPreviewState = () => {
             previewState.message = this.state.previewMessage;
@@ -414,8 +455,23 @@ class AiFloatingButton extends Component {
             previewState.visible = this.state.previewVisible;
         };
 
+        this._applyExerciseCtaState = (data = getExerciseCtaState()) => {
+            const visible = !!data.visible && !!data.exerciseId;
+            this.state.exerciseCtaVisible = visible;
+            this.state.exerciseCtaId = visible ? data.exerciseId : null;
+            this.state.exerciseCtaStatus = visible ? data.status || "" : "";
+
+            if (visible && this.state.previewMessage) {
+                const offcanvasEl = document.getElementById("offcanvasAiSidebar");
+                const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
+                this._previewDismissed = false;
+                this.state.previewVisible = !isChatOpen;
+                this._syncPreviewState?.();
+            }
+        };
+
         this._setPreviewMessage = (text, timestamp) => {
-            const cleaned = cleanPreviewText(text);
+            const cleaned = translateKnownTutorText(text);
             if (!cleaned) return;
 
             const safeTimestamp = normalizePreviewTimestamp(timestamp);
@@ -504,6 +560,7 @@ class AiFloatingButton extends Component {
             "mail.activity.plan",
             "mail.activity.type",
             "crm.team.member",
+            "ir.ui.menu"
         ];
 
         window.aiTutorDebug = window.aiTutorDebug || {};
@@ -539,6 +596,16 @@ class AiFloatingButton extends Component {
 
             window.addEventListener("ai:preview_reset", this._onPreviewReset);
 
+            this._onExerciseCtaUpdate = (e) => {
+                this._applyExerciseCtaState(e?.detail || getExerciseCtaState());
+            };
+
+            window.addEventListener(EXERCISE_CTA_EVENT, this._onExerciseCtaUpdate);
+            this._applyExerciseCtaState(getExerciseCtaState());
+
+            this._onSidebarClosed = () => this._restorePreviewAfterChatClose();
+            window.addEventListener(SIDEBAR_CLOSED_EVENT, this._onSidebarClosed);
+
             this._previewTimer = setInterval(() => {
                 if (this.state.previewTimestamp) {
                     this.state.previewTick = Date.now();
@@ -559,19 +626,7 @@ class AiFloatingButton extends Component {
                     this._focusChatInput();
                 };
 
-                this._onOffcanvasHidden = () => {
-                    this.state.chatOpen = false;
-                    this._suppressNextClick = false;
-
-                    if (this.state.previewMessage && !this._previewDismissed) {
-                        this.state.previewVisible = true;
-                        this.state.previewTick = Date.now();
-                    } else {
-                        this.state.previewVisible = false;
-                    }
-
-                    this._syncPreviewState?.();
-                };
+                this._onOffcanvasHidden = () => this._restorePreviewAfterChatClose();
 
                 offcanvasEl.addEventListener("shown.bs.offcanvas", this._onOffcanvasShown);
                 offcanvasEl.addEventListener("hidden.bs.offcanvas", this._onOffcanvasHidden);
@@ -595,21 +650,53 @@ class AiFloatingButton extends Component {
 
             let currentModel = null;
             let showButton = false;
+            let hasResolvedUnsupportedModel = false;
 
             const currentAction = this.actionService.currentController?.props;
-            if (currentAction) {
-                currentModel = currentAction.resModel;
+            const isHomeMenu = this._isHomeMenu();
+            const now = Date.now();
+
+            if (isHomeMenu) {
+                currentModel = "ir.ui.menu";
+                showButton = true;
+            } else if (currentAction) {
+                currentModel = currentAction.resModel || null;
+
                 if (this.modules.includes(currentModel)) {
                     showButton = true;
+                } else if (currentModel) {
+                    hasResolvedUnsupportedModel = true;
                 }
+            }
+
+            if (this.state.exerciseCtaVisible) {
+                showButton = true;
+            }
+
+            if (showButton) {
+                this._showButtonGraceUntil = now + OWL_NAVIGATION_VISIBILITY_GRACE_MS;
+            } else if (
+                this.state.showButton &&
+                !hasResolvedUnsupportedModel &&
+                now < this._showButtonGraceUntil
+            ) {
+                showButton = true;
+            } else {
+                this._showButtonGraceUntil = 0;
             }
 
             this.state.showButton = showButton;
 
             const currentPath2 = window.location.pathname;
             const isCreatingSaleOrder = currentPath2 === "/odoo/sales/new";
-            if (isCreatingSaleOrder) this.contextService.setContext(currentModel, "form", "create");
-            else if (currentModel) this.contextService.setContext(currentModel, "form", "list");
+
+            if (isHomeMenu) {
+                this.contextService.setContext("ir.ui.menu", "home_menu", "launcher");
+            } else if (isCreatingSaleOrder) {
+                this.contextService.setContext(currentModel, "form", "create");
+            } else if (currentModel) {
+                this.contextService.setContext(currentModel, "form", "list");
+            }
 
             this.state.ctx = this._getContextSnapshot();
         }, 500);
@@ -867,8 +954,50 @@ class AiFloatingButton extends Component {
         const isOpen = !!offcanvasEl?.classList?.contains("show");
 
         if (this.state.chatOpen !== isOpen) {
+            const wasOpen = this.state.chatOpen;
             this.state.chatOpen = isOpen;
+            if (wasOpen && !isOpen) {
+                this._restorePreviewAfterChatClose();
+            }
         }
+    }
+
+    _restorePreviewAfterChatClose() {
+        this.state.chatOpen = false;
+        this._suppressNextClick = false;
+
+        if (this.state.previewMessage && !this._previewDismissed) {
+            this.state.previewVisible = true;
+            this.state.previewTick = Date.now();
+        } else {
+            this.state.previewVisible = false;
+        }
+
+        this._syncPreviewState?.();
+    }
+
+    _isHomeMenu() {
+        const doc = AI_DOC || document;
+
+        const currentAction = this.actionService.currentController?.props || null;
+        const hasCurrentModel = !!currentAction?.resModel;
+
+        const hasActionView = !!doc.querySelector(`
+            .o_action_manager .o_form_view,
+            .o_action_manager .o_list_view,
+            .o_action_manager .o_kanban_view,
+            .o_action_manager .o_graph_view,
+            .o_action_manager .o_pivot_view,
+            .o_action_manager .o_calendar_view
+        `);
+
+        const hasHomeMenu = !!doc.querySelector(`
+            .o_home_menu,
+            .o_apps,
+            .o_app
+        `);
+
+        return hasHomeMenu && !hasActionView && !hasCurrentModel;
     }
 
     _restoreWidgetPosition() {
@@ -1223,6 +1352,20 @@ class AiFloatingButton extends Component {
         return formatTimeAgo(this.state.previewTimestamp);
     }
 
+    translate(text) {
+        return _t(text);
+    }
+
+    get openTutorLabel() {
+        return _t("Open Odoo Tutor");
+    }
+
+    get openTutorTitle() {
+        return this.launcherHasAttention
+            ? _t("Open Odoo Tutor - new guidance available")
+            : _t("Open Odoo Tutor");
+    }
+
     get isPreviewFresh() {
         this.state.previewTick;
         if (!this.state.previewTimestamp) {
@@ -1234,19 +1377,64 @@ class AiFloatingButton extends Component {
 
     get launcherHasAttention() {
         return (
-            !!this.state.previewMessage &&
-            !this.state.chatOpen &&
-            !this.state.dragging &&
-            !this._previewDismissed &&
-            this.isPreviewFresh
+            this.launcherExerciseCtaVisible ||
+            (
+                !!this.state.previewMessage &&
+                !this.state.chatOpen &&
+                !this.state.dragging &&
+                !this._previewDismissed &&
+                this.isPreviewFresh
+            )
         );
     }
 
+    get launcherExerciseCtaVisible() {
+        return (
+            !!this.state.exerciseCtaVisible &&
+            !!this.state.exerciseCtaId &&
+            !this.state.chatOpen &&
+            !this.state.dragging &&
+            !!this.state.previewMessage
+        );
+    }
+
+    get exerciseCtaBusy() {
+        return this.state.exerciseCtaStatus === "sending";
+    }
+
     closePreview() {
+        if (this.state.exerciseCtaVisible) {
+            return;
+        }
         this._previewDismissed = true;
         this.state.previewVisible = false;
         this._suppressNextClick = false;
         this._syncPreviewState?.();
+    }
+
+    _dispatchExerciseChoice(action) {
+        if (!this.state.exerciseCtaId || this.exerciseCtaBusy) return;
+
+        this.state.exerciseCtaStatus = "sending";
+        window.dispatchEvent(new CustomEvent(EXERCISE_CHOICE_EVENT, {
+            detail: {
+                exerciseId: this.state.exerciseCtaId,
+                action,
+                answer: action === "start" ? "Yes" : "No",
+            },
+        }));
+    }
+
+    onExerciseCtaStart(ev) {
+        ev?.preventDefault?.();
+        ev?.stopPropagation?.();
+        this._dispatchExerciseChoice("start");
+    }
+
+    onExerciseCtaCancel(ev) {
+        ev?.preventDefault?.();
+        ev?.stopPropagation?.();
+        this._dispatchExerciseChoice("cancel");
     }
 
     toggleChat() {
@@ -1369,6 +1557,14 @@ class AiFloatingButton extends Component {
             const ctx = this.contextService?.getContext?.() || {};
             const props = this.actionService.currentController?.props || {};
 
+            if (this._isHomeMenu()) {
+                return {
+                    model: "ir.ui.menu",
+                    viewType: "home_menu",
+                    resId: null,
+                };
+            }
+
             const model = props.resModel || ctx.model || null;
 
             const viewType =
@@ -1377,6 +1573,7 @@ class AiFloatingButton extends Component {
                 (document.querySelector(".o_form_view, .o_form_renderer") ? "form" : null) ||
                 (document.querySelector(".o_list_view, .o_list_renderer") ? "list" : null) ||
                 (document.querySelector(".o_kanban_view, .o_kanban_renderer") ? "kanban" : null) ||
+                (document.querySelector(".o_calendar_view") ? "calendar" : null) ||
                 null;
 
             const resId = props.resId || null;
@@ -1569,6 +1766,16 @@ class AiFloatingButton extends Component {
         if (this._onPreviewReset) {
             window.removeEventListener("ai:preview_reset", this._onPreviewReset);
             this._onPreviewReset = null;
+        }
+
+        if (this._onExerciseCtaUpdate) {
+            window.removeEventListener(EXERCISE_CTA_EVENT, this._onExerciseCtaUpdate);
+            this._onExerciseCtaUpdate = null;
+        }
+
+        if (this._onSidebarClosed) {
+            window.removeEventListener(SIDEBAR_CLOSED_EVENT, this._onSidebarClosed);
+            this._onSidebarClosed = null;
         }
 
         if (this._onWindowResize) {

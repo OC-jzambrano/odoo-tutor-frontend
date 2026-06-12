@@ -119,14 +119,19 @@
 
 #offcanvasAiSidebar .offcanvas-body {
     padding: 16px 14px 16px 18px;
+    min-height: 0;
+    overflow: hidden;
 }
 
 #offcanvasAiSidebar .ai-sidebar-body {
     min-height: 0;
+    overflow: hidden;
 }
 
 #offcanvasAiSidebar .ai-sidebar-content {
+    height: 100%;
     min-height: 0;
+    overflow: hidden;
 }
 
 #offcanvasAiSidebar .btn:disabled {
@@ -246,7 +251,7 @@
 #offcanvasAiSidebar .ai-inline-hint {
     position: relative;
     pointer-events: auto;
-    width: min(100%, 396px);
+    width: min(100%, 520px);
     padding: 14px 46px 14px 14px;
     border-radius: 22px;
     border: 1px solid rgba(135, 90, 123, 0.16);
@@ -353,29 +358,6 @@
     color: var(--tutor-text);
     white-space: normal;
     overflow-wrap: anywhere;
-}
-
-#offcanvasAiSidebar .ai-inline-hint-progress {
-    position: relative;
-    margin-top: 12px;
-    height: 4px;
-    border-radius: 999px;
-    background: rgba(135, 90, 123, 0.1);
-    overflow: hidden;
-}
-
-#offcanvasAiSidebar .ai-inline-hint-progress-bar {
-    display: block;
-    width: 100%;
-    height: 100%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, rgba(135, 90, 123, 0.9) 0%, rgba(67, 183, 164, 0.82) 100%);
-    transform-origin: left center;
-    animation: tutorInlineHintProgress 5.6s linear forwards;
-}
-
-#offcanvasAiSidebar .ai-inline-hint.is-paused .ai-inline-hint-progress-bar {
-    animation-play-state: paused;
 }
 
 @media (max-width: 767.98px) {
@@ -489,8 +471,10 @@
     color: #eef2f7;
 }
 
-#offcanvasAiSidebar.is-dark-theme .ai-inline-hint-progress {
-    background: rgba(248, 250, 252, 0.08);
+#offcanvasAiSidebar.is-dark-theme .ai-new-message-indicator {
+    border-color: rgba(74, 222, 128, 0.32);
+    background: rgba(20, 83, 45, 0.94);
+    color: #dcfce7;
 }
 
 #offcanvasAiSidebar.is-dark-theme .timer-display {
@@ -524,15 +508,6 @@
     100% {
         opacity: 0;
         transform: translate3d(0, 8px, 0) scale(0.98);
-    }
-}
-
-@keyframes tutorInlineHintProgress {
-    0% {
-        transform: scaleX(1);
-    }
-    100% {
-        transform: scaleX(0);
     }
 }
 
@@ -635,10 +610,59 @@
     text-align: right;
 }
 
+/* ===== NEW MESSAGE INDICATOR ===== */
+
+#offcanvasAiSidebar .ai-new-message-indicator {
+    position: absolute;
+    right: 26px;
+    z-index: 1002;
+    min-height: 32px;
+    max-width: calc(100% - 52px);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid rgba(22, 163, 74, 0.22);
+    border-radius: var(--tutor-radius-pill);
+    background: rgba(240, 253, 244, 0.96);
+    color: #166534;
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.16);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+    backdrop-filter: blur(10px);
+    transition: transform var(--tutor-motion-fast), box-shadow var(--tutor-motion-fast), background-color var(--tutor-motion-fast);
+}
+
+#offcanvasAiSidebar .ai-new-message-indicator:hover {
+    transform: translateY(-1px);
+    background: #dcfce7;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+}
+
+#offcanvasAiSidebar .ai-new-message-dot {
+    width: 9px;
+    height: 9px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: #22c55e;
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+}
+
+#offcanvasAiSidebar .ai-new-message-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* ===== CHAT SHELL ===== */
 
 #offcanvasAiSidebar .ai-chat-panel {
     min-height: 0;
+    overflow: hidden;
 }
 
 #chat-ui-container {
@@ -709,9 +733,12 @@
     --nlux-ConversationStarter--BorderColor: rgba(113, 75, 103, 0.08);
     height: 100%;
     min-height: 0;
+    overflow: hidden;
 }
 
 #chat-ui-container .nlux-chatRoom-container {
+    display: flex;
+    flex-direction: column;
     position: relative;
     height: 100%;
     min-height: 0;
@@ -745,9 +772,16 @@
 }
 
 #chat-ui-container .nlux-conversation-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overflow-anchor: none;
     scrollbar-width: thin;
     scrollbar-color: rgba(135, 90, 123, 0.18) transparent;
+    scrollbar-gutter: stable;
     overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 #chat-ui-container .nlux-conversation-container > * + * {
@@ -1040,6 +1074,7 @@
 }
 
 #chat-ui-container .nlux-composer-container {
+    flex: 0 0 auto;
     padding: 16px;
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.96) 18%);

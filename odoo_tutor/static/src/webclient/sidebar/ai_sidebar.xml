@@ -29,7 +29,7 @@
                         <div class="ai-sidebar-brand-copy">
                             <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo Tutor</h5>
                             <div class="ai-sidebar-subtitle">
-                                <t t-if="state.showRecorderPanel">Recorder workspace for guided flows</t>
+                                <t t-if="state.showRecorderPanel" t-esc="translate('Recorder workspace for guided flows')"/>
                                 <t t-else="" t-esc="currentRouteLabel"/>
                             </div>
                         </div>
@@ -41,7 +41,7 @@
                         t-if="!state.showRecorderPanel"
                         type="button"
                         class="btn rounded-circle p-1 btn-refresh ai-sidebar-reset"
-                        aria-label="Reset"
+                        t-att-aria-label="translate('Reset')"
                         t-on-click.stop.prevent="reset"
                     >
                         <i class="fa fa-repeat"/>
@@ -52,18 +52,18 @@
                         type="button"
                         class="btn btn-sm btn-recorder-toggle"
                         t-on-click.stop.prevent="toggleRecorderPanel"
-                        t-att-title="state.showRecorderPanel ? 'Switch to Chat' : 'Switch to Recorder'"
+                        t-att-title="state.showRecorderPanel ? translate('Switch to Chat') : translate('Switch to Recorder')"
                     >
                         <i t-att-class="state.showRecorderPanel ? 'fa fa-comments me-1' : 'fa fa-dot-circle-o me-1'"/>
-                        <t t-esc="state.showRecorderPanel ? 'Chat' : 'Recorder'"/>
+                        <t t-esc="state.showRecorderPanel ? translate('Chat') : translate('Recorder')"/>
                     </button>
 
                     <div t-if="state.processActive and !state.showRecorderPanel" class="d-flex align-items-center">
                         <button
                             type="button"
                             class="timer-display"
-                            title="Cancel exercise"
-                            aria-label="Cancel exercise"
+                            t-att-title="translate('Cancel exercise')"
+                            t-att-aria-label="translate('Cancel exercise')"
                             t-att-disabled="state.exerciseCancelLoading"
                             t-on-click.stop.prevent="onTimerCancelExercise"
                         >
@@ -77,7 +77,7 @@
                     <button
                         type="button"
                         class="btn-close text-reset"
-                        aria-label="Close"
+                        t-att-aria-label="translate('Close')"
                         t-on-click.stop.prevent="onCloseSidebar"
                     />
                 </div>
@@ -95,9 +95,9 @@
                                 <div class="o_ai_recorder_left">
                                     <span t-if="state.recorderStatus === 'recording'" class="o_ai_rec_badge">
                                         <i class="fa fa-circle"/>
-                                        RECORDING
+                                        <t t-esc="translate('Recording')"/>
                                     </span>
-                                    <span class="o_ai_rec_title">Recorder</span>
+                                    <span class="o_ai_rec_title" t-esc="translate('Recorder')"/>
                                 </div>
 
                                 <div class="o_ai_recorder_right">
@@ -105,33 +105,33 @@
                                             type="button"
                                             class="btn btn-sm btn-primary"
                                             t-on-click.stop.prevent="onRecorderStart">
-                                        <i class="fa fa-play"/> Start
+                                        <i class="fa fa-play"/> <t t-esc="translate('Start')"/>
                                     </button>
 
                                     <button t-if="state.recorderStatus === 'recording'"
                                             type="button"
                                             class="btn btn-sm btn-secondary"
                                             t-on-click.stop.prevent="onRecorderPause">
-                                        <i class="fa fa-pause"/> Pause
+                                        <i class="fa fa-pause"/> <t t-esc="translate('Pause')"/>
                                     </button>
 
                                     <button t-if="state.recorderStatus !== 'idle'"
                                             type="button"
                                             class="btn btn-sm btn-danger"
                                             t-on-click.stop.prevent="onRecorderFinish">
-                                        <i class="fa fa-stop"/> Finish
+                                        <i class="fa fa-stop"/> <t t-esc="translate('Finish')"/>
                                     </button>
                                 </div>
                             </div>
 
                             <div class="o_ai_recorder_meta">
                                 <div class="o_ai_rec_meta_row">
-                                    <span class="lbl">Session ID:</span>
+                                    <span class="lbl" t-esc="translate('Session ID:')"/>
                                     <span class="val" t-esc="state.recorderSessionId || '-'"/>
                                 </div>
                                 <div class="o_ai_rec_meta_row">
-                                    <span class="lbl">WebSocket:</span>
-                                    <span class="val" t-esc="state.wsStatus || 'unknown'"/>
+                                    <span class="lbl" t-esc="translate('WebSocket:')"/>
+                                    <span class="val" t-esc="wsStatusLabel"/>
                                 </div>
                             </div>
 
@@ -141,10 +141,10 @@
                                         t-att-disabled="state.recorderStatus === 'idle' or state.recorderPicking"
                                         t-on-click.stop.prevent="onRecorderPick">
                                     <t t-if="state.recorderPicking">
-                                        <i class="fa fa-crosshairs fa-spin"/> Picking...
+                                        <i class="fa fa-crosshairs fa-spin"/> <t t-esc="translate('Picking...')"/>
                                     </t>
                                     <t t-else="">
-                                        <i class="fa fa-crosshairs"/> Pick element
+                                        <i class="fa fa-crosshairs"/> <t t-esc="translate('Pick element')"/>
                                     </t>
                                 </button>
 
@@ -152,7 +152,7 @@
                                         type="button"
                                         class="btn btn-sm btn-outline-secondary"
                                         t-on-click.stop.prevent="onRecorderClearPick">
-                                    <i class="fa fa-times"/> Clear
+                                    <i class="fa fa-times"/> <t t-esc="translate('Clear')"/>
                                 </button>
 
                                 <div class="o_ai_recorder_pick" t-if="state.recorderPicked">
@@ -165,20 +165,20 @@
                                 <textarea class="form-control"
                                           rows="2"
                                           t-model="state.recorderNote"
-                                          placeholder="Step instruction (optional)..."></textarea>
+                                          t-att-placeholder="translate('Step instruction (optional)...')"></textarea>
 
                                 <div class="o_ai_rec_step_actions">
                                     <button type="button"
                                             class="btn btn-sm btn-success"
                                             t-att-disabled="state.recorderStatus === 'idle'"
                                             t-on-click.stop.prevent="onRecorderSaveStep">
-                                        <i class="fa fa-save"/> Save step
+                                        <i class="fa fa-save"/> <t t-esc="translate('Save step')"/>
                                     </button>
                                 </div>
                             </div>
 
                             <div class="o_ai_recorder_feed">
-                                <div class="o_ai_rec_feed_title">REAL-TIME EVENT FEED</div>
+                                <div class="o_ai_rec_feed_title" t-esc="translate('Real-time event feed')"/>
 
                                 <div class="o_ai_rec_feed_list">
                                     <t t-foreach="state.recorderFeed" t-as="ev" t-key="ev._id">
@@ -211,6 +211,16 @@
                              }"
                              t-att-aria-busy="state.isLoading ? 'true' : 'false'"></div>
 
+                        <button t-if="showUnreadIndicator"
+                                type="button"
+                                class="ai-new-message-indicator"
+                                t-attf-style="bottom: {{ state.composerHeight + 16 }}px;"
+                                t-on-click.stop.prevent="jumpToNewestMessage"
+                                t-att-aria-label="unreadIndicatorLabel">
+                            <span class="ai-new-message-dot"/>
+                            <span class="ai-new-message-label" t-esc="unreadIndicatorLabel"/>
+                        </button>
+
                         <t t-if="state.hintVisible and state.hintMessage">
                             <div class="ai-inline-hint-container"
                                  t-attf-style="bottom: {{ state.composerHeight + 16 }}px;">
@@ -227,7 +237,7 @@
                                             <span class="ai-inline-hint-badge-icon">
                                                 <i class="fa fa-lightbulb-o"/>
                                             </span>
-                                            <span class="ai-inline-hint-badge-text">Context hint</span>
+                                            <span class="ai-inline-hint-badge-text" t-esc="translate('Context hint')"/>
                                         </div>
 
                                         <div class="ai-inline-hint-time">
@@ -239,15 +249,11 @@
                                         type="button"
                                         class="ai-inline-hint-close"
                                         t-on-click.stop.prevent="closeInlineHint"
-                                        aria-label="Close hint"
+                                        t-att-aria-label="translate('Close hint')"
                                     >×</button>
 
                                     <div class="ai-inline-hint-text">
                                         <t t-esc="state.hintMessage"/>
-                                    </div>
-
-                                    <div class="ai-inline-hint-progress">
-                                        <span class="ai-inline-hint-progress-bar"/>
                                     </div>
                                 </div>
                             </div>
@@ -261,7 +267,7 @@
                                 <button
                                     class="dk-btn dk-btn-secondary me-2"
                                     t-on-click.stop.prevent="cancelProcess">
-                                    Cancel
+                                    <t t-esc="translate('Cancel')"/>
                                 </button>
 
                                 <button class="dk-btn dk-btn-accent"
@@ -270,7 +276,7 @@
                                     <t t-if="state.finishLoading">
                                         <i class="fa fa-spinner fa-spin mr-2"/>
                                     </t>
-                                    <t t-else="">Finish</t>
+                                    <t t-else="" t-esc="translate('Finish')"/>
                                 </button>
                             </div>
                         </div>
