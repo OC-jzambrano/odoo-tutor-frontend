@@ -73,6 +73,10 @@ coverage.xml
 # Frontend dependencies
 node_modules/
 
+# Local Odoo development
+enterprise/
+.local/
+
 # Mr Developer
 .mr.developer.cfg
 .project
