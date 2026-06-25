@@ -1,0 +1,13 @@
+{
+  "name": "odoo-tutor-frontend-tests",
+  "private": true,
+  "scripts": {
+    "test:frontend": "vitest run --config tests/frontend/vitest.config.mjs",
+    "test:frontend:coverage": "vitest run --coverage --config tests/frontend/vitest.config.mjs",
+    "test:frontend:watch": "vitest --config tests/frontend/vitest.config.mjs"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.8",
+    "vitest": "^2.1.8"
+  }
+}

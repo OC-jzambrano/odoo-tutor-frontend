@@ -44,6 +44,7 @@ pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
+coverage/
 .tox/
 .coverage
 .cache
@@ -68,6 +69,9 @@ coverage.xml
 
 # Django stuff:
 *.log
+
+# Frontend dependencies
+node_modules/
 
 # Mr Developer
 .mr.developer.cfg

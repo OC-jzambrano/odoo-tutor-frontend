@@ -1,0 +1,149 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  canonicalEventType,
+  canonicalizeEvent,
+} from "../../../odoo_tutor/static/src/core/event_types.js";
+import { normalizeDomEvent } from "../../../odoo_tutor/static/src/core/normalize_event.js";
+
+function installBrowserStubs() {
+  globalThis.CSS = {
+    escape(value) {
+      return String(value);
+    },
+  };
+  globalThis.window = {
+    location: {
+      hash: "#model=crm.lead&id=123&view_type=kanban",
+    },
+  };
+  globalThis.document = {
+    body: {},
+    querySelector(selector) {
+      if (selector === ".o_kanban_view") {
+        return {};
+      }
+      return null;
+    },
+  };
+}
+
+function makeElement({
+  tagName,
+  text = "",
+  id = "",
+  className = "",
+  attrs = {},
+  dataset = {},
+  parentElement = null,
+  previousElementSibling = null,
+}) {
+  const element = {
+    tagName,
+    nodeName: tagName,
+    nodeType: 1,
+    id,
+    className,
+    dataset,
+    parentElement,
+    previousElementSibling,
+    innerText: text,
+    textContent: text,
+    getAttribute(name) {
+      if (name === "id") {
+        return id;
+      }
+      if (name === "class") {
+        return className;
+      }
+      return attrs[name] ?? null;
+    },
+    closest(selector) {
+      if (selector.includes("button") && tagName === "BUTTON") {
+        return element;
+      }
+      if (selector.includes("a") && tagName === "A") {
+        return element;
+      }
+      if (selector.includes("[data-name]") && dataset.name) {
+        return element;
+      }
+      return null;
+    },
+  };
+  return element;
+}
+
+describe("event type normalization", () => {
+  it("maps legacy button/link names to canonical names", () => {
+    expect(canonicalEventType("button_click")).toBe("button_clicked");
+    expect(canonicalEventType("link_click")).toBe("link_clicked");
+  });
+
+  it("keeps already-canonical and unknown names stable", () => {
+    expect(canonicalEventType("button_clicked")).toBe("button_clicked");
+    expect(canonicalEventType("field_changed")).toBe("field_changed");
+    expect(canonicalEventType("custom_event")).toBe("custom_event");
+  });
+
+  it("canonicalizes a copy without mutating the original event", () => {
+    const original = { type: "button_click", label: "Save" };
+    const normalized = canonicalizeEvent(original);
+
+    expect(original).toEqual({ type: "button_click", label: "Save" });
+    expect(normalized).toEqual({ type: "button_clicked", label: "Save" });
+    expect(normalized).not.toBe(original);
+  });
+});
+
+describe("DOM event normalization", () => {
+  beforeEach(() => {
+    installBrowserStubs();
+  });
+
+  it("emits button_clicked for real button clicks", () => {
+    const target = makeElement({
+      tagName: "BUTTON",
+      text: "Save",
+      className: "btn btn-primary",
+      attrs: { name: "action_save" },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      contextService: {
+        getContext() {
+          return { model: "crm.lead", view_type: "form", resId: 123 };
+        },
+      },
+    });
+
+    expect(event.type).toBe("button_clicked");
+    expect(event.label).toBe("action_save");
+    expect(event.meta.model).toBe("crm.lead");
+    expect(event.meta.view_type).toBe("form");
+    expect(event.meta.res_id).toBe(123);
+  });
+
+  it("emits link_clicked for anchor clicks", () => {
+    const target = makeElement({
+      tagName: "A",
+      text: "Open customer",
+      attrs: { href: "#id=123&model=res.partner" },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      contextService: {
+        getContext() {
+          return { model: "res.partner", view_type: "kanban" };
+        },
+      },
+    });
+
+    expect(event.type).toBe("link_clicked");
+    expect(event.label).toBe("Open customer");
+    expect(event.meta.kind).toBe("link");
+  });
+});

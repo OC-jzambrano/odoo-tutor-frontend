@@ -3,6 +3,7 @@
 
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
+import { canonicalEventType, canonicalizeEvent } from "./event_types";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -478,11 +479,13 @@ export const aiWsService = {
     // ✅ Para tus eventos existentes (step_saved, feedback_event, etc.)
     async function sendEvent({ type, event_name, event_data }) {
       await connect();
+      const canonicalData = canonicalizeEvent(event_data);
+      const canonicalName = canonicalEventType(event_name || canonicalData?.type);
       const payload = {
         type,
-        event_name,
+        event_name: canonicalName || event_name,
         event_data: {
-          ...event_data,
+          ...canonicalData,
           timestamp: new Date().toISOString(),
         },
       };

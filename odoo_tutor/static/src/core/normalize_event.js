@@ -1,6 +1,8 @@
 /* eslint-disable */
 /** @odoo-module **/
 
+import { canonicalEventType } from "./event_types";
+
 function cleanText(s) {
   return (s || "").toString().trim().replace(/\s+/g, " ").slice(0, 140);
 }
@@ -226,8 +228,8 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
       target_name = field || null;
     } else if (domEventType === "click") {
     // button vs link vs other
-    if (kind === "button") type = "button_click";
-    else if (kind === "link") type = "link_click";
+    if (kind === "button") type = "button_clicked";
+    else if (kind === "link") type = "link_clicked";
     else type = "click";
 
     target_name = resolveButtonName(el);
@@ -257,7 +259,7 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
 
   const normalized = {
     // ticket payload
-    type,
+    type: canonicalEventType(type),
     label: label || null,
     field: field || null,
     value: value ?? null,

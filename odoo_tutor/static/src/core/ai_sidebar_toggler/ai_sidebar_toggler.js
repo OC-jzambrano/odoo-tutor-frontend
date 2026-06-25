@@ -1708,7 +1708,7 @@ class AiFloatingButton extends Component {
                     ev.type === "input_final"
                         ? "field_changed"
                         : ev.type === "click" && ev.uiType === "Button"
-                        ? "button_click"
+                        ? "button_clicked"
                         : ev.type,
                 label: ev.labelKey || ev.label || null,
                 field: ev.name || ev.columnField || null,
