@@ -36,6 +36,7 @@ function makeElement({
   dataset = {},
   parentElement = null,
   previousElementSibling = null,
+  closestMap = {},
 }) {
   const element = {
     tagName,
@@ -58,6 +59,11 @@ function makeElement({
       return attrs[name] ?? null;
     },
     closest(selector) {
+      for (const [key, value] of Object.entries(closestMap)) {
+        if (selector.includes(key)) {
+          return value;
+        }
+      }
       if (selector.includes("button") && tagName === "BUTTON") {
         return element;
       }
@@ -68,6 +74,9 @@ function makeElement({
         return element;
       }
       return null;
+    },
+    querySelector(selector) {
+      return closestMap[`query:${selector}`] || null;
     },
   };
   return element;
@@ -145,5 +154,38 @@ describe("DOM event normalization", () => {
     expect(event.type).toBe("link_clicked");
     expect(event.label).toBe("Open customer");
     expect(event.meta.kind).toBe("link");
+  });
+
+  it("emits card_clicked for kanban record clicks", () => {
+    const kanbanRecord = makeElement({
+      tagName: "DIV",
+      text: "Test Opportunity",
+      className: "o_kanban_record",
+      attrs: { "data-res-id": "456" },
+    });
+    const target = makeElement({
+      tagName: "DIV",
+      text: "Test Opportunity",
+      closestMap: {
+        ".o_kanban_record": kanbanRecord,
+      },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      contextService: {
+        getContext() {
+          return { model: "crm.lead", view_type: "kanban" };
+        },
+      },
+    });
+
+    expect(event.type).toBe("card_clicked");
+    expect(event.label).toBe("Test Opportunity");
+    expect(event.meta.model).toBe("crm.lead");
+    expect(event.meta.view_type).toBe("kanban");
+    expect(event.meta.res_id).toBe(456);
+    expect(event.meta.card_res_id).toBe(456);
   });
 });

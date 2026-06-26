@@ -4,6 +4,7 @@
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
 import { canonicalEventType, canonicalizeEvent } from "./event_types";
+import { buildOutcomeState } from "./outcome_state";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -481,6 +482,9 @@ export const aiWsService = {
       await connect();
       const canonicalData = canonicalizeEvent(event_data);
       const canonicalName = canonicalEventType(event_name || canonicalData?.type);
+      const outcomeState = buildOutcomeState({
+        contextService: env.services.context_service,
+      });
       const payload = {
         type,
         event_name: canonicalName || event_name,
@@ -488,6 +492,7 @@ export const aiWsService = {
           ...canonicalData,
           timestamp: new Date().toISOString(),
         },
+        outcome_state: outcomeState,
       };
       safeSend(payload);
     }

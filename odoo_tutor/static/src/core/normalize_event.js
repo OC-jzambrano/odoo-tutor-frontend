@@ -121,6 +121,32 @@ function resolveRowResId(el) {
   return safeId(row.getAttribute?.("data-res-id") || row.getAttribute?.("data-id") || row.dataset?.id);
 }
 
+function resolveKanbanRecord(el) {
+  const record = el?.closest?.(".o_kanban_record");
+  if (!record) return null;
+
+  const resId =
+    safeId(
+      record.getAttribute?.("data-res-id") ||
+        record.getAttribute?.("data-id") ||
+        record.dataset?.resId ||
+        record.dataset?.id
+    ) || null;
+
+  return {
+    element: record,
+    res_id: resId,
+    label: cleanText(
+      record.getAttribute?.("title") ||
+        record.querySelector?.(".o_kanban_record_title")?.textContent ||
+        record.querySelector?.("[name='name']")?.textContent ||
+        record.innerText ||
+        record.textContent ||
+        ""
+    ),
+  };
+}
+
 function resolveButtonName(el) {
   if (!el) return null;
 
@@ -207,7 +233,8 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
 
   const kind = classifyKind(el);
   const row_res_id = resolveRowResId(el);
-  const res_id = ctx.resId ?? ctx.res_id ?? safeId(hash.id) ?? row_res_id ?? null;
+  const kanbanRecord = resolveKanbanRecord(rawTarget);
+  const res_id = ctx.resId ?? ctx.res_id ?? row_res_id ?? kanbanRecord?.res_id ?? safeId(hash.id) ?? null;
 
   // Determine normalized type + identifiers
   let type = "unknown";
@@ -226,9 +253,10 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
       }
 
       target_name = field || null;
-    } else if (domEventType === "click") {
+  } else if (domEventType === "click") {
     // button vs link vs other
-    if (kind === "button") type = "button_clicked";
+    if (kanbanRecord && view_type === "kanban" && kind === "other") type = "card_clicked";
+    else if (kind === "button") type = "button_clicked";
     else if (kind === "link") type = "link_clicked";
     else type = "click";
 
@@ -246,6 +274,7 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
   const label =
     field ||
     target_name ||
+    kanbanRecord?.label ||
     cleanText(el?.getAttribute?.("title") || "") ||
     cleanText(el?.innerText || el?.textContent || "") ||
     null;
@@ -272,6 +301,7 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
       row_res_id,
       kind,
       target_name: target_name || null,
+      card_res_id: kanbanRecord?.res_id ?? null,
     },
     dom: {
       tag: (el?.tagName || "").toLowerCase() || null,

@@ -3,6 +3,7 @@
 
 import { patch } from "@web/core/utils/patch";
 import { actionService } from "@web/webclient/actions/action_service";
+import { buildRecordOpenedTransition } from "./state_transition";
 
 function extractModelFromActionRequest(req) {
   if (!req) return null;
@@ -26,6 +27,22 @@ function extractModelFromController(ctrl) {
     ctrl?.model?.root?.resModel ||
     null
   );
+}
+
+function extractStateFromController(ctrl) {
+  if (!ctrl) return {};
+  const props = ctrl.props || {};
+  const root = ctrl.model?.root || {};
+  return {
+    model: props.resModel || ctrl.action?.res_model || root.resModel || null,
+    view_type:
+      props.viewType ||
+      props.type ||
+      ctrl.view?.type ||
+      ctrl.action?.view_mode?.split?.(",")?.[0] ||
+      null,
+    res_id: props.resId ?? root.resId ?? null,
+  };
 }
 
 function cleanText(value) {
@@ -102,13 +119,39 @@ patch(actionService, {
 
     res.doAction = async (actionRequest, options = {}) => {
       const preModel = extractModelFromActionRequest(actionRequest);
+      const fromState = (() => {
+        try {
+          return (
+            env.services.context_service?.getContext?.() ||
+            extractStateFromController(res.currentController)
+          );
+        } catch {
+          return extractStateFromController(res.currentController);
+        }
+      })();
 
       const result = await _superDoAction(actionRequest, options);
 
       // esperar a que el controller exista de verdad
       setTimeout(() => {
-        const postModel = extractModelFromController(res.currentController);
+        const controllerState = extractStateFromController(res.currentController);
+        const postModel = controllerState.model || extractModelFromController(res.currentController);
         send(postModel || preModel, { reason: "doAction" });
+
+        const transition = buildRecordOpenedTransition({
+          from: fromState,
+          to: {
+            ...controllerState,
+            model: controllerState.model || postModel || preModel,
+          },
+        });
+        if (transition) {
+          aiWs?.sendEvent?.({
+            type: "state_transition_event",
+            event_name: transition.name,
+            event_data: transition,
+          });
+        }
       }, 0);
 
       return result;
