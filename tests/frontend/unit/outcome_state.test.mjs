@@ -128,4 +128,36 @@ describe("outcome state contract", () => {
     expect(outcome.res_id).toBe("virtual_5");
     expect(outcome.res_id_present).toBe(true);
   });
+
+  it("uses event metadata as a fallback for res_id when context is missing it", () => {
+    const outcome = buildOutcomeState({
+      contextService: {
+        getContext() {
+          return { model: "crm.lead", view_type: "form", resId: null };
+        },
+      },
+      eventData: {
+        meta: {
+          model: "crm.lead",
+          viewType: "form",
+          resId: 243,
+        },
+      },
+      root: makeRoot({
+        ".o_form_view": {},
+        ".o_control_panel_breadcrumbs .o_last_breadcrumb_item": makeTextElement(
+          "Evelin Galindo"
+        ),
+      }),
+      location: { hash: "" },
+    });
+
+    expect(outcome).toEqual({
+      model: "crm.lead",
+      view_type: "form",
+      record_name: "Evelin Galindo",
+      res_id: 243,
+      res_id_present: true,
+    });
+  });
 });

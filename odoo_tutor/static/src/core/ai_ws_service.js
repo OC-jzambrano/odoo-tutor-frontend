@@ -484,6 +484,7 @@ export const aiWsService = {
       const canonicalName = canonicalEventType(event_name || canonicalData?.type);
       const outcomeState = buildOutcomeState({
         contextService: env.services.context_service,
+        eventData: canonicalData,
       });
       const payload = {
         type,

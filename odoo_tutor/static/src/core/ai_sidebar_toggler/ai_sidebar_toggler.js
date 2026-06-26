@@ -7,6 +7,7 @@ import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
 import { normalizeDomEvent } from "../normalize_ui_event";
+import "../action_service_context_hook";
 
 // ---------------------
 // Helpers
@@ -1664,6 +1665,7 @@ class AiFloatingButton extends Component {
     _patchNormalizedWithActionable(normalized, rawTarget) {
         const actionable = this._getActionableTarget(rawTarget);
         if (!actionable || !normalized) return normalized;
+        if (["card_clicked", "record_opened"].includes(normalized.type)) return normalized;
 
         const label = this._getActionableLabel(actionable);
         const role = actionable.getAttribute?.("role") || null;

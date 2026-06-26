@@ -60,12 +60,28 @@ function readContext(contextService) {
   }
 }
 
-export function buildOutcomeState({ contextService, root = document, location = window.location } = {}) {
+export function buildOutcomeState({
+  contextService,
+  eventData = null,
+  root = document,
+  location = window.location,
+} = {}) {
   const context = readContext(contextService);
+  const eventMeta = eventData?.meta || {};
   const hash = parseHashParams(location?.hash);
-  const model = context.model || context.currentModel || hash.model || null;
-  const view_type = context.view_type || context.view || hash.view_type || guessViewTypeFromDom(root);
-  const res_id = context.resId ?? context.res_id ?? hash.res_id ?? null;
+  const model = context.model || context.currentModel || eventMeta.model || hash.model || null;
+  const view_type =
+    context.view_type ||
+    context.view ||
+    eventMeta.viewType ||
+    eventMeta.view_type ||
+    hash.view_type ||
+    guessViewTypeFromDom(root);
+  const res_id =
+    safeId(context.resId ?? context.res_id) ??
+    safeId(eventMeta.resId ?? eventMeta.res_id) ??
+    hash.res_id ??
+    null;
   const record_name = getRecordNameFromDom(root);
 
   return {

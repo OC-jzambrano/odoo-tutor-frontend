@@ -64,4 +64,31 @@ describe("UI event normalization", () => {
       resId: 456,
     });
   });
+
+  it("keeps kanban card anchors semantic instead of downgrading them to link_clicked", () => {
+    const record = makeElement({
+      tagName: "DIV",
+      text: "Evelin Galindo",
+      attrs: { "data-res-id": "243" },
+      dataset: { resId: "243" },
+    });
+    const target = makeElement({
+      tagName: "A",
+      text: "Evelin Galindo",
+      attrs: { href: "/odoo/crm/243" },
+      closestMap: {
+        ".o_kanban_record": record,
+      },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: { model: "crm.lead", viewType: "kanban", resId: null },
+    });
+
+    expect(event.type).toBe("card_clicked");
+    expect(event.label).toBe("Evelin Galindo");
+    expect(event.meta.resId).toBe(243);
+  });
 });

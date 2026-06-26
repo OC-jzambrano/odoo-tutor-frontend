@@ -164,6 +164,24 @@ export function normalizeDomEvent({ domEventType, originalEvent, context, hints 
     resId: context?.resId || kanbanRecord?.resId || null,
   };
 
+  // Kanban record clicks are semantic navigation events. Detect them before
+  // generic button/link handling because Odoo cards often contain anchors.
+  if (domEventType === "click" && kanbanRecord && context?.viewType === "kanban") {
+    const actionable = target.closest?.("button, [role='button'], .btn, .dropdown-item, .o_kanban_manage_button");
+    const actionableInsideCard = actionable && kanbanRecord.element?.contains?.(actionable);
+    if (!actionableInsideCard) {
+      return {
+        type: "card_clicked",
+        label: kanbanRecord.label || label || cleanText(target.textContent) || null,
+        field: "kanban.card",
+        value: null,
+        meta,
+        ts: new Date().toISOString(),
+        v: 1,
+      };
+    }
+  }
+
   // 1) TAB
   if (domEventType === "click" && isTabElement(target)) {
     return {
@@ -239,19 +257,6 @@ export function normalizeDomEvent({ domEventType, originalEvent, context, hints 
       type: "button_clicked",
       label: label || cleanText(target.textContent) || null,
       field,
-      value: null,
-      meta,
-      ts: new Date().toISOString(),
-      v: 1,
-    };
-  }
-
-  // 4) KANBAN CARD CLICKED
-  if (domEventType === "click" && kanbanRecord && context?.viewType === "kanban") {
-    return {
-      type: "card_clicked",
-      label: kanbanRecord.label || label || cleanText(target.textContent) || null,
-      field: "kanban.card",
       value: null,
       meta,
       ts: new Date().toISOString(),
