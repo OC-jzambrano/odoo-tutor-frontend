@@ -29,19 +29,94 @@ function extractModelFromController(ctrl) {
   );
 }
 
+function safeId(value) {
+  if (value == null || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : String(value);
+}
+
+function extractStateFromLocation() {
+  const hash = String(window.location.hash || "").replace(/^#/, "");
+  const params = new URLSearchParams(hash);
+  const pathname = String(window.location.pathname || "");
+  const pathParts = pathname.split("/").filter(Boolean);
+  const lastPart = pathParts[pathParts.length - 1];
+
+  return {
+    model: params.get("model") || params.get("res_model") || params.get("active_model") || null,
+    view_type: params.get("view_type") || null,
+    res_id: safeId(params.get("id") || params.get("res_id") || (/^\d+$/.test(lastPart) ? lastPart : null)),
+  };
+}
+
+function guessViewTypeFromDom() {
+  try {
+    if (document.querySelector(".o_form_view")) return "form";
+    if (document.querySelector(".o_kanban_view")) return "kanban";
+    if (document.querySelector(".o_list_view, .o_list_renderer")) return "list";
+    if (document.querySelector(".o_graph_view")) return "graph";
+    if (document.querySelector(".o_pivot_view")) return "pivot";
+  } catch {}
+  return null;
+}
+
+function extractResIdFromDom() {
+  try {
+    const el = document.querySelector(
+      ".o_form_view [data-res-id], .o_form_view [data-id], .o_form_view"
+    );
+    return safeId(
+      el?.getAttribute?.("data-res-id") ||
+        el?.getAttribute?.("data-id") ||
+        el?.dataset?.resId ||
+        el?.dataset?.id
+    );
+  } catch {
+    return null;
+  }
+}
+
+function extractRecordNameFromDom() {
+  try {
+    const selectors = [
+      ".o_control_panel_breadcrumbs .o_last_breadcrumb_item",
+      ".o_navbar_breadcrumbs .o_last_breadcrumb_item",
+      ".o_form_view .o_field_widget[name='display_name']",
+      ".o_form_view .o_field_char[name='name']",
+      ".o_form_view [name='name']",
+    ];
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      const text = cleanText(el?.innerText || el?.textContent || el?.value || "");
+      if (text) return text;
+    }
+  } catch {}
+  return null;
+}
+
 function extractStateFromController(ctrl) {
-  if (!ctrl) return {};
+  const loc = extractStateFromLocation();
+  if (!ctrl) {
+    return {
+      ...loc,
+      view_type: loc.view_type || guessViewTypeFromDom(),
+      res_id: loc.res_id ?? extractResIdFromDom(),
+      record_name: extractRecordNameFromDom(),
+    };
+  }
   const props = ctrl.props || {};
   const root = ctrl.model?.root || {};
   return {
-    model: props.resModel || ctrl.action?.res_model || root.resModel || null,
+    model: props.resModel || ctrl.action?.res_model || root.resModel || loc.model || null,
     view_type:
       props.viewType ||
       props.type ||
       ctrl.view?.type ||
       ctrl.action?.view_mode?.split?.(",")?.[0] ||
-      null,
-    res_id: props.resId ?? root.resId ?? null,
+      loc.view_type ||
+      guessViewTypeFromDom(),
+    res_id: props.resId ?? root.resId ?? loc.res_id ?? extractResIdFromDom() ?? null,
+    record_name: extractRecordNameFromDom(),
   };
 }
 
@@ -152,7 +227,7 @@ patch(actionService, {
             event_data: transition,
           });
         }
-      }, 0);
+      }, 150);
 
       return result;
     };

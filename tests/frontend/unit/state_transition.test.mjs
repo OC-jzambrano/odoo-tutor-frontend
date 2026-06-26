@@ -19,6 +19,8 @@ describe("state transition contract", () => {
         model: "crm.lead",
         view_type: "form",
         res_id: 123,
+        record_name: null,
+        res_id_present: true,
       },
     });
   });
@@ -32,7 +34,22 @@ describe("state transition contract", () => {
     expect(transition).toBeNull();
   });
 
-  it("does not build record_opened without a record id", () => {
+  it("builds record_opened with a record name when the record id is not exposed", () => {
+    const transition = buildRecordOpenedTransition({
+      from: { model: "crm.lead", view_type: "kanban" },
+      to: { model: "crm.lead", view_type: "form", record_name: "AM Ball's opportunity" },
+    });
+
+    expect(transition.to).toEqual({
+      model: "crm.lead",
+      view_type: "form",
+      res_id: null,
+      record_name: "AM Ball's opportunity",
+      res_id_present: false,
+    });
+  });
+
+  it("does not build record_opened without a record id or record name", () => {
     const transition = buildRecordOpenedTransition({
       from: { model: "crm.lead", view_type: "kanban" },
       to: { model: "crm.lead", view_type: "form" },

@@ -92,6 +92,38 @@ function buildTargetFallback(el) {
   return tag || "unknown";
 }
 
+function safeId(value) {
+  if (value == null || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : String(value);
+}
+
+function resolveKanbanRecord(el) {
+  const record = el?.closest?.(".o_kanban_record");
+  if (!record) return null;
+
+  const resId = safeId(
+    record.getAttribute?.("data-res-id") ||
+      record.getAttribute?.("data-id") ||
+      record.dataset?.resId ||
+      record.dataset?.id
+  );
+
+  const label = cleanText(
+    record.getAttribute?.("title") ||
+      record.querySelector?.(".o_kanban_record_title")?.textContent ||
+      record.querySelector?.("[name='name']")?.textContent ||
+      record.textContent ||
+      ""
+  );
+
+  return {
+    element: record,
+    resId,
+    label,
+  };
+}
+
 function classifyUiType(el) {
   const tag = (el?.tagName || "").toUpperCase();
   const type = (el?.getAttribute?.("type") || "").toLowerCase();
@@ -123,12 +155,13 @@ export function normalizeDomEvent({ domEventType, originalEvent, context, hints 
 
   const uiType = classifyUiType(target);
   const label = getControlLabel(target);
+  const kanbanRecord = resolveKanbanRecord(rawTarget);
 
   // meta mínimo (no inventar)
   const meta = {
     model: context?.model || null,
     viewType: context?.viewType || null,
-    resId: context?.resId || null,
+    resId: context?.resId || kanbanRecord?.resId || null,
   };
 
   // 1) TAB
@@ -206,6 +239,19 @@ export function normalizeDomEvent({ domEventType, originalEvent, context, hints 
       type: "button_clicked",
       label: label || cleanText(target.textContent) || null,
       field,
+      value: null,
+      meta,
+      ts: new Date().toISOString(),
+      v: 1,
+    };
+  }
+
+  // 4) KANBAN CARD CLICKED
+  if (domEventType === "click" && kanbanRecord && context?.viewType === "kanban") {
+    return {
+      type: "card_clicked",
+      label: kanbanRecord.label || label || cleanText(target.textContent) || null,
+      field: "kanban.card",
       value: null,
       meta,
       ts: new Date().toISOString(),

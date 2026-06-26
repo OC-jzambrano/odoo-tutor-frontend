@@ -12,6 +12,7 @@ function compactState(state = {}) {
     model: state.model || state.currentModel || null,
     view_type: state.view_type || state.view || null,
     res_id: normalizeId(state.res_id ?? state.resId),
+    record_name: state.record_name || state.recordName || null,
   };
 }
 
@@ -19,7 +20,7 @@ export function buildRecordOpenedTransition({ from = {}, to = {} } = {}) {
   const fromState = compactState(from);
   const toState = compactState(to);
 
-  if (!toState.model || toState.view_type !== "form" || !toState.res_id) {
+  if (!toState.model || toState.view_type !== "form" || (!toState.res_id && !toState.record_name)) {
     return null;
   }
 
@@ -42,6 +43,8 @@ export function buildRecordOpenedTransition({ from = {}, to = {} } = {}) {
       model: toState.model,
       view_type: toState.view_type,
       res_id: toState.res_id,
+      record_name: toState.record_name,
+      res_id_present: toState.res_id != null && toState.res_id !== "",
     },
   };
 }
