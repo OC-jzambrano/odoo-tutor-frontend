@@ -16,6 +16,16 @@ function compactState(state = {}) {
   };
 }
 
+export function recordNameFromRoute(route) {
+  const parts = String(route || "")
+    .split("/")
+    .map((part) => part.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  if (parts.length < 2) return null;
+  return parts[parts.length - 1] || null;
+}
+
 export function buildRecordOpenedTransition({ from = {}, to = {} } = {}) {
   const fromState = compactState(from);
   const toState = compactState(to);
@@ -47,4 +57,22 @@ export function buildRecordOpenedTransition({ from = {}, to = {} } = {}) {
       res_id_present: toState.res_id != null && toState.res_id !== "",
     },
   };
+}
+
+export function buildRecordOpenedTransitionFromLiveContext({
+  from = {},
+  context_model,
+  route,
+} = {}) {
+  const recordName = recordNameFromRoute(route);
+  if (!recordName) return null;
+
+  return buildRecordOpenedTransition({
+    from,
+    to: {
+      model: context_model,
+      view_type: "form",
+      record_name: recordName,
+    },
+  });
 }

@@ -26,3 +26,15 @@ npm run test:frontend:coverage
 The first suite protects the event-name contract between the Odoo frontend and
 the backend validator. It intentionally runs without Odoo so regressions like
 `button_click` vs `button_clicked` are caught quickly.
+
+## Canonical event pattern
+
+New frontend events should be added in three small layers:
+
+1. Pure contract builder in `odoo_tutor/static/src/core/`.
+2. Unit test in `tests/frontend/unit/` proving the payload shape and fallback behavior.
+3. Thin Odoo wiring that calls the builder from DOM, action service, or live context data.
+
+This keeps events portable across Odoo versions. When Odoo changes how a click
+or navigation is exposed, the wiring can change without rewriting the event
+contract or backend expectations.

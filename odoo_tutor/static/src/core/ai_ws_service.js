@@ -5,6 +5,7 @@ import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
 import { canonicalEventType, canonicalizeEvent } from "./event_types";
 import { buildOutcomeState } from "./outcome_state";
+import { buildRecordOpenedTransitionFromLiveContext } from "./state_transition";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -549,9 +550,36 @@ export const aiWsService = {
         timestamp: new Date().toISOString(),
       };
 
+      const transition = buildRecordOpenedTransitionFromLiveContext({
+        from: st.lastLiveContextState || {
+          model: st.lastSentContextModel,
+          view_type: null,
+        },
+        context_model,
+        route: contextRoute,
+      });
+      const recordOpenedKey = transition
+        ? `${contextRoute || ""}|${transition.to.record_name || ""}`
+        : null;
+
       st.lastSentContextModel = context_model;
       st.lastSentContextRoute = contextRoute;
       st.lastSentContextAt = now;
+      st.lastLiveContextState = {
+        model: context_model,
+        view_type: transition ? "form" : null,
+        record_name: transition?.to?.record_name || null,
+        route: contextRoute || null,
+      };
+
+      if (transition && recordOpenedKey !== st.lastRecordOpenedKey) {
+        st.lastRecordOpenedKey = recordOpenedKey;
+        sendEvent({
+          type: "state_transition_event",
+          event_name: transition.name,
+          event_data: transition,
+        }).catch(() => {});
+      }
 
       return safeSend(payload);
     }

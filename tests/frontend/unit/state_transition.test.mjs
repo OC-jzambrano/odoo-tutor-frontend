@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildRecordOpenedTransition } from "../../../odoo_tutor/static/src/core/state_transition.js";
+import {
+  buildRecordOpenedTransition,
+  buildRecordOpenedTransitionFromLiveContext,
+  recordNameFromRoute,
+} from "../../../odoo_tutor/static/src/core/state_transition.js";
 
 describe("state transition contract", () => {
   it("builds record_opened when navigation lands on a form record", () => {
@@ -62,6 +66,47 @@ describe("state transition contract", () => {
     const transition = buildRecordOpenedTransition({
       from: { model: "crm.lead", view_type: "form", res_id: 123 },
       to: { model: "crm.lead", view_type: "form", resId: 123 },
+    });
+
+    expect(transition).toBeNull();
+  });
+
+  it("extracts the opened record name from an Odoo breadcrumb route", () => {
+    expect(recordNameFromRoute("Projects / S00138 - Hourly package")).toBe(
+      "S00138 - Hourly package"
+    );
+    expect(recordNameFromRoute("Projects")).toBeNull();
+  });
+
+  it("builds record_opened from live_context when the route points to a record", () => {
+    const transition = buildRecordOpenedTransitionFromLiveContext({
+      from: { model: "project.task", view_type: "kanban" },
+      context_model: "project.task",
+      route: "Projects / S00138 - Hourly package",
+    });
+
+    expect(transition).toEqual({
+      type: "state_transition",
+      name: "record_opened",
+      from: {
+        model: "project.task",
+        view_type: "kanban",
+      },
+      to: {
+        model: "project.task",
+        view_type: "form",
+        res_id: null,
+        record_name: "S00138 - Hourly package",
+        res_id_present: false,
+      },
+    });
+  });
+
+  it("does not build record_opened from live_context for collection routes", () => {
+    const transition = buildRecordOpenedTransitionFromLiveContext({
+      from: { model: "project.task", view_type: "kanban" },
+      context_model: "project.task",
+      route: "Projects",
     });
 
     expect(transition).toBeNull();
