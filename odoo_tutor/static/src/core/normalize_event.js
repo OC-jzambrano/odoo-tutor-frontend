@@ -333,6 +333,7 @@ export function normalizeDomEvent({
     }
     else if (menuClick) {
       type = "menu_clicked";
+      // Keep xmlid slug in target_name for evidence; use visible text as label
       target_name = resolveButtonName(el);
       field = target_name;
     }
@@ -352,8 +353,19 @@ export function normalizeDomEvent({
     type = domEventType || "unknown";
   }
 
+  // For menu clicks the xmlid slug is a poor label for contract matching.
+  // Prefer the visible text; keep the xmlid only in meta.target_name.
+  const menuVisibleText =
+    type === "menu_clicked"
+      ? cleanText(el?.getAttribute?.("title") || el?.innerText || el?.textContent || "")
+      : null;
+
+  // Detect whether the event originates inside a dialog/modal.
+  const inModal = !!(rawTarget?.closest?.(".o_dialog, .o_dialog_container, .modal"));
+
   // label strategy: never rely on visible labels for identity, but we can emit for human readability
   const label =
+    menuVisibleText ||
     kanbanRecord?.label ||
     field ||
     target_name ||
