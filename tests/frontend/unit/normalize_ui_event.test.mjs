@@ -60,8 +60,12 @@ describe("UI event normalization", () => {
     expect(event.field).toBe("kanban.card");
     expect(event.meta).toEqual({
       model: "project.project",
-      viewType: "kanban",
-      resId: 456,
+      view_type: "kanban",
+      res_id: 456,
+      row_res_id: null,
+      kind: "other",
+      target_name: null,
+      card_res_id: 456,
     });
   });
 
@@ -89,6 +93,6 @@ describe("UI event normalization", () => {
 
     expect(event.type).toBe("card_clicked");
     expect(event.label).toBe("Evelin Galindo");
-    expect(event.meta.resId).toBe(243);
+    expect(event.meta.res_id).toBe(243);
   });
 });

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  canonicalEventFingerprint,
   canonicalEventType,
   canonicalizeEvent,
 } from "../../../odoo_tutor/static/src/core/event_types.js";
@@ -102,6 +103,51 @@ describe("event type normalization", () => {
     expect(original).toEqual({ type: "button_click", label: "Save" });
     expect(normalized).toEqual({ type: "button_clicked", label: "Save" });
     expect(normalized).not.toBe(original);
+  });
+
+  it("normalizes legacy metadata aliases to one canonical shape", () => {
+    expect(
+      canonicalizeEvent({
+        type: "card_clicked",
+        meta: { model: "crm.lead", viewType: "kanban", resId: 247 },
+      })
+    ).toEqual({
+      type: "card_clicked",
+      meta: {
+        model: "crm.lead",
+        view_type: "kanban",
+        res_id: 247,
+        row_res_id: null,
+        card_res_id: null,
+        target_name: null,
+      },
+    });
+  });
+
+  it("gives legacy and canonical payloads the same idempotency fingerprint", () => {
+    const legacy = {
+      type: "link_click",
+      label: "CRM",
+      meta: { model: "ir.ui.menu", viewType: "home_menu", resId: null },
+      ts: "2026-06-29T01:00:00.000Z",
+    };
+    const canonical = {
+      type: "link_clicked",
+      label: "CRM",
+      meta: {
+        model: "ir.ui.menu",
+        view_type: "home_menu",
+        res_id: null,
+        row_res_id: null,
+        card_res_id: null,
+        target_name: null,
+      },
+      ts: "2026-06-29T01:00:01.000Z",
+    };
+
+    expect(canonicalEventFingerprint(legacy)).toBe(
+      canonicalEventFingerprint(canonical)
+    );
   });
 });
 
@@ -220,5 +266,62 @@ describe("DOM event normalization", () => {
     expect(event.label).toBe("Mauricio Hache");
     expect(event.meta.res_id).toBe(247);
     expect(event.meta.card_res_id).toBe(247);
+  });
+
+  it("uses kanban ancestry over stale form context", () => {
+    const kanbanRecord = makeElement({
+      tagName: "DIV",
+      text: "Stale Context Opportunity",
+      className: "o_kanban_record",
+      attrs: { "data-res-id": "99" },
+    });
+    const target = makeElement({
+      tagName: "A",
+      text: "Stale Context Opportunity",
+      closestMap: {
+        ".o_kanban_record": kanbanRecord,
+      },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: {
+        model: "crm.lead",
+        viewType: "form",
+        resId: 31,
+      },
+    });
+
+    expect(event.type).toBe("card_clicked");
+    expect(event.meta.view_type).toBe("kanban");
+    expect(event.meta.res_id).toBe(99);
+  });
+
+  it("keeps secondary buttons inside kanban cards as button_clicked", () => {
+    const kanbanRecord = makeElement({
+      tagName: "DIV",
+      text: "Opportunity",
+      className: "o_kanban_record",
+      attrs: { "data-res-id": "99" },
+    });
+    kanbanRecord.contains = () => true;
+    const target = makeElement({
+      tagName: "BUTTON",
+      text: "Archive",
+      attrs: { name: "action_archive" },
+      closestMap: {
+        ".o_kanban_record": kanbanRecord,
+      },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: { model: "crm.lead", viewType: "kanban" },
+    });
+
+    expect(event.type).toBe("button_clicked");
+    expect(event.meta.res_id).toBe(99);
   });
 });

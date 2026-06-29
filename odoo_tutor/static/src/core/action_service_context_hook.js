@@ -3,6 +3,7 @@
 
 import { patch } from "@web/core/utils/patch";
 import { actionService } from "@web/webclient/actions/action_service";
+import { detectActiveViewType } from "./normalize_event";
 import { buildRecordOpenedTransition } from "./state_transition";
 
 function extractModelFromActionRequest(req) {
@@ -49,17 +50,6 @@ function extractStateFromLocation() {
   };
 }
 
-function guessViewTypeFromDom() {
-  try {
-    if (document.querySelector(".o_form_view")) return "form";
-    if (document.querySelector(".o_kanban_view")) return "kanban";
-    if (document.querySelector(".o_list_view, .o_list_renderer")) return "list";
-    if (document.querySelector(".o_graph_view")) return "graph";
-    if (document.querySelector(".o_pivot_view")) return "pivot";
-  } catch {}
-  return null;
-}
-
 function extractResIdFromDom() {
   try {
     const el = document.querySelector(
@@ -99,7 +89,7 @@ function extractStateFromController(ctrl) {
   if (!ctrl) {
     return {
       ...loc,
-      view_type: loc.view_type || guessViewTypeFromDom(),
+      view_type: loc.view_type || detectActiveViewType(),
       res_id: loc.res_id ?? extractResIdFromDom(),
       record_name: extractRecordNameFromDom(),
     };
@@ -114,7 +104,7 @@ function extractStateFromController(ctrl) {
       ctrl.view?.type ||
       ctrl.action?.view_mode?.split?.(",")?.[0] ||
       loc.view_type ||
-      guessViewTypeFromDom(),
+      detectActiveViewType(),
     res_id: props.resId ?? root.resId ?? loc.res_id ?? extractResIdFromDom() ?? null,
     record_name: extractRecordNameFromDom(),
   };

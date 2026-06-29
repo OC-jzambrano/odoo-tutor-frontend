@@ -3,7 +3,11 @@
 
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
-import { canonicalEventType, canonicalizeEvent } from "./event_types";
+import {
+  canonicalEventFingerprint,
+  canonicalEventType,
+  canonicalizeEvent,
+} from "./event_types";
 import { buildOutcomeState } from "./outcome_state";
 import { buildRecordOpenedTransitionFromLiveContext } from "./state_transition";
 
@@ -163,6 +167,7 @@ function getState() {
     // contexto: solo guardamos el ÚLTIMO (evita enviar "desfasado")
     pendingContextModel: null,
     pendingRecordOpen: null,
+    recentEventFingerprints: new Map(),
     lastSentContextRoute: null,
     lastSentContextModel: null,
     lastSentContextAt: 0,
@@ -193,6 +198,7 @@ export const aiWsService = {
 
     const baseUrl = await getConfiguredWsBaseUrl();
     const st = getState();
+    st.recentEventFingerprints ||= new Map();
 
     function isOpen() {
       return st.ws && st.ws.readyState === WS_OPEN;
@@ -484,6 +490,23 @@ export const aiWsService = {
       await connect();
       const canonicalData = canonicalizeEvent(event_data);
       const canonicalName = canonicalEventType(event_name || canonicalData?.type);
+      const fingerprint = canonicalEventFingerprint({
+        type: canonicalName,
+        event_data: canonicalData,
+      });
+      const eventNow = Date.now();
+      const lastSentAt = st.recentEventFingerprints.get(fingerprint) || 0;
+      if (eventNow - lastSentAt < 400) {
+        return false;
+      }
+      st.recentEventFingerprints.set(fingerprint, eventNow);
+      if (st.recentEventFingerprints.size > 200) {
+        for (const [key, sentAt] of st.recentEventFingerprints) {
+          if (eventNow - sentAt > 5000) {
+            st.recentEventFingerprints.delete(key);
+          }
+        }
+      }
 
       if (canonicalName === "card_clicked") {
         const meta = canonicalData?.meta || {};
@@ -514,6 +537,7 @@ export const aiWsService = {
         outcome_state: outcomeState,
       };
       safeSend(payload);
+      return true;
     }
 
     // ✅ CONTEXTO (formato correcto + session_id del backend)

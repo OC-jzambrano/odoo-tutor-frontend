@@ -6,7 +6,7 @@ import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
-import { normalizeDomEvent } from "../normalize_ui_event";
+import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import "../action_service_context_hook";
 
 // ---------------------
@@ -696,7 +696,12 @@ class AiFloatingButton extends Component {
             } else if (isCreatingSaleOrder) {
                 this.contextService.setContext(currentModel, "form", "create");
             } else if (currentModel) {
-                this.contextService.setContext(currentModel, "form", "list");
+                const activeViewType = detectActiveViewType();
+                this.contextService.setContext(
+                    currentModel,
+                    activeViewType,
+                    activeViewType
+                );
             }
 
             this.state.ctx = this._getContextSnapshot();
@@ -1232,6 +1237,9 @@ class AiFloatingButton extends Component {
         const isClickLike = type.includes("click");
 
         if (!isClickLike) return false;
+        if (["card_clicked", "button_clicked", "link_clicked", "tab_changed"].includes(type)) {
+            return false;
+        }
 
         const uiType =
             normalized.uiType ||

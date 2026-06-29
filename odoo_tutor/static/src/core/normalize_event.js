@@ -26,7 +26,8 @@ function cssPath(el) {
   if (!el || el.nodeType !== 1) return "";
   const parts = [];
   let node = el;
-  while (node && node.nodeType === 1 && node !== document.body) {
+  const body = globalThis.document?.body || null;
+  while (node && node.nodeType === 1 && node !== body) {
     let sel = node.nodeName.toLowerCase();
     if (node.id) {
       sel += "#" + node.id;
@@ -66,17 +67,18 @@ function buildSelector(el) {
   return tag || null;
 }
 
-function guessViewType() {
-  if (document.querySelector(".o_form_view")) return "form";
-  if (document.querySelector(".o_list_view, .o_list_renderer")) return "list";
-  if (document.querySelector(".o_kanban_view")) return "kanban";
-  if (document.querySelector(".o_graph_view")) return "graph";
-  if (document.querySelector(".o_pivot_view")) return "pivot";
+export function detectActiveViewType(root = globalThis.document) {
+  if (!root?.querySelector) return "unknown";
+  if (root.querySelector(".o_kanban_view")) return "kanban";
+  if (root.querySelector(".o_list_view, .o_list_renderer")) return "list";
+  if (root.querySelector(".o_form_view")) return "form";
+  if (root.querySelector(".o_graph_view")) return "graph";
+  if (root.querySelector(".o_pivot_view")) return "pivot";
   return "unknown";
 }
 
 function parseHashParams() {
-  const h = (window.location.hash || "").replace(/^#/, "");
+  const h = (globalThis.window?.location?.hash || "").replace(/^#/, "");
   const p = new URLSearchParams(h);
   return {
     model: p.get("model") || p.get("res_model") || p.get("active_model") || null,
@@ -228,24 +230,42 @@ function computeQuality({ model, view_type, field, target_name }) {
  * - ticket style: {type,label,field,value}
  * - rich meta for evidence: {meta, quality, dom}
  */
-export function normalizeDomEvent({ domEventType, originalEvent, contextService }) {
+export function normalizeDomEvent({
+  domEventType,
+  originalEvent,
+  contextService,
+  context = null,
+}) {
   const e = originalEvent;
   const rawTarget = e?.target || null;
   const el = rawTarget?.closest?.("button,a,input,textarea,select,[role='button'],[role='menuitem']") || rawTarget;
 
   const ctx = (() => {
+    if (context && typeof context === "object") return context;
     try { return contextService?.getContext?.() || {}; } catch { return {}; }
   })();
 
   const hash = parseHashParams();
+  const kanbanRecord = resolveKanbanRecord(rawTarget);
 
   const model = ctx.model || hash.model || null;
-  const view_type = ctx.view_type || ctx.view || hash.view_type || guessViewType();
+  const view_type =
+    (kanbanRecord && "kanban") ||
+    ctx.view_type ||
+    ctx.viewType ||
+    ctx.view ||
+    hash.view_type ||
+    detectActiveViewType();
 
   const kind = classifyKind(el);
   const row_res_id = resolveRowResId(el);
-  const kanbanRecord = resolveKanbanRecord(rawTarget);
-  const res_id = ctx.resId ?? ctx.res_id ?? row_res_id ?? kanbanRecord?.res_id ?? safeId(hash.id) ?? null;
+  const res_id =
+    kanbanRecord?.res_id ??
+    row_res_id ??
+    ctx.res_id ??
+    ctx.resId ??
+    safeId(hash.id) ??
+    null;
 
   // Determine normalized type + identifiers
   let type = "unknown";
@@ -268,6 +288,8 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
     // button vs link vs other
     if (kanbanRecord && view_type === "kanban" && isKanbanCardNavigation(el, kanbanRecord)) {
       type = "card_clicked";
+      field = "kanban.card";
+      target_name = "kanban.card";
     }
     else if (kind === "button") type = "button_clicked";
     else if (kind === "link") type = "link_clicked";
@@ -285,9 +307,9 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
 
   // label strategy: never rely on visible labels for identity, but we can emit for human readability
   const label =
+    kanbanRecord?.label ||
     field ||
     target_name ||
-    kanbanRecord?.label ||
     cleanText(el?.getAttribute?.("title") || "") ||
     cleanText(el?.innerText || el?.textContent || "") ||
     null;
