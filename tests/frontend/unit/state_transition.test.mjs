@@ -140,4 +140,23 @@ describe("state transition contract", () => {
 
     expect(transition).toBeNull();
   });
+
+  it("prefers the persistent form id over a transient card id", () => {
+    const transition = buildRecordOpenedTransitionFromLiveContext({
+      from: { model: "crm.lead", view_type: "kanban" },
+      context_model: "crm.lead",
+      route: "Pipeline / Devis pour 150 tapis",
+      res_id: 31,
+      pending_record: {
+        model: "crm.lead",
+        view_type: "kanban",
+        res_id: null,
+        record_name: "Devis pour 150 tapis $ 40,000.00",
+      },
+    });
+
+    expect(transition.to.res_id).toBe(31);
+    expect(transition.to.record_name).toBe("Devis pour 150 tapis");
+    expect(transition.to.res_id_present).toBe(true);
+  });
 });

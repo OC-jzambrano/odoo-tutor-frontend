@@ -35,6 +35,7 @@ export default defineConfig({
         "odoo_tutor/static/src/core/event_types.js",
         "odoo_tutor/static/src/core/normalize_event.js",
         "odoo_tutor/static/src/core/outcome_state.js",
+        "odoo_tutor/static/src/core/record_id.js",
         "odoo_tutor/static/src/core/state_transition.js",
       ],
     },

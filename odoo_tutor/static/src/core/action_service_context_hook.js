@@ -4,6 +4,7 @@
 import { patch } from "@web/core/utils/patch";
 import { actionService } from "@web/webclient/actions/action_service";
 import { detectActiveViewType } from "./normalize_event";
+import { normalizePersistentRecordId } from "./record_id";
 import { buildRecordOpenedTransition } from "./state_transition";
 
 function extractModelFromActionRequest(req) {
@@ -30,12 +31,6 @@ function extractModelFromController(ctrl) {
   );
 }
 
-function safeId(value) {
-  if (value == null || value === "") return null;
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : String(value);
-}
-
 function extractStateFromLocation() {
   const hash = String(window.location.hash || "").replace(/^#/, "");
   const params = new URLSearchParams(hash);
@@ -46,7 +41,11 @@ function extractStateFromLocation() {
   return {
     model: params.get("model") || params.get("res_model") || params.get("active_model") || null,
     view_type: params.get("view_type") || null,
-    res_id: safeId(params.get("id") || params.get("res_id") || (/^\d+$/.test(lastPart) ? lastPart : null)),
+    res_id: normalizePersistentRecordId(
+      params.get("id") ||
+        params.get("res_id") ||
+        (/^\d+$/.test(lastPart) ? lastPart : null)
+    ),
   };
 }
 
@@ -55,7 +54,7 @@ function extractResIdFromDom() {
     const el = document.querySelector(
       ".o_form_view [data-res-id], .o_form_view [data-id], .o_form_view"
     );
-    return safeId(
+    return normalizePersistentRecordId(
       el?.getAttribute?.("data-res-id") ||
         el?.getAttribute?.("data-id") ||
         el?.dataset?.resId ||

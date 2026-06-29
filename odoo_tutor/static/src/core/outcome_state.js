@@ -1,14 +1,10 @@
 /* eslint-disable */
 /** @odoo-module **/
 
+import { normalizePersistentRecordId } from "./record_id";
+
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function safeId(value) {
-  if (value == null || value === "") return null;
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : String(value);
 }
 
 function parseHashParams(hashValue) {
@@ -16,7 +12,7 @@ function parseHashParams(hashValue) {
   const params = new URLSearchParams(hash);
   return {
     model: params.get("model") || params.get("res_model") || params.get("active_model") || null,
-    res_id: safeId(params.get("id") || params.get("res_id")),
+    res_id: normalizePersistentRecordId(params.get("id") || params.get("res_id")),
     view_type: params.get("view_type") || null,
   };
 }
@@ -78,8 +74,8 @@ export function buildOutcomeState({
     hash.view_type ||
     guessViewTypeFromDom(root);
   const res_id =
-    safeId(context.resId ?? context.res_id) ??
-    safeId(eventMeta.resId ?? eventMeta.res_id) ??
+    normalizePersistentRecordId(context.resId ?? context.res_id) ??
+    normalizePersistentRecordId(eventMeta.resId ?? eventMeta.res_id) ??
     hash.res_id ??
     null;
   const record_name = getRecordNameFromDom(root);

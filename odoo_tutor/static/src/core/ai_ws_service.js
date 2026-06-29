@@ -9,6 +9,7 @@ import {
   canonicalizeEvent,
 } from "./event_types";
 import { buildOutcomeState } from "./outcome_state";
+import { normalizePersistentRecordId } from "./record_id";
 import { buildRecordOpenedTransitionFromLiveContext } from "./state_transition";
 
 const WS_CONNECTING = 0;
@@ -600,6 +601,20 @@ export const aiWsService = {
         st.pendingRecordOpen = null;
       }
 
+      const activeContext = (() => {
+        try {
+          return env.services.context_service?.getContext?.() || {};
+        } catch {
+          return {};
+        }
+      })();
+      const activeResId =
+        activeContext.model === context_model
+          ? normalizePersistentRecordId(
+              activeContext.res_id ?? activeContext.resId
+            )
+          : null;
+
       const transition = buildRecordOpenedTransitionFromLiveContext({
         from: st.lastLiveContextState || {
           model: st.lastSentContextModel,
@@ -608,6 +623,7 @@ export const aiWsService = {
         context_model,
         route: contextRoute,
         pending_record: pendingRecordOpen,
+        res_id: activeResId,
       });
       const recordOpenedKey = transition
         ? `${contextRoute || ""}|${transition.to.res_id ?? ""}|${transition.to.record_name || ""}`

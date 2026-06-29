@@ -324,4 +324,54 @@ describe("DOM event normalization", () => {
     expect(event.type).toBe("button_clicked");
     expect(event.meta.res_id).toBe(99);
   });
+
+  it("separates transient Odoo datapoints from persistent record ids", () => {
+    const kanbanRecord = makeElement({
+      tagName: "ARTICLE",
+      text: "Transient Opportunity",
+      className: "o_kanban_record",
+      attrs: { "data-id": "datapoint_89" },
+    });
+    const target = makeElement({
+      tagName: "SPAN",
+      text: "Transient Opportunity",
+      closestMap: {
+        ".o_kanban_record": kanbanRecord,
+      },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: { model: "crm.lead", viewType: "kanban" },
+    });
+
+    expect(event.type).toBe("card_clicked");
+    expect(event.meta.res_id).toBeNull();
+    expect(event.meta.card_res_id).toBeNull();
+    expect(event.meta.client_record_id).toBe("datapoint_89");
+  });
+
+  it("emits menu_clicked for Odoo app launchers", () => {
+    const target = makeElement({
+      tagName: "A",
+      text: "CRM",
+      dataset: { menuXmlid: "crm.crm_menu_root" },
+      attrs: { href: "/odoo/crm" },
+      closestMap: {
+        ".o_app": null,
+      },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: { model: "ir.ui.menu", viewType: "home_menu" },
+    });
+
+    expect(event.type).toBe("menu_clicked");
+    expect(event.label).toBe("menu.crm.crm_menu_root");
+    expect(event.field).toBe("menu.crm.crm_menu_root");
+    expect(event.meta.view_type).toBe("home_menu");
+  });
 });

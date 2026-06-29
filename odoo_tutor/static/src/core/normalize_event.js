@@ -2,6 +2,10 @@
 /** @odoo-module **/
 
 import { canonicalEventType } from "./event_types";
+import {
+  normalizePersistentRecordId,
+  transientClientRecordId,
+} from "./record_id";
 
 function cleanText(s) {
   return (s || "").toString().trim().replace(/\s+/g, " ").slice(0, 140);
@@ -87,12 +91,6 @@ function parseHashParams() {
   };
 }
 
-function safeId(v) {
-  if (v == null || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : String(v);
-}
-
 /**
  * Odoo-aware field resolver:
  * - form fields: .o_field_widget[data-name]
@@ -120,24 +118,30 @@ function resolveFieldName(el) {
 function resolveRowResId(el) {
   const row = el?.closest?.("tr");
   if (!row) return null;
-  return safeId(row.getAttribute?.("data-res-id") || row.getAttribute?.("data-id") || row.dataset?.id);
+  return normalizePersistentRecordId(
+    row.getAttribute?.("data-res-id") ||
+      row.getAttribute?.("data-id") ||
+      row.dataset?.id
+  );
 }
 
 function resolveKanbanRecord(el) {
   const record = el?.closest?.(".o_kanban_record");
   if (!record) return null;
 
+  const rawId =
+    record.getAttribute?.("data-res-id") ||
+    record.getAttribute?.("data-id") ||
+    record.dataset?.resId ||
+    record.dataset?.id ||
+    null;
   const resId =
-    safeId(
-      record.getAttribute?.("data-res-id") ||
-        record.getAttribute?.("data-id") ||
-        record.dataset?.resId ||
-        record.dataset?.id
-    ) || null;
+    normalizePersistentRecordId(rawId) || null;
 
   return {
     element: record,
     res_id: resId,
+    client_record_id: transientClientRecordId(rawId),
     label: cleanText(
       record.getAttribute?.("title") ||
         record.querySelector?.(".o_kanban_record_title")?.textContent ||
@@ -259,13 +263,13 @@ export function normalizeDomEvent({
 
   const kind = classifyKind(el);
   const row_res_id = resolveRowResId(el);
-  const res_id =
-    kanbanRecord?.res_id ??
-    row_res_id ??
-    ctx.res_id ??
-    ctx.resId ??
-    safeId(hash.id) ??
-    null;
+  const res_id = kanbanRecord
+    ? kanbanRecord.res_id
+    : row_res_id ??
+      ctx.res_id ??
+      ctx.resId ??
+      normalizePersistentRecordId(hash.id) ??
+      null;
 
   // Determine normalized type + identifiers
   let type = "unknown";
@@ -286,10 +290,23 @@ export function normalizeDomEvent({
       target_name = field || null;
   } else if (domEventType === "click") {
     // button vs link vs other
+    const menuTarget = el?.closest?.(
+      "[data-menu-xmlid], .o_app, .o_menuitem, [role='menuitem']"
+    );
+    const menuClick =
+      model === "ir.ui.menu" ||
+      !!menuTarget ||
+      String(resolveButtonName(el) || "").startsWith("menu.");
+
     if (kanbanRecord && view_type === "kanban" && isKanbanCardNavigation(el, kanbanRecord)) {
       type = "card_clicked";
       field = "kanban.card";
       target_name = "kanban.card";
+    }
+    else if (menuClick) {
+      type = "menu_clicked";
+      target_name = resolveButtonName(el);
+      field = target_name;
     }
     else if (kind === "button") type = "button_clicked";
     else if (kind === "link") type = "link_clicked";
@@ -337,6 +354,7 @@ export function normalizeDomEvent({
       kind,
       target_name: target_name || null,
       card_res_id: kanbanRecord?.res_id ?? null,
+      client_record_id: kanbanRecord?.client_record_id ?? null,
     },
     dom: {
       tag: (el?.tagName || "").toLowerCase() || null,

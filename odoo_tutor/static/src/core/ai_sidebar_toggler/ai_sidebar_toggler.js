@@ -7,6 +7,7 @@ import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
+import { normalizePersistentRecordId } from "../record_id";
 import "../action_service_context_hook";
 
 // ---------------------
@@ -182,12 +183,6 @@ function cleanText(x) {
     return (x || "").toString().trim().replace(/\s+/g, " ");
 }
 
-function safeId(val) {
-    if (val == null || val === "") return null;
-    const n = Number(val);
-    return Number.isFinite(n) ? n : String(val);
-}
-
 function classifyElement(el) {
     const tag = (el.tagName || "").toUpperCase();
     const type = (el.getAttribute?.("type") || "").toLowerCase();
@@ -292,7 +287,7 @@ function findGridContext(el) {
     const row = el.closest?.("tr") || null;
     if (row) {
         const rid = row.getAttribute?.("data-res-id") || row.getAttribute?.("data-id") || row.dataset?.id;
-        out.rowId = safeId(rid);
+        out.rowId = normalizePersistentRecordId(rid);
 
         const prodCell =
             row.querySelector?.('td[data-name="product_id"]') ||
@@ -700,7 +695,8 @@ class AiFloatingButton extends Component {
                 this.contextService.setContext(
                     currentModel,
                     activeViewType,
-                    activeViewType
+                    activeViewType,
+                    currentAction?.resId ?? null
                 );
             }
 
@@ -1237,7 +1233,9 @@ class AiFloatingButton extends Component {
         const isClickLike = type.includes("click");
 
         if (!isClickLike) return false;
-        if (["card_clicked", "button_clicked", "link_clicked", "tab_changed"].includes(type)) {
+        if (
+            ["card_clicked", "button_clicked", "link_clicked", "menu_clicked", "tab_changed"].includes(type)
+        ) {
             return false;
         }
 

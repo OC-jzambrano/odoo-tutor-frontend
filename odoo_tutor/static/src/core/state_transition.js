@@ -1,17 +1,13 @@
 /* eslint-disable */
 /** @odoo-module **/
 
-function normalizeId(value) {
-  if (value == null || value === "") return null;
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : String(value);
-}
+import { normalizePersistentRecordId } from "./record_id";
 
 function compactState(state = {}) {
   return {
     model: state.model || state.currentModel || null,
     view_type: state.view_type || state.view || null,
-    res_id: normalizeId(state.res_id ?? state.resId),
+    res_id: normalizePersistentRecordId(state.res_id ?? state.resId),
     record_name: state.record_name || state.recordName || null,
   };
 }
@@ -66,6 +62,7 @@ export function buildRecordOpenedTransitionFromLiveContext({
   context_model,
   route,
   pending_record = null,
+  res_id = null,
 } = {}) {
   if (!context_model || NON_RECORD_MODELS.has(context_model)) return null;
 
@@ -80,8 +77,11 @@ export function buildRecordOpenedTransitionFromLiveContext({
     to: {
       model: context_model,
       view_type: "form",
-      res_id: pending?.res_id ?? null,
-      record_name: pending?.record_name || recordName,
+      res_id:
+        normalizePersistentRecordId(res_id) ??
+        normalizePersistentRecordId(pending?.res_id) ??
+        null,
+      record_name: recordName || pending?.record_name,
     },
   });
 }

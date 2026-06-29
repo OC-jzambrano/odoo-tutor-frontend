@@ -66,6 +66,7 @@ describe("UI event normalization", () => {
       kind: "other",
       target_name: null,
       card_res_id: 456,
+      client_record_id: null,
     });
   });
 
