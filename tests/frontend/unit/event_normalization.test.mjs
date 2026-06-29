@@ -90,6 +90,15 @@ describe("event type normalization", () => {
     expect(canonicalEventType("link_click")).toBe("link_clicked");
   });
 
+  it("normalizes wizard_opened to the canonical modal contract", () => {
+    expect(canonicalEventType("wizard_opened")).toBe("modal_opened");
+    expect(canonicalizeEvent({ type: "wizard_opened", title: "Create invoice" })).toEqual({
+      type: "modal_opened",
+      title: "Create invoice",
+      modal_kind: "wizard",
+    });
+  });
+
   it("keeps already-canonical and unknown names stable", () => {
     expect(canonicalEventType("button_clicked")).toBe("button_clicked");
     expect(canonicalEventType("field_changed")).toBe("field_changed");

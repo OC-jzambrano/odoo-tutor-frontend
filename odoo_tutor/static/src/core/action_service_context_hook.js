@@ -5,7 +5,12 @@ import { patch } from "@web/core/utils/patch";
 import { actionService } from "@web/webclient/actions/action_service";
 import { detectActiveViewType } from "./normalize_event";
 import { normalizePersistentRecordId } from "./record_id";
-import { buildRecordOpenedTransition } from "./state_transition";
+import {
+  buildModalOpenedTransition,
+  buildRecordOpenedTransition,
+  buildRouteChangedTransition,
+  buildViewChangedTransition,
+} from "./state_transition";
 
 function extractModelFromActionRequest(req) {
   if (!req) return null;
@@ -183,6 +188,7 @@ patch(actionService, {
 
     res.doAction = async (actionRequest, options = {}) => {
       const preModel = extractModelFromActionRequest(actionRequest);
+      const fromRoute = getCurrentRouteFromDom();
       const fromState = (() => {
         try {
           return (
@@ -200,18 +206,38 @@ patch(actionService, {
       setTimeout(() => {
         const controllerState = extractStateFromController(res.currentController);
         const postModel = controllerState.model || extractModelFromController(res.currentController);
+        const toRoute = getCurrentRouteFromDom();
         send(postModel || preModel, { reason: "doAction" });
 
-        const transition = buildRecordOpenedTransition({
+        const transitions = [
+          buildModalOpenedTransition({
+            action:
+              typeof actionRequest === "object"
+                ? actionRequest
+                : {},
+            from: fromState,
+          }),
+          buildViewChangedTransition({
+            from: fromState,
+            to: controllerState,
+          }),
+          buildRouteChangedTransition({
+            from_route: fromRoute,
+            to_route: toRoute,
+            state: controllerState,
+          }),
+          buildRecordOpenedTransition({
           from: fromState,
           to: {
             ...controllerState,
             model: controllerState.model || postModel || preModel,
           },
-        });
-        if (transition) {
+          }),
+        ].filter(Boolean);
+
+        for (const transition of transitions) {
           aiWs?.sendEvent?.({
-            type: "state_transition_event",
+            type: "ui_event",
             event_name: transition.name,
             event_data: transition,
           });

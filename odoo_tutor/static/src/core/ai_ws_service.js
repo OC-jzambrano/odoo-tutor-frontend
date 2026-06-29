@@ -168,6 +168,7 @@ function getState() {
     // contexto: solo guardamos el ÚLTIMO (evita enviar "desfasado")
     pendingContextModel: null,
     pendingRecordOpen: null,
+    pendingRecordResolutionTimer: null,
     recentEventFingerprints: new Map(),
     lastSentContextRoute: null,
     lastSentContextModel: null,
@@ -529,7 +530,7 @@ export const aiWsService = {
         eventData: canonicalData,
       });
       const payload = {
-        type,
+        type: type === "state_transition_event" ? "ui_event" : type,
         event_name: canonicalName || event_name,
         event_data: {
           ...canonicalData,
@@ -615,16 +616,35 @@ export const aiWsService = {
             )
           : null;
 
-      const transition = buildRecordOpenedTransitionFromLiveContext({
-        from: st.lastLiveContextState || {
-          model: st.lastSentContextModel,
-          view_type: null,
-        },
-        context_model,
-        route: contextRoute,
-        pending_record: pendingRecordOpen,
-        res_id: activeResId,
-      });
+      if (pendingRecordOpen && !activeResId && !st.pendingRecordResolutionTimer) {
+        st.pendingRecordResolutionTimer = setTimeout(() => {
+          st.pendingRecordResolutionTimer = null;
+          if (
+            st.pendingRecordOpen &&
+            Date.now() - st.pendingRecordOpen.clicked_at <= 5000
+          ) {
+            sendLiveContext({
+              context_model,
+              route: contextRoute,
+              force: true,
+            }).catch(() => {});
+          }
+        }, 250);
+      }
+
+      const transition =
+        pendingRecordOpen && !activeResId
+          ? null
+          : buildRecordOpenedTransitionFromLiveContext({
+              from: st.lastLiveContextState || {
+                model: st.lastSentContextModel,
+                view_type: null,
+              },
+              context_model,
+              route: contextRoute,
+              pending_record: pendingRecordOpen,
+              res_id: activeResId,
+            });
       const recordOpenedKey = transition
         ? `${contextRoute || ""}|${transition.to.res_id ?? ""}|${transition.to.record_name || ""}`
         : null;
@@ -646,7 +666,7 @@ export const aiWsService = {
       if (transition && recordOpenedKey !== st.lastRecordOpenedKey) {
         st.lastRecordOpenedKey = recordOpenedKey;
         sendEvent({
-          type: "state_transition_event",
+          type: "ui_event",
           event_name: transition.name,
           event_data: transition,
         }).catch(() => {});

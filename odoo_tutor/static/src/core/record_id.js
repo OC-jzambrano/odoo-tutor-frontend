@@ -6,7 +6,17 @@ export function transientClientRecordId(value) {
 }
 
 export function normalizePersistentRecordId(value) {
-  if (value == null || value === "" || transientClientRecordId(value)) return null;
+  if (
+    value == null ||
+    value === "" ||
+    value === false ||
+    transientClientRecordId(value)
+  ) {
+    return null;
+  }
   const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : String(value);
+  if (Number.isFinite(numberValue)) {
+    return numberValue > 0 ? numberValue : null;
+  }
+  return String(value);
 }

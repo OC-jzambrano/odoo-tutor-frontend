@@ -4,6 +4,7 @@
 export const EVENT_TYPE_ALIASES = Object.freeze({
   button_click: "button_clicked",
   link_click: "link_clicked",
+  wizard_opened: "modal_opened",
 });
 
 export function canonicalEventType(type) {
@@ -14,9 +15,18 @@ export function canonicalEventType(type) {
 export function canonicalizeEvent(event) {
   if (!event || typeof event !== "object") return event;
   const type = canonicalEventType(event.type);
+  const modalKind =
+    event.type === "wizard_opened"
+      ? "wizard"
+      : event.modal_kind;
   const rawMeta = event.meta && typeof event.meta === "object" ? event.meta : null;
   if (!rawMeta) {
-    return type === event.type ? event : { ...event, type };
+    if (type === event.type && modalKind === event.modal_kind) return event;
+    return {
+      ...event,
+      type,
+      ...(modalKind ? { modal_kind: modalKind } : {}),
+    };
   }
 
   const {
@@ -31,6 +41,7 @@ export function canonicalizeEvent(event) {
   return {
     ...event,
     type,
+    ...(modalKind ? { modal_kind: modalKind } : {}),
     meta: {
       ...meta,
       view_type: meta.view_type ?? viewType ?? null,

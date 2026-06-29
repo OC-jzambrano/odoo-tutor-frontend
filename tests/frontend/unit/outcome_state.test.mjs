@@ -160,4 +160,28 @@ describe("outcome state contract", () => {
       res_id_present: true,
     });
   });
+
+  it("rejects zero and transient datapoints as persistent record ids", () => {
+    const zeroOutcome = buildOutcomeState({
+      contextService: {
+        getContext() {
+          return { model: "crm.lead", view_type: "form", resId: 0 };
+        },
+      },
+      root: makeRoot({ ".o_form_view": {} }),
+      location: { hash: "" },
+    });
+    const transientOutcome = buildOutcomeState({
+      eventData: {
+        meta: { model: "crm.lead", view_type: "kanban", res_id: "datapoint_8" },
+      },
+      root: makeRoot({ ".o_kanban_view": {} }),
+      location: { hash: "" },
+    });
+
+    expect(zeroOutcome.res_id).toBeNull();
+    expect(zeroOutcome.res_id_present).toBe(false);
+    expect(transientOutcome.res_id).toBeNull();
+    expect(transientOutcome.res_id_present).toBe(false);
+  });
 });
