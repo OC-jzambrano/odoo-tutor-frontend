@@ -147,6 +147,17 @@ function resolveKanbanRecord(el) {
   };
 }
 
+function isKanbanCardNavigation(el, kanbanRecord) {
+  if (!el || !kanbanRecord?.element) return false;
+
+  const secondaryControl = el.closest?.(
+    "button, input, textarea, select, [role='button'], [role='menuitem'], " +
+      ".btn, .dropdown-item, .o_kanban_manage_button, .o_dropdown"
+  );
+
+  return !secondaryControl || !kanbanRecord.element.contains?.(secondaryControl);
+}
+
 function resolveButtonName(el) {
   if (!el) return null;
 
@@ -255,7 +266,9 @@ export function normalizeDomEvent({ domEventType, originalEvent, contextService 
       target_name = field || null;
   } else if (domEventType === "click") {
     // button vs link vs other
-    if (kanbanRecord && view_type === "kanban" && kind === "other") type = "card_clicked";
+    if (kanbanRecord && view_type === "kanban" && isKanbanCardNavigation(el, kanbanRecord)) {
+      type = "card_clicked";
+    }
     else if (kind === "button") type = "button_clicked";
     else if (kind === "link") type = "link_clicked";
     else type = "click";

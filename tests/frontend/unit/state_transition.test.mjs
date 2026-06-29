@@ -111,4 +111,33 @@ describe("state transition contract", () => {
 
     expect(transition).toBeNull();
   });
+
+  it("uses the preceding card click to preserve res_id and source view", () => {
+    const transition = buildRecordOpenedTransitionFromLiveContext({
+      from: { model: "crm.lead", view_type: "kanban" },
+      context_model: "crm.lead",
+      route: "Pipeline / Mauricio Hache",
+      pending_record: {
+        model: "crm.lead",
+        view_type: "kanban",
+        res_id: 247,
+        record_name: "Mauricio Hache",
+      },
+    });
+
+    expect(transition.from.view_type).toBe("kanban");
+    expect(transition.to.res_id).toBe(247);
+    expect(transition.to.record_name).toBe("Mauricio Hache");
+    expect(transition.to.res_id_present).toBe(true);
+  });
+
+  it("does not treat the Odoo home menu as an opened business record", () => {
+    const transition = buildRecordOpenedTransitionFromLiveContext({
+      from: { model: "crm.lead", view_type: "form" },
+      context_model: "ir.ui.menu",
+      route: "Ir / Ui / Menu",
+    });
+
+    expect(transition).toBeNull();
+  });
 });

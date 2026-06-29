@@ -162,6 +162,7 @@ function getState() {
 
     // contexto: solo guardamos el ÚLTIMO (evita enviar "desfasado")
     pendingContextModel: null,
+    pendingRecordOpen: null,
     lastSentContextRoute: null,
     lastSentContextModel: null,
     lastSentContextAt: 0,
@@ -483,6 +484,22 @@ export const aiWsService = {
       await connect();
       const canonicalData = canonicalizeEvent(event_data);
       const canonicalName = canonicalEventType(event_name || canonicalData?.type);
+
+      if (canonicalName === "card_clicked") {
+        const meta = canonicalData?.meta || {};
+        st.pendingRecordOpen = {
+          model: meta.model || null,
+          view_type: meta.view_type || meta.viewType || "kanban",
+          res_id:
+            meta.card_res_id ??
+            meta.res_id ??
+            meta.resId ??
+            null,
+          record_name: canonicalData?.label || null,
+          clicked_at: Date.now(),
+        };
+      }
+
       const outcomeState = buildOutcomeState({
         contextService: env.services.context_service,
         eventData: canonicalData,
@@ -550,6 +567,15 @@ export const aiWsService = {
         timestamp: new Date().toISOString(),
       };
 
+      const pendingRecordOpen =
+        st.pendingRecordOpen &&
+        now - st.pendingRecordOpen.clicked_at <= 5000
+          ? st.pendingRecordOpen
+          : null;
+      if (st.pendingRecordOpen && !pendingRecordOpen) {
+        st.pendingRecordOpen = null;
+      }
+
       const transition = buildRecordOpenedTransitionFromLiveContext({
         from: st.lastLiveContextState || {
           model: st.lastSentContextModel,
@@ -557,9 +583,10 @@ export const aiWsService = {
         },
         context_model,
         route: contextRoute,
+        pending_record: pendingRecordOpen,
       });
       const recordOpenedKey = transition
-        ? `${contextRoute || ""}|${transition.to.record_name || ""}`
+        ? `${contextRoute || ""}|${transition.to.res_id ?? ""}|${transition.to.record_name || ""}`
         : null;
 
       st.lastSentContextModel = context_model;
@@ -571,6 +598,10 @@ export const aiWsService = {
         record_name: transition?.to?.record_name || null,
         route: contextRoute || null,
       };
+
+      if (transition) {
+        st.pendingRecordOpen = null;
+      }
 
       if (transition && recordOpenedKey !== st.lastRecordOpenedKey) {
         st.lastRecordOpenedKey = recordOpenedKey;

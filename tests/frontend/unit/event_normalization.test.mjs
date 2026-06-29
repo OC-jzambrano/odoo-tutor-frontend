@@ -64,10 +64,11 @@ function makeElement({
           return value;
         }
       }
-      if (selector.includes("button") && tagName === "BUTTON") {
+      const selectors = selector.split(",").map((part) => part.trim());
+      if (selectors.some((part) => part === "button") && tagName === "BUTTON") {
         return element;
       }
-      if (selector.includes("a") && tagName === "A") {
+      if (selectors.some((part) => part === "a") && tagName === "A") {
         return element;
       }
       if (selector.includes("[data-name]") && dataset.name) {
@@ -187,5 +188,37 @@ describe("DOM event normalization", () => {
     expect(event.meta.view_type).toBe("kanban");
     expect(event.meta.res_id).toBe(456);
     expect(event.meta.card_res_id).toBe(456);
+  });
+
+  it("keeps kanban card anchors as card_clicked", () => {
+    const kanbanRecord = makeElement({
+      tagName: "DIV",
+      text: "Mauricio Hache",
+      className: "o_kanban_record",
+      attrs: { "data-res-id": "247" },
+    });
+    const target = makeElement({
+      tagName: "A",
+      text: "Mauricio Hache",
+      attrs: { href: "/odoo/crm/247" },
+      closestMap: {
+        ".o_kanban_record": kanbanRecord,
+      },
+    });
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      contextService: {
+        getContext() {
+          return { model: "crm.lead", view_type: "kanban" };
+        },
+      },
+    });
+
+    expect(event.type).toBe("card_clicked");
+    expect(event.label).toBe("Mauricio Hache");
+    expect(event.meta.res_id).toBe(247);
+    expect(event.meta.card_res_id).toBe(247);
   });
 });

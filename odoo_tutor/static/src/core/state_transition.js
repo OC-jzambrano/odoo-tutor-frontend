@@ -16,6 +16,8 @@ function compactState(state = {}) {
   };
 }
 
+const NON_RECORD_MODELS = new Set(["ir.ui.menu"]);
+
 export function recordNameFromRoute(route) {
   const parts = String(route || "")
     .split("/")
@@ -63,16 +65,23 @@ export function buildRecordOpenedTransitionFromLiveContext({
   from = {},
   context_model,
   route,
+  pending_record = null,
 } = {}) {
+  if (!context_model || NON_RECORD_MODELS.has(context_model)) return null;
+
   const recordName = recordNameFromRoute(route);
   if (!recordName) return null;
 
+  const pending =
+    pending_record?.model === context_model ? compactState(pending_record) : null;
+
   return buildRecordOpenedTransition({
-    from,
+    from: pending || from,
     to: {
       model: context_model,
       view_type: "form",
-      record_name: recordName,
+      res_id: pending?.res_id ?? null,
+      record_name: pending?.record_name || recordName,
     },
   });
 }
