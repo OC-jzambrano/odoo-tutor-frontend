@@ -32,7 +32,9 @@ export default defineConfig({
       reporter: ["text", "html"],
       reportsDirectory: "coverage/frontend",
       include: [
+        "odoo_tutor/static/src/core/client_validation_event.js",
         "odoo_tutor/static/src/core/event_types.js",
+        "odoo_tutor/static/src/core/interaction_events.js",
         "odoo_tutor/static/src/core/normalize_event.js",
         "odoo_tutor/static/src/core/orm_event.js",
         "odoo_tutor/static/src/core/outcome_state.js",
