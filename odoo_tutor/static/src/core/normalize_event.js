@@ -390,13 +390,14 @@ export function normalizeDomEvent({
     // extras (evidence)
     meta: {
       model,
-      view_type,
+      view_type: inModal ? "modal" : view_type,
       res_id,
       row_res_id,
       kind,
       target_name: target_name || null,
       card_res_id: kanbanRecord?.res_id ?? null,
       client_record_id: kanbanRecord?.client_record_id ?? null,
+      in_modal: inModal || undefined,
     },
     dom: {
       tag: (el?.tagName || "").toLowerCase() || null,
