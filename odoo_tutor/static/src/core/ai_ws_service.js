@@ -4,6 +4,7 @@
 import { registry } from "@web/core/registry";
 import { rpc } from "@web/core/network/rpc";
 import {
+  canonicalEventEnvelopeType,
   canonicalEventFingerprint,
   canonicalEventType,
   canonicalizeEvent,
@@ -530,7 +531,7 @@ export const aiWsService = {
         eventData: canonicalData,
       });
       const payload = {
-        type: type === "state_transition_event" ? "ui_event" : type,
+        type: canonicalEventEnvelopeType(type),
         event_name: canonicalName || event_name,
         event_data: {
           ...canonicalData,

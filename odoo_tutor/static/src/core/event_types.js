@@ -12,6 +12,10 @@ export function canonicalEventType(type) {
   return EVENT_TYPE_ALIASES[value] || value;
 }
 
+export function canonicalEventEnvelopeType() {
+  return "ui_event";
+}
+
 export function canonicalizeEvent(event) {
   if (!event || typeof event !== "object") return event;
   const type = canonicalEventType(event.type);

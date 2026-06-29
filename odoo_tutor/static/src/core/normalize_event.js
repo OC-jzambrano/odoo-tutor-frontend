@@ -191,6 +191,28 @@ function resolveButtonName(el) {
   return null;
 }
 
+function resolveTabTarget(el) {
+  return el?.closest?.(
+    ".o_notebook_headers .nav-link, .o_notebook [role='tab'], [role='tab']"
+  ) || null;
+}
+
+function resolveTabName(tabEl) {
+  if (!tabEl) return null;
+
+  const ds = tabEl.dataset || {};
+  if (ds.pageId) return ds.pageId;
+
+  const href = tabEl.getAttribute?.("href") || "";
+  const hrefMatch = href.match(/^#(.+)$/);
+  if (hrefMatch) return hrefMatch[1];
+
+  const name = tabEl.getAttribute?.("name");
+  if (name) return name;
+
+  return slugify(cleanText(tabEl.innerText || tabEl.textContent || "")) || null;
+}
+
 function classifyKind(el) {
   const tag = (el?.tagName || "").toUpperCase();
   const type = (el?.getAttribute?.("type") || "").toLowerCase();
@@ -297,11 +319,17 @@ export function normalizeDomEvent({
       model === "ir.ui.menu" ||
       !!menuTarget ||
       String(resolveButtonName(el) || "").startsWith("menu.");
+    const tabTarget = resolveTabTarget(rawTarget);
 
     if (kanbanRecord && view_type === "kanban" && isKanbanCardNavigation(el, kanbanRecord)) {
       type = "card_clicked";
       field = "kanban.card";
       target_name = "kanban.card";
+    }
+    else if (tabTarget) {
+      type = "tab_changed";
+      target_name = resolveTabName(tabTarget);
+      field = target_name;
     }
     else if (menuClick) {
       type = "menu_clicked";
@@ -312,11 +340,13 @@ export function normalizeDomEvent({
     else if (kind === "link") type = "link_clicked";
     else type = "click";
 
-    target_name = resolveButtonName(el);
-    // some clicks are effectively on fields (e.g. checkbox)
-    if (!target_name && kind === "field") {
-      field = resolveFieldName(el);
-      target_name = field || null;
+    if (type !== "tab_changed") {
+      target_name = resolveButtonName(el);
+      // some clicks are effectively on fields (e.g. checkbox)
+      if (!target_name && kind === "field") {
+        field = resolveFieldName(el);
+        target_name = field || null;
+      }
     }
   } else {
     type = domEventType || "unknown";

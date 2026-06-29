@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  canonicalEventEnvelopeType,
   canonicalEventFingerprint,
   canonicalEventType,
   canonicalizeEvent,
@@ -85,6 +86,12 @@ function makeElement({
 }
 
 describe("event type normalization", () => {
+  it("uses ui_event as the envelope for current and legacy event sources", () => {
+    expect(canonicalEventEnvelopeType("recorder_event")).toBe("ui_event");
+    expect(canonicalEventEnvelopeType("state_transition_event")).toBe("ui_event");
+    expect(canonicalEventEnvelopeType("ui_event")).toBe("ui_event");
+  });
+
   it("maps legacy button/link names to canonical names", () => {
     expect(canonicalEventType("button_click")).toBe("button_clicked");
     expect(canonicalEventType("link_click")).toBe("link_clicked");
@@ -382,5 +389,29 @@ describe("DOM event normalization", () => {
     expect(event.label).toBe("menu.crm.crm_menu_root");
     expect(event.field).toBe("menu.crm.crm_menu_root");
     expect(event.meta.view_type).toBe("home_menu");
+  });
+
+  it("emits tab_changed for notebook tab clicks", () => {
+    const target = makeElement({
+      tagName: "A",
+      text: "Purchase",
+      attrs: { href: "#purchase", role: "tab" },
+      dataset: { pageId: "purchase" },
+    });
+    const baseClosest = target.closest.bind(target);
+    target.closest = (selector) =>
+      selector.includes("nav-link") || selector.includes("[role='tab']")
+        ? target
+        : baseClosest(selector);
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: { model: "res.partner", view_type: "form" },
+    });
+
+    expect(event.type).toBe("tab_changed");
+    expect(event.field).toBe("purchase");
+    expect(event.meta.target_name).toBe("purchase");
   });
 });
