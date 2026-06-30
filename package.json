@@ -4,10 +4,16 @@
   "scripts": {
     "test:frontend": "vitest run --config tests/frontend/vitest.config.mjs",
     "test:frontend:coverage": "vitest run --coverage --config tests/frontend/vitest.config.mjs",
-    "test:frontend:watch": "vitest --config tests/frontend/vitest.config.mjs"
+    "test:frontend:watch": "vitest --config tests/frontend/vitest.config.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:auth": "node tests/e2e/save-auth.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.8",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "@playwright/test": "^1.61.1"
   }
 }

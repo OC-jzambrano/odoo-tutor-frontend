@@ -386,8 +386,9 @@ describe("DOM event normalization", () => {
     });
 
     expect(event.type).toBe("menu_clicked");
-    expect(event.label).toBe("menu.crm.crm_menu_root");
+    expect(event.label).toBe("CRM");
     expect(event.field).toBe("menu.crm.crm_menu_root");
+    expect(event.meta.target_name).toBe("menu.crm.crm_menu_root");
     expect(event.meta.view_type).toBe("home_menu");
   });
 

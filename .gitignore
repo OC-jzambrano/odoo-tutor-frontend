@@ -4,6 +4,7 @@ __pycache__/
 /.venv
 /.pytest_cache
 /.ruff_cache
+/.docs
 
 # C extensions
 *.so
@@ -94,3 +95,8 @@ docs/_build/
 
 # OCA rules
 !static/lib/
+
+# Playwright local state and test artifacts
+/playwright-report/
+/test-results/
+/tests/e2e/.auth/

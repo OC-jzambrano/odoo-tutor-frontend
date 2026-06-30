@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem
+        id="menu_odoo_tutor_root"
+        name="Odoo Tutor"
+        web_icon="odoo_tutor,static/description/icon.png"
+        sequence="10"
+    />
+</odoo>

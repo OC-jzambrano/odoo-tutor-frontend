@@ -6,7 +6,6 @@
     "author": "Erick Birbe <ebirbe@odooconcept.com>, Odoo Concept",
     "website": "https://odooconcept.com",
     "depends": [
-        "account_accountant",
         "sale_management",
         "stock",
         "crm",
@@ -17,6 +16,7 @@
     ],
     "data": [
         "security/ir.model.access.csv",
+        "views/odoo_tutor_menus.xml",
         "views/res_config_settings_views.xml",
     ],
     "assets": {

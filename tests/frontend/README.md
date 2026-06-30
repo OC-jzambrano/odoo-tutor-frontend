@@ -1,5 +1,16 @@
 # Frontend tests
 
+## Playwright
+
+`tests/frontend/e2e/card-opened.spec.js` opens CRM, clicks a kanban card,
+and verifies the `card_clicked` and `record_opened` WebSocket events.
+
+Run it with:
+
+```powershell
+npx playwright test tests/frontend/e2e/card-opened.spec.js
+```
+
 This folder mirrors the backend test split, but for browser-side behavior.
 
 - `unit/`: fast tests for pure frontend contracts such as event names and payload normalization.
