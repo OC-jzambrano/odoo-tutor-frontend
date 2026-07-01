@@ -172,6 +172,41 @@ describe("DOM event normalization", () => {
     installBrowserStubs();
   });
 
+  it("uses stable OWL field metadata before DOM heuristics", () => {
+    const owlField = makeElement({
+      tagName: "DIV",
+      attrs: {
+        "data-odoo-field": "name",
+        "data-odoo-field-label": "Opportunity",
+        "data-odoo-model": "crm.lead",
+      },
+    });
+    const target = makeElement({
+      tagName: "INPUT",
+      id: "name_0",
+      className: "o_input",
+      closestMap: {
+        "[data-odoo-field]": owlField,
+      },
+    });
+    target.value = "Atomic CRM Opportunity";
+
+    const event = normalizeDomEvent({
+      domEventType: "change",
+      originalEvent: { target },
+      context: { model: "stale.model", viewType: "form" },
+    });
+
+    expect(event.type).toBe("field_changed");
+    expect(event.field).toBe("name");
+    expect(event.label).toBe("Opportunity");
+    expect(event.value).toBe("Atomic CRM Opportunity");
+    expect(event.meta.model).toBe("crm.lead");
+    expect(event.meta.target_name).toBe("name");
+    expect(event.quality.level).toBe("strong");
+    expect(event.quality.sources.field).toBe("owl_props");
+  });
+
   it("emits button_clicked for real button clicks", () => {
     const target = makeElement({
       tagName: "BUTTON",

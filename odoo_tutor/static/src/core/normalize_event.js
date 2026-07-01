@@ -93,12 +93,25 @@ function parseHashParams() {
 
 /**
  * Odoo-aware field resolver:
+ * - canonical OWL Field metadata injected by field_event_metadata.xml
  * - form fields: .o_field_widget[data-name]
  * - list cells: td[data-name]
  * - fallback: name attr
  */
-function resolveFieldName(el) {
+function resolveOwlFieldMeta(el) {
+  const wrapper = el?.closest?.("[data-odoo-field]");
+  const field = wrapper?.getAttribute?.("data-odoo-field") || null;
+  if (!field) return null;
+  return {
+    field,
+    label: wrapper.getAttribute?.("data-odoo-field-label") || field,
+    model: wrapper.getAttribute?.("data-odoo-model") || null,
+  };
+}
+
+function resolveFieldName(el, owlFieldMeta = resolveOwlFieldMeta(el)) {
   if (!el) return null;
+  if (owlFieldMeta?.field) return owlFieldMeta.field;
 
   const fw = el.closest?.(".o_field_widget[data-name]");
   if (fw?.dataset?.name) return fw.dataset.name;
@@ -228,20 +241,20 @@ function classifyKind(el) {
   return "other";
 }
 
-function computeQuality({ model, view_type, field, target_name }) {
+function computeQuality({ model, view_type, field, target_name, owlFieldMeta }) {
   const missing = [];
   const sources = {};
 
-  if (model) sources.model = "context_service|hash";
+  if (model) sources.model = owlFieldMeta ? "owl_props" : "context_service|hash";
   else missing.push("model");
 
   if (view_type && view_type !== "unknown") sources.view_type = "dom|hash|context_service";
   else missing.push("view_type");
 
-  if (field) sources.field = "data-name|name";
+  if (field) sources.field = owlFieldMeta ? "owl_props" : "data-name|name";
   else missing.push("field");
 
-  if (target_name) sources.target_name = "class|name|dataset|title";
+  if (target_name) sources.target_name = owlFieldMeta ? "owl_props" : "class|name|dataset|title";
   else missing.push("target_name");
 
   let level = "strong";
@@ -265,6 +278,7 @@ export function normalizeDomEvent({
   const e = originalEvent;
   const rawTarget = e?.target || null;
   const el = rawTarget?.closest?.("button,a,input,textarea,select,[role='button'],[role='menuitem']") || rawTarget;
+  const owlFieldMeta = resolveOwlFieldMeta(rawTarget);
 
   const ctx = (() => {
     if (context && typeof context === "object") return context;
@@ -274,7 +288,7 @@ export function normalizeDomEvent({
   const hash = parseHashParams();
   const kanbanRecord = resolveKanbanRecord(rawTarget);
 
-  const model = ctx.model || hash.model || null;
+  const model = owlFieldMeta?.model || ctx.model || hash.model || null;
   const view_type =
     (kanbanRecord && "kanban") ||
     ctx.view_type ||
@@ -301,7 +315,7 @@ export function normalizeDomEvent({
 
   if (domEventType === "change" || domEventType === "input_final") {
       type = "field_changed";
-      field = resolveFieldName(el);
+      field = resolveFieldName(el, owlFieldMeta);
 
       if (el?.type === "checkbox") {
         value = !!el.checked;   // 🔥 boolean real
@@ -367,6 +381,7 @@ export function normalizeDomEvent({
   const label =
     menuVisibleText ||
     kanbanRecord?.label ||
+    (type === "field_changed" ? owlFieldMeta?.label : null) ||
     field ||
     target_name ||
     cleanText(el?.getAttribute?.("title") || "") ||
@@ -378,7 +393,7 @@ export function normalizeDomEvent({
     (el?.tagName ? el.tagName.toLowerCase() : "el") +
     (field ? `.${field}` : target_name ? `.${slugify(target_name)}` : selector ? `.${slugify(selector)}` : "");
 
-  const quality = computeQuality({ model, view_type, field, target_name });
+  const quality = computeQuality({ model, view_type, field, target_name, owlFieldMeta });
 
   const normalized = {
     // ticket payload
