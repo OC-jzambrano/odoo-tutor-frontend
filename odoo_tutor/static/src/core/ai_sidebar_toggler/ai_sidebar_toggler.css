@@ -265,6 +265,30 @@
     overflow: hidden !important;
 }
 
+.ai-owl-preview-text .ai-copy-value {
+    color: var(--tutor-accent, #6d28d9) !important;
+    font-weight: 700 !important;
+    text-decoration: underline !important;
+    text-decoration-style: dotted !important;
+    text-underline-offset: 2px !important;
+    cursor: pointer !important;
+    border-radius: 3px !important;
+    padding: 0 2px !important;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ai-owl-preview-text .ai-copy-value:hover,
+.ai-owl-preview-text .ai-copy-value:focus-visible {
+    background: rgba(109, 40, 217, 0.12) !important;
+    outline: none !important;
+}
+
+.ai-owl-preview-text .ai-copy-value.is-copied {
+    color: #16a34a !important;
+    background: rgba(22, 163, 74, 0.14) !important;
+    text-decoration: none !important;
+}
+
 .ai-owl-preview-close {
     position: absolute !important;
     top: 12px !important;

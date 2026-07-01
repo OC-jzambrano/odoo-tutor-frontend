@@ -202,7 +202,10 @@
                     <!-- =========================
                          CHAT PANEL (SIEMPRE MONTADO, SOLO SE OCULTA)
                          ========================= -->
-                    <div t-att-class="state.showRecorderPanel ? 'd-none' : 'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative'">
+                    <div t-att-class="state.showRecorderPanel ? 'd-none' : {
+                        'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative': true,
+                        'has-skip-step': state.skipStepEnabled and state.processActive,
+                    }">
                         <!-- OJO: no self-closing. Mejor siempre tag normal para mount de librerías -->
                         <div t-ref="chat-ui"
                              id="chat-ui-container"
@@ -210,6 +213,19 @@
                                  'h-100': true,
                              }"
                              t-att-aria-busy="state.isLoading ? 'true' : 'false'"></div>
+
+                        <button
+                            t-if="state.skipStepEnabled and state.processActive"
+                            type="button"
+                            class="ai-skip-step-button"
+                            data-ai-tutor-ignore-event="true"
+                            t-att-disabled="state.skipStepLoading"
+                            t-att-title="translate('Skip to next step')"
+                            t-att-aria-label="translate('Skip to next step')"
+                            t-on-click.stop.prevent="onSkipStep"
+                        >
+                            <i t-att-class="state.skipStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
+                        </button>
 
                         <button t-if="showUnreadIndicator"
                                 type="button"

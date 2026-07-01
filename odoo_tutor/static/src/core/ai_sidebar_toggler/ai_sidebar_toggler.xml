@@ -22,7 +22,9 @@
                     <div class="ai-owl-preview"
                          role="button"
                          tabindex="0"
-                         t-on-click.stop.prevent="toggleChat">
+                         t-on-click.stop.prevent="toggleChat"
+                         t-on-mouseenter="pausePreview"
+                         t-on-mouseleave="resumePreview">
                         <button
                             type="button"
                             class="ai-owl-preview-close"
@@ -36,7 +38,25 @@
                         </div>
 
                         <div class="ai-owl-preview-text">
-                            <t t-esc="state.previewMessage"/>
+                            <t t-foreach="previewSegments" t-as="seg" t-key="seg_index">
+                                <t t-if="seg.isCopy">
+                                    <span
+                                        class="ai-copy-value"
+                                        t-att-class="{ 'is-copied': state.previewCopiedText === seg.text }"
+                                        role="button"
+                                        tabindex="0"
+                                        t-att-title="state.previewCopiedText === seg.text ? translate('Copied!') : seg.copyLabel"
+                                        t-att-aria-label="seg.copyLabel"
+                                        t-on-click="(ev) => this.onCopyPreviewSegment(seg, ev)"
+                                        t-on-mousedown.stop.prevent="noop"
+                                        t-on-touchstart.stop.prevent="noop"
+                                        t-esc="seg.text"
+                                    />
+                                </t>
+                                <t t-else="">
+                                    <t t-esc="seg.text"/>
+                                </t>
+                            </t>
                         </div>
 
                         <t t-if="launcherExerciseCtaVisible">

@@ -125,6 +125,12 @@ function resolveFieldName(el, owlFieldMeta = resolveOwlFieldMeta(el)) {
   const name = el.getAttribute?.("name");
   if (name) return name;
 
+  // Autocomplete dropdown options are frequently portaled outside the field
+  // widget's DOM subtree, so id patterns like "partner_id_1_0_0" are the
+  // only remaining signal linking the option back to its source field.
+  const idMatch = /^([a-z_][a-z0-9_]*?)(?:_\d+)+$/i.exec(el.id || "");
+  if (idMatch) return idMatch[1];
+
   return null;
 }
 
@@ -226,6 +232,20 @@ function resolveTabName(tabEl) {
   return slugify(cleanText(tabEl.innerText || tabEl.textContent || "")) || null;
 }
 
+function resolveAutocompleteOption(el) {
+  const option = el?.closest?.(
+    ".o-autocomplete--dropdown-item, .o-autocomplete .dropdown-item, .ui-menu-item-wrapper, [role='option']"
+  );
+  if (!option) return null;
+
+  const isCreate = !!option.closest?.(".o_m2o_dropdown_option_create");
+  return {
+    element: option,
+    action: isCreate ? "create" : "select",
+    text: cleanText(option.innerText || option.textContent || ""),
+  };
+}
+
 function classifyKind(el) {
   const tag = (el?.tagName || "").toUpperCase();
   const type = (el?.getAttribute?.("type") || "").toLowerCase();
@@ -312,6 +332,7 @@ export function normalizeDomEvent({
   let field = null;
   let value = null;
   let target_name = null;
+  let autocompleteOption = null;
 
   if (domEventType === "change" || domEventType === "input_final") {
       type = "field_changed";
@@ -334,6 +355,7 @@ export function normalizeDomEvent({
       !!menuTarget ||
       String(resolveButtonName(el) || "").startsWith("menu.");
     const tabTarget = resolveTabTarget(rawTarget);
+    autocompleteOption = resolveAutocompleteOption(rawTarget);
 
     if (kanbanRecord && view_type === "kanban" && isKanbanCardNavigation(el, kanbanRecord)) {
       type = "card_clicked";
@@ -345,6 +367,15 @@ export function normalizeDomEvent({
       target_name = resolveTabName(tabTarget);
       field = target_name;
     }
+    else if (autocompleteOption) {
+      // Many2one autocomplete option: "select existing" or "quick-create".
+      // Resolve field via OWL props first, falling back to id-pattern parsing
+      // since the dropdown is often portaled outside the field's DOM subtree.
+      type = "link_clicked";
+      field = resolveFieldName(el, owlFieldMeta);
+      target_name = field;
+      value = autocompleteOption.text || null;
+    }
     else if (menuClick) {
       type = "menu_clicked";
       // Keep xmlid slug in target_name for evidence; use visible text as label
@@ -355,7 +386,7 @@ export function normalizeDomEvent({
     else if (kind === "link") type = "link_clicked";
     else type = "click";
 
-    if (type !== "tab_changed") {
+    if (type !== "tab_changed" && !autocompleteOption) {
       target_name = resolveButtonName(el);
       // some clicks are effectively on fields (e.g. checkbox)
       if (!target_name && kind === "field") {
@@ -381,6 +412,7 @@ export function normalizeDomEvent({
   const label =
     menuVisibleText ||
     kanbanRecord?.label ||
+    autocompleteOption?.text ||
     (type === "field_changed" ? owlFieldMeta?.label : null) ||
     field ||
     target_name ||
@@ -413,6 +445,7 @@ export function normalizeDomEvent({
       card_res_id: kanbanRecord?.res_id ?? null,
       client_record_id: kanbanRecord?.client_record_id ?? null,
       in_modal: inModal || undefined,
+      m2o_action: autocompleteOption?.action,
     },
     dom: {
       tag: (el?.tagName || "").toLowerCase() || null,

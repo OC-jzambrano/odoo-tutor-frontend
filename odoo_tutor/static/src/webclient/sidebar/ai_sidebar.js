@@ -9,6 +9,13 @@ import { user } from "@web/core/user";
 import { imageUrl } from "@web/core/utils/urls";
 import { useMouseListeners } from "../../core/utils";
 import { _t } from "@web/core/l10n/translation";
+import {
+    buildSkipStepRequest,
+    getVisibleSkipResponse,
+} from "../../core/skip_step";
+import { buildCopySegments, normalizeForCopyTargetLookup } from "../../core/copy_targets";
+
+const INLINE_HINT_AUTO_HIDE_MS = 15000;
 
 function formatTimeAgo(ts) {
     if (!ts) return "";
@@ -47,6 +54,13 @@ function normalizeAssistantTextForCompare(text) {
 function getTutorPendingQueue() {
     window.__AI_TUTOR_PENDING_QUEUE__ = window.__AI_TUTOR_PENDING_QUEUE__ || [];
     return window.__AI_TUTOR_PENDING_QUEUE__;
+}
+
+const COPY_TARGETS_REGISTRY_MAX_SIZE = 30;
+
+function getCopyTargetsRegistry() {
+    window.__AI_TUTOR_COPY_TARGETS__ = window.__AI_TUTOR_COPY_TARGETS__ || new Map();
+    return window.__AI_TUTOR_COPY_TARGETS__;
 }
 
 function cleanText(value) {
@@ -231,6 +245,8 @@ export class AiSidebar extends Component {
             exerciseChoicePending: false,
             exerciseCtaStatus: "",
             exerciseCancelLoading: false,
+            skipStepEnabled: this.aiWs?.enableSkipStep === true,
+            skipStepLoading: false,
             firstFailedStep: null,
             finishLoading: false,
             result: "failed",
@@ -263,6 +279,19 @@ export class AiSidebar extends Component {
 
         window.aiTutorDebug.hideHint = () => {
             this.closeInlineHint();
+        };
+
+        window.aiTutorDebug.pushTutorMessage = (
+            text,
+            copyTargets = [],
+            timestamp = new Date().toISOString()
+        ) => {
+            this._onTutorPush?.({
+                type: "tutor_push",
+                response: text,
+                copy_targets: copyTargets,
+                timestamp,
+            });
         };
 
         // -------------------------
@@ -306,6 +335,7 @@ export class AiSidebar extends Component {
             this.state.hintExiting = false;
             this.state.hintCycle += 1;
             this.state.hintVisible = true;
+            this._scheduleInlineHintAutoHide();
         };
 
         this._resetInlineHintState = ({ clearMessage = false } = {}) => {
@@ -339,6 +369,9 @@ export class AiSidebar extends Component {
 
         this.resumeInlineHint = () => {
             this.state.hintHovered = false;
+            if (this.state.hintVisible && !this.state.hintExiting) {
+                this._scheduleInlineHintAutoHide();
+            }
         };
 
         this._clearInlineHintTimers = () => {
@@ -352,7 +385,17 @@ export class AiSidebar extends Component {
             }
         };
 
-        this._scheduleInlineHintAutoHide = () => {};
+        this._scheduleInlineHintAutoHide = () => {
+            if (this._hintAutoHideTimer) {
+                clearTimeout(this._hintAutoHideTimer);
+            }
+            this._hintAutoHideTimer = setTimeout(() => {
+                this._hintAutoHideTimer = null;
+                if (!this.state.hintHovered) {
+                    this.closeInlineHint();
+                }
+            }, INLINE_HINT_AUTO_HIDE_MS);
+        };
 
         // -------------------------
         // Lifecycle
@@ -751,6 +794,132 @@ export class AiSidebar extends Component {
                 this._insertCopyButton(footer, copyBtn);
             }
         });
+
+        this._highlightCopyTargets(items);
+    }
+
+    // =========================================================
+    // COPY-TARGET HIGHLIGHTING (clickable values inside instructions)
+    // =========================================================
+
+    _registerCopyTargets(displayText, copyTargets) {
+        if (!Array.isArray(copyTargets) || !copyTargets.length) return;
+
+        const key = normalizeForCopyTargetLookup(displayText);
+        if (!key) return;
+
+        const registry = getCopyTargetsRegistry();
+        registry.set(key, copyTargets);
+
+        while (registry.size > COPY_TARGETS_REGISTRY_MAX_SIZE) {
+            const oldestKey = registry.keys().next().value;
+            registry.delete(oldestKey);
+        }
+    }
+
+    _highlightCopyTargets(items) {
+        const registry = getCopyTargetsRegistry();
+        if (!registry.size) return;
+
+        items.forEach((itemEl) => {
+            if (!itemEl.classList.contains("nlux-comp-chatItem--received")) return;
+
+            const messageHost = this._getMessageHost(itemEl);
+            const textBlock = this._getMessageTextBlock(messageHost);
+            if (!textBlock || textBlock.dataset.copyHighlighted === "1") return;
+
+            const key = normalizeForCopyTargetLookup(textBlock.textContent || "");
+            const targets = registry.get(key);
+
+            textBlock.dataset.copyHighlighted = "1";
+            if (targets?.length) {
+                this._wrapCopyTargetsInElement(textBlock, targets);
+            }
+        });
+    }
+
+    _wrapCopyTargetsInElement(rootEl, targets) {
+        const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+            acceptNode: (node) =>
+                node.parentElement?.closest(".ai-copy-value")
+                    ? NodeFilter.FILTER_REJECT
+                    : NodeFilter.FILTER_ACCEPT,
+        });
+
+        const textNodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            textNodes.push(node);
+        }
+
+        textNodes.forEach((textNode) => {
+            this._replaceTextNodeWithCopySegments(textNode, targets);
+        });
+    }
+
+    _replaceTextNodeWithCopySegments(textNode, targets) {
+        const raw = textNode.textContent;
+        if (!raw) return;
+
+        const segments = buildCopySegments(raw, targets);
+        if (segments.length === 1 && !segments[0].isCopy) return;
+
+        const parent = textNode.parentNode;
+        if (!parent) return;
+
+        const fragment = document.createDocumentFragment();
+        segments.forEach((seg) => {
+            if (seg.isCopy) {
+                fragment.appendChild(this._buildCopyValueSpan(seg));
+            } else if (seg.text) {
+                fragment.appendChild(document.createTextNode(seg.text));
+            }
+        });
+
+        parent.replaceChild(fragment, textNode);
+    }
+
+    _buildCopyValueSpan(segment) {
+        const span = document.createElement("span");
+        span.className = "ai-copy-value";
+        span.textContent = segment.text;
+        span.setAttribute("role", "button");
+        span.setAttribute("tabindex", "0");
+        span.setAttribute("title", segment.copyLabel);
+        span.setAttribute("aria-label", segment.copyLabel);
+
+        const doCopy = async (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+
+            const copied = await this._copyTextToClipboard(segment.text);
+            this._flashCopyValueSpan(span, copied, segment.copyLabel);
+        };
+
+        span.addEventListener("click", doCopy);
+        span.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter" || ev.key === " ") doCopy(ev);
+        });
+
+        return span;
+    }
+
+    _flashCopyValueSpan(span, copied, originalLabel) {
+        if (!span) return;
+
+        clearTimeout(span.__copyResetTimer);
+        span.classList.remove("is-copied", "is-copy-failed");
+
+        const flashLabel = copied ? _t("Copied!") : _t("Copy failed");
+        span.classList.add(copied ? "is-copied" : "is-copy-failed");
+        span.setAttribute("title", flashLabel);
+        span.setAttribute("aria-label", flashLabel);
+
+        span.__copyResetTimer = setTimeout(() => {
+            span.classList.remove("is-copied", "is-copy-failed");
+            span.setAttribute("title", originalLabel);
+            span.setAttribute("aria-label", originalLabel);
+        }, 1500);
     }
 
     _startCopyButtonsObserver() {
@@ -798,7 +967,7 @@ export class AiSidebar extends Component {
         return !!target.closest(
             "button, a, input, textarea, select, label, " +
             ".ai-msg-footer, .ai_feedback_bar, .ai_feedback_popover, " +
-            ".ai-copy-btn, .ai_feedback_btn, .ai-exercise-actions"
+            ".ai-copy-btn, .ai_feedback_btn, .ai-exercise-actions, .ai-copy-value"
         );
     }
 
@@ -1633,6 +1802,44 @@ export class AiSidebar extends Component {
         }
     }
 
+    async onSkipStep() {
+        if (
+            !this.state.skipStepEnabled ||
+            !this.state.processActive ||
+            this.state.skipStepLoading
+        ) {
+            return;
+        }
+
+        const exerciseId = this._normalizeExerciseId(this.state.exerciseId);
+        if (!exerciseId) return;
+
+        this.state.skipStepLoading = true;
+        try {
+            const response = await this.aiWs.chat(
+                buildSkipStepRequest({
+                    exerciseId,
+                    context: this.state.currentContext || {},
+                })
+            );
+            const responseText = getVisibleSkipResponse(
+                response,
+                (payload) => this._extractResponseText(payload),
+                (text) => this._isDuplicateAssistantText(text)
+            );
+            if (responseText) {
+                this._pushAssistantMessageToNlux(responseText);
+            }
+        } catch (error) {
+            console.warn("[AiSidebar] skip step failed:", error);
+            this.notification.add(_t("Could not skip to the next step."), {
+                type: "danger",
+            });
+        } finally {
+            this.state.skipStepLoading = false;
+        }
+    }
+
     // =========================================================
     // Bootstrap Offcanvas helpers
     // =========================================================
@@ -2176,6 +2383,7 @@ export class AiSidebar extends Component {
             const cleaned = String(text || "").trim();
             if (!cleaned) return;
             const displayText = translateKnownTutorText(cleaned);
+            this._registerCopyTargets(displayText, msg.copy_targets);
             const isExerciseCompleted = this._isExerciseCompletedPayload(msg);
 
             const allowExercisePromptWhileActive = this._isExerciseResumePromptText(cleaned);
@@ -2525,6 +2733,7 @@ export class AiSidebar extends Component {
         this.state.exerciseId = null;
         this.state.exerciseChoicePending = false;
         this.state.exerciseCancelLoading = false;
+        this.state.skipStepLoading = false;
         this.state.timerInterval = null;
         this.state.timerPaused = false;
         this.state.timerPausedReason = "";

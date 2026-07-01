@@ -8,6 +8,7 @@ import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
+import { buildCopySegments } from "../copy_targets";
 import "../action_service_context_hook";
 
 // ---------------------
@@ -20,6 +21,7 @@ const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
+const PREVIEW_AUTO_HIDE_MS = 15000;
 
 function normalizePreviewTimestamp(ts) {
     const now = Date.now();
@@ -113,6 +115,7 @@ function getOwlPreviewState() {
         message: "",
         timestamp: null,
         visible: false,
+        copyTargets: [],
     };
     return window.__AI_TUTOR_OWL_PREVIEW__;
 }
@@ -429,7 +432,10 @@ class AiFloatingButton extends Component {
             previewMessage: "",
             previewTimestamp: null,
             previewVisible: false,
+            previewHovered: false,
             previewTick: Date.now(),
+            previewCopyTargets: [],
+            previewCopiedText: null,
             exerciseCtaVisible: false,
             exerciseCtaId: null,
             exerciseCtaStatus: "",
@@ -441,6 +447,9 @@ class AiFloatingButton extends Component {
         this.state.previewMessage = previewState.message || "";
         this.state.previewTimestamp = previewState.timestamp || null;
         this.state.previewVisible = !!previewState.visible;
+        this.state.previewCopyTargets = Array.isArray(previewState.copyTargets)
+            ? previewState.copyTargets
+            : [];
         this.state.exerciseCtaVisible = !!exerciseCtaState.visible;
         this.state.exerciseCtaId = exerciseCtaState.exerciseId || null;
         this.state.exerciseCtaStatus = exerciseCtaState.status || "";
@@ -449,6 +458,7 @@ class AiFloatingButton extends Component {
             previewState.message = this.state.previewMessage;
             previewState.timestamp = this.state.previewTimestamp;
             previewState.visible = this.state.previewVisible;
+            previewState.copyTargets = this.state.previewCopyTargets;
         };
 
         this._applyExerciseCtaState = (data = getExerciseCtaState()) => {
@@ -466,7 +476,7 @@ class AiFloatingButton extends Component {
             }
         };
 
-        this._setPreviewMessage = (text, timestamp) => {
+        this._setPreviewMessage = (text, timestamp, copyTargets = []) => {
             const cleaned = translateKnownTutorText(text);
             if (!cleaned) return;
 
@@ -476,12 +486,49 @@ class AiFloatingButton extends Component {
             this.state.previewMessage = cleaned;
             this.state.previewTimestamp = safeTimestamp;
             this.state.previewTick = Date.now();
+            this.state.previewCopyTargets = Array.isArray(copyTargets) ? copyTargets : [];
+            this.state.previewCopiedText = null;
 
             const offcanvasEl = document.getElementById("offcanvasAiSidebar");
             const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
 
             this.state.previewVisible = !isChatOpen;
             this._syncPreviewState();
+
+            if (isChatOpen) {
+                this._clearPreviewAutoHideTimer();
+            } else {
+                this._schedulePreviewAutoHide();
+            }
+        };
+
+        this._clearPreviewAutoHideTimer = () => {
+            if (this._previewAutoHideTimer) {
+                clearTimeout(this._previewAutoHideTimer);
+                this._previewAutoHideTimer = null;
+            }
+        };
+
+        this._schedulePreviewAutoHide = () => {
+            this._clearPreviewAutoHideTimer();
+            this._previewAutoHideTimer = setTimeout(() => {
+                this._previewAutoHideTimer = null;
+                if (!this.state.previewHovered) {
+                    this.closePreview();
+                }
+            }, PREVIEW_AUTO_HIDE_MS);
+        };
+
+        this.pausePreview = () => {
+            this.state.previewHovered = true;
+            this._clearPreviewAutoHideTimer();
+        };
+
+        this.resumePreview = () => {
+            this.state.previewHovered = false;
+            if (this.state.previewVisible) {
+                this._schedulePreviewAutoHide();
+            }
         };
 
         this._onPreviewMessage = (ev) => {
@@ -489,7 +536,7 @@ class AiFloatingButton extends Component {
             if (!msg || typeof msg !== "object") return;
 
             if (msg.type === "tutor_push") {
-                this._setPreviewMessage(msg.response || "", msg.timestamp);
+                this._setPreviewMessage(msg.response || "", msg.timestamp, msg.copy_targets);
                 return;
             }
 
@@ -561,8 +608,8 @@ class AiFloatingButton extends Component {
 
         window.aiTutorDebug = window.aiTutorDebug || {};
 
-        window.aiTutorDebug.showPreview = (text, timestamp = new Date().toISOString()) => {
-            this._setPreviewMessage(text, timestamp);
+        window.aiTutorDebug.showPreview = (text, timestamp = new Date().toISOString(), copyTargets = []) => {
+            this._setPreviewMessage(text, timestamp, copyTargets);
         };
 
         window.aiTutorDebug.hidePreview = () => {
@@ -587,6 +634,8 @@ class AiFloatingButton extends Component {
                 this.state.previewTimestamp = null;
                 this.state.previewVisible = false;
                 this.state.previewTick = Date.now();
+                this.state.previewCopyTargets = [];
+                this.state.previewCopiedText = null;
                 this._syncPreviewState?.();
             };
 
@@ -617,6 +666,7 @@ class AiFloatingButton extends Component {
                 this._onOffcanvasShown = () => {
                     this.state.chatOpen = true;
                     this.state.previewVisible = false;
+                    this._clearPreviewAutoHideTimer?.();
                     this._suppressNextClick = false;
                     this._syncPreviewState?.();
                     this._focusChatInput();
@@ -705,6 +755,7 @@ class AiFloatingButton extends Component {
 
         this._onDocClick = (ev) => {
             if (!ev.target || !ev.target.tagName) return;
+            if (ev.target.closest?.("[data-ai-tutor-ignore-event='true']")) return;
 
             const t = ev.target;
             const td = t?.closest?.("td");
@@ -971,6 +1022,7 @@ class AiFloatingButton extends Component {
         if (this.state.previewMessage && !this._previewDismissed) {
             this.state.previewVisible = true;
             this.state.previewTick = Date.now();
+            this._schedulePreviewAutoHide?.();
         } else {
             this.state.previewVisible = false;
         }
@@ -1359,6 +1411,56 @@ class AiFloatingButton extends Component {
         return formatTimeAgo(this.state.previewTimestamp);
     }
 
+    get previewSegments() {
+        return buildCopySegments(this.state.previewMessage, this.state.previewCopyTargets);
+    }
+
+    async onCopyPreviewSegment(seg, ev) {
+        ev?.stopPropagation?.();
+        ev?.preventDefault?.();
+        if (!seg?.isCopy) return;
+
+        const copied = await this._copyTextToClipboard(seg.text);
+        if (!copied) return;
+
+        this.state.previewCopiedText = seg.text;
+        clearTimeout(this._previewCopyFlashTimer);
+        this._previewCopyFlashTimer = setTimeout(() => {
+            if (this.state.previewCopiedText === seg.text) {
+                this.state.previewCopiedText = null;
+            }
+        }, 1500);
+    }
+
+    async _copyTextToClipboard(text) {
+        const value = (text || "").trim();
+        if (!value) return false;
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+        } catch {}
+
+        try {
+            const ta = document.createElement("textarea");
+            ta.value = value;
+            ta.setAttribute("readonly", "readonly");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            ta.style.pointerEvents = "none";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            const ok = document.execCommand("copy");
+            document.body.removeChild(ta);
+            return !!ok;
+        } catch {
+            return false;
+        }
+    }
+
     translate(text) {
         return _t(text);
     }
@@ -1413,8 +1515,10 @@ class AiFloatingButton extends Component {
         if (this.state.exerciseCtaVisible) {
             return;
         }
+        this._clearPreviewAutoHideTimer?.();
         this._previewDismissed = true;
         this.state.previewVisible = false;
+        this.state.previewHovered = false;
         this._suppressNextClick = false;
         this._syncPreviewState?.();
     }
@@ -1765,6 +1869,9 @@ class AiFloatingButton extends Component {
             clearInterval(this._previewTimer);
             this._previewTimer = null;
         }
+
+        this._clearPreviewAutoHideTimer?.();
+        clearTimeout(this._previewCopyFlashTimer);
 
         if (this._offcanvasBindTimer) {
             clearInterval(this._offcanvasBindTimer);

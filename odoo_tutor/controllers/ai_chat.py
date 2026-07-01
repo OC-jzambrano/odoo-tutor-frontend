@@ -1,4 +1,5 @@
 import json
+import os
 import requests
 from odoo import http
 from odoo.http import request
@@ -8,6 +9,13 @@ from .ai.ai_bot import AiBot
 
 
 class AiChatController(http.Controller):
+    @staticmethod
+    def _env_flag(name, default=False):
+        value = os.getenv(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
     def _get_ws_base_url(self):
         ws_base_url = (
             request.env["ir.config_parameter"]
@@ -18,7 +26,10 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/ws_config", type="json", auth="user")
     def ws_config(self, **kwargs):
-        return {"ws_base_url": self._get_ws_base_url()}
+        return {
+            "ws_base_url": self._get_ws_base_url(),
+            "enable_skip_step": self._env_flag("ODOO_TUTOR_ENABLE_SKIP_STEP"),
+        }
 
     @http.route("/ai_chat/chat", type="json", auth="user", methods=["POST"])
     def get_quickboard_item(self, **kwargs):

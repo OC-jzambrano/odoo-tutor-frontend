@@ -1149,6 +1149,54 @@
     transform: translateX(1px) scale(1.08);
 }
 
+.ai-chat-panel .ai-skip-step-button {
+    position: absolute;
+    right: 86px;
+    bottom: calc(25px + env(safe-area-inset-bottom, 0px));
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--tutor-border);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--tutor-accent-strong);
+    box-shadow: var(--tutor-shadow-sm);
+    transition:
+        transform var(--tutor-motion-fast),
+        border-color var(--tutor-motion-fast),
+        box-shadow var(--tutor-motion-fast);
+}
+
+.ai-chat-panel.has-skip-step #chat-ui-container .nlux-comp-composer > textarea {
+    margin-right: 52px;
+}
+
+.ai-chat-panel .ai-skip-step-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: var(--tutor-accent);
+    box-shadow: 0 8px 18px rgba(113, 75, 103, 0.18);
+}
+
+.ai-chat-panel .ai-skip-step-button:focus-visible {
+    outline: 3px solid rgba(135, 90, 123, 0.2);
+    outline-offset: 2px;
+}
+
+.ai-chat-panel .ai-skip-step-button:disabled {
+    cursor: wait;
+    opacity: 0.62;
+}
+
+.is-dark-theme .ai-chat-panel .ai-skip-step-button {
+    border-color: rgba(203, 213, 225, 0.2);
+    background: rgba(30, 41, 59, 0.96);
+    color: #d8b4d0;
+}
+
 /* ===== CHAT ACTION BUTTONS ===== */
 
 #offcanvasAiSidebar .ai-buttons-container {
@@ -1625,6 +1673,36 @@
 
 #chat-ui-container .ai-copy-btn.is-copy-failed {
     color: #dc2626 !important;
+}
+
+#chat-ui-container .ai-copy-value {
+    color: #7c3aed !important;
+    font-weight: 700 !important;
+    text-decoration: underline !important;
+    text-decoration-style: dotted !important;
+    text-underline-offset: 2px !important;
+    cursor: pointer !important;
+    border-radius: 3px !important;
+    padding: 0 2px !important;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#chat-ui-container .ai-copy-value:hover,
+#chat-ui-container .ai-copy-value:focus-visible {
+    background: rgba(124, 58, 237, 0.12) !important;
+    outline: none !important;
+}
+
+#chat-ui-container .ai-copy-value.is-copied {
+    color: #16a34a !important;
+    background: rgba(22, 163, 74, 0.14) !important;
+    text-decoration: none !important;
+}
+
+#chat-ui-container .ai-copy-value.is-copy-failed {
+    color: #dc2626 !important;
+    background: rgba(220, 38, 38, 0.12) !important;
+    text-decoration: none !important;
 }
 
 #chat-ui-container button,

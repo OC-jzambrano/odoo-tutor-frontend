@@ -183,13 +183,16 @@ function setStatus(st, status) {
   window.__AI_TUTOR_WS_STATUS = st.status;
 }
 
-async function getConfiguredWsBaseUrl() {
+async function getWsConfig() {
   const config = await rpc("/ai_chat/ws_config", {});
   const wsBaseUrl = String(config?.ws_base_url || "").trim();
   if (!wsBaseUrl) {
     throw new Error("Missing WebSocket URL configuration");
   }
-  return wsBaseUrl;
+  return {
+    wsBaseUrl,
+    enableSkipStep: config?.enable_skip_step === true,
+  };
 }
 
 export const aiWsService = {
@@ -199,7 +202,7 @@ export const aiWsService = {
       return window.__AI_TUTOR_WS_API_SINGLETON;
     }
 
-    const baseUrl = await getConfiguredWsBaseUrl();
+    const { wsBaseUrl: baseUrl, enableSkipStep } = await getWsConfig();
     const st = getState();
     st.recentEventFingerprints ||= new Map();
 
@@ -731,6 +734,7 @@ export const aiWsService = {
         return st.status?.status;
       },
       isOpen,
+      enableSkipStep,
       get wsSessionId() {
         return st.wsSessionId;
       },

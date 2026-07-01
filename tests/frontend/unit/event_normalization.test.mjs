@@ -427,6 +427,64 @@ describe("DOM event normalization", () => {
     expect(event.meta.view_type).toBe("home_menu");
   });
 
+  it("resolves field/value for many2one quick-create autocomplete clicks", () => {
+    const target = makeElement({
+      tagName: "A",
+      text: 'Create "Azure interiorf"',
+      id: "partner_id_1_0_0",
+      className:
+        "dropdown-item ui-menu-item-wrapper text-truncate ui-state-active o_m2o_dropdown_option_create",
+      closestMap: {
+        ".dropdown-item": null,
+      },
+    });
+    // Simulate real DOM: the option itself matches the dropdown-item selector.
+    target.closest = (selector) =>
+      selector.includes("dropdown-item") || selector.includes("ui-menu-item-wrapper")
+        ? target
+        : selector.includes("o_m2o_dropdown_option_create")
+        ? target
+        : null;
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: { model: "crm.lead", view_type: "form", resId: 5 },
+    });
+
+    expect(event.type).toBe("link_clicked");
+    expect(event.label).toBe('Create "Azure interiorf"');
+    expect(event.field).toBe("partner_id");
+    expect(event.value).toBe('Create "Azure interiorf"');
+    expect(event.meta.target_name).toBe("partner_id");
+    expect(event.meta.m2o_action).toBe("create");
+    expect(event.quality.level).toBe("strong");
+  });
+
+  it("marks many2one autocomplete selection of an existing record as select", () => {
+    const target = makeElement({
+      tagName: "A",
+      text: "Acme Corp",
+      id: "partner_id_1_0_1",
+      className: "dropdown-item ui-menu-item-wrapper",
+    });
+    target.closest = (selector) =>
+      selector.includes("dropdown-item") || selector.includes("ui-menu-item-wrapper")
+        ? target
+        : null;
+
+    const event = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target },
+      context: { model: "crm.lead", view_type: "form", resId: 5 },
+    });
+
+    expect(event.type).toBe("link_clicked");
+    expect(event.field).toBe("partner_id");
+    expect(event.value).toBe("Acme Corp");
+    expect(event.meta.m2o_action).toBe("select");
+  });
+
   it("emits tab_changed for notebook tab clicks", () => {
     const target = makeElement({
       tagName: "A",
