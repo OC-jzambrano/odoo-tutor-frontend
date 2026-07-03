@@ -232,6 +232,23 @@ function resolveTabName(tabEl) {
   return slugify(cleanText(tabEl.innerText || tabEl.textContent || "")) || null;
 }
 
+function resolveRadioOption(el) {
+  if (!el || el.type !== "radio") return null;
+
+  // Odoo RadioField inputs carry no value attr (el.value === "on"); the
+  // technical value lives in data-value and the visible text in the <label>.
+  const labelEl =
+    (el.id &&
+      el.ownerDocument?.querySelector?.(`label[for="${safeCssEscape(el.id)}"]`)) ||
+    el.closest?.(".o_radio_item, .form-check")?.querySelector?.("label") ||
+    null;
+
+  return {
+    label: cleanText(labelEl?.innerText || labelEl?.textContent || "") || null,
+    value: el.getAttribute?.("data-value") ?? el.dataset?.value ?? null,
+  };
+}
+
 function resolveAutocompleteOption(el) {
   const option = el?.closest?.(
     ".o-autocomplete--dropdown-item, .o-autocomplete .dropdown-item, .ui-menu-item-wrapper, [role='option']"
@@ -333,13 +350,18 @@ export function normalizeDomEvent({
   let value = null;
   let target_name = null;
   let autocompleteOption = null;
+  let radioOption = null;
 
   if (domEventType === "change" || domEventType === "input_final") {
       type = "field_changed";
       field = resolveFieldName(el, owlFieldMeta);
 
+      radioOption = resolveRadioOption(el);
       if (el?.type === "checkbox") {
         value = !!el.checked;   // 🔥 boolean real
+      } else if (radioOption) {
+        // el.value is "on" for Odoo radios; prefer the visible option label.
+        value = radioOption.label || radioOption.value;
       } else {
         value = el && "value" in el ? el.value : null;
       }
@@ -446,6 +468,7 @@ export function normalizeDomEvent({
       client_record_id: kanbanRecord?.client_record_id ?? null,
       in_modal: inModal || undefined,
       m2o_action: autocompleteOption?.action,
+      radio_value: radioOption?.value ?? undefined,
     },
     dom: {
       tag: (el?.tagName || "").toLowerCase() || null,

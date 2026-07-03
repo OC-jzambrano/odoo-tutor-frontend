@@ -115,7 +115,22 @@
                     </span>
 
                     <span class="ai-owl-trigger-badge">AI</span>
-                    <span t-if="launcherHasAttention" class="ai-owl-trigger-status"/>
+                    <span t-if="!state.optionalStepVisible and state.hintBadgeVisible" class="ai-owl-trigger-hint" title="Nueva pista">
+                        <i class="fa fa-lightbulb-o"/>
+                    </span>
+                </button>
+                <button
+                    t-if="state.optionalStepVisible"
+                    type="button"
+                    class="ai-owl-trigger-skip"
+                    t-att-disabled="state.optionalStepLoading"
+                    t-att-title="translate('Skip optional step')"
+                    t-att-aria-label="translate('Skip optional step')"
+                    t-on-mousedown.stop.prevent="noop"
+                    t-on-touchstart.stop.prevent="noop"
+                    t-on-click.stop.prevent="onSkipOptionalStep"
+                >
+                    <i t-att-class="state.optionalStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
                 </button>
             </div>
         </t>

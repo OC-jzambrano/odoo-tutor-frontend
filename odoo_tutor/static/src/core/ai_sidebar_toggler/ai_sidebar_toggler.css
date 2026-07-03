@@ -186,6 +186,72 @@
     animation: tutorLauncherPulse 1.8s ease-in-out infinite;
 }
 
+.ai-owl-trigger-hint {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ffc94d 0%, #ff9f1c 100%);
+    color: #fff;
+    font-size: 12px;
+    border: 2px solid #fff;
+    box-shadow: 0 6px 14px rgba(255, 159, 28, 0.45);
+    pointer-events: none;
+    z-index: 2;
+    animation: tutorInlineHintBadgeIn 0.22s ease-out;
+}
+
+.ai-owl-trigger-skip {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #43b7a4 0%, #2f9f91 100%);
+    color: #fff;
+    font-size: 12px;
+    border: 2px solid #fff;
+    box-shadow: 0 6px 14px rgba(47, 159, 145, 0.4);
+    cursor: pointer;
+    z-index: 3;
+    animation: tutorInlineHintBadgeIn 0.22s ease-out;
+}
+
+.ai-owl-trigger-skip:hover:not(:disabled) {
+    transform: scale(1.06);
+}
+
+.ai-owl-trigger-skip:focus-visible {
+    outline: 3px solid rgba(67, 183, 164, 0.35);
+    outline-offset: 2px;
+}
+
+.ai-owl-trigger-skip:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+@keyframes tutorInlineHintBadgeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
 .ai-floating-button.has-attention .ai-owl-trigger-shell::after,
 .ai-floating-button.has-attention .ai-owl-trigger-halo {
     opacity: 1;
@@ -268,9 +334,7 @@
 .ai-owl-preview-text .ai-copy-value {
     color: var(--tutor-accent, #6d28d9) !important;
     font-weight: 700 !important;
-    text-decoration: underline !important;
-    text-decoration-style: dotted !important;
-    text-underline-offset: 2px !important;
+    text-decoration: none !important;
     cursor: pointer !important;
     border-radius: 3px !important;
     padding: 0 2px !important;

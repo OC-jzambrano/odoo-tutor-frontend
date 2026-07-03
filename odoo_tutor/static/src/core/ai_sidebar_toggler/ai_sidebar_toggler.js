@@ -9,6 +9,7 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
+import { buildSkipStepRequest } from "../skip_step";
 import "../action_service_context_hook";
 
 // ---------------------
@@ -21,8 +22,7 @@ const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
-const PREVIEW_AUTO_HIDE_MS = 15000;
-
+const HINT_BADGE_AUTO_HIDE_MS = 15000;
 function normalizePreviewTimestamp(ts) {
     const now = Date.now();
 
@@ -439,6 +439,10 @@ class AiFloatingButton extends Component {
             exerciseCtaVisible: false,
             exerciseCtaId: null,
             exerciseCtaStatus: "",
+            hintBadgeVisible: false,
+            optionalStepVisible: false,
+            optionalStepLoading: false,
+            optionalStepExerciseId: null,
         });
 
         const previewState = getOwlPreviewState();
@@ -497,8 +501,6 @@ class AiFloatingButton extends Component {
 
             if (isChatOpen) {
                 this._clearPreviewAutoHideTimer();
-            } else {
-                this._schedulePreviewAutoHide();
             }
         };
 
@@ -509,16 +511,6 @@ class AiFloatingButton extends Component {
             }
         };
 
-        this._schedulePreviewAutoHide = () => {
-            this._clearPreviewAutoHideTimer();
-            this._previewAutoHideTimer = setTimeout(() => {
-                this._previewAutoHideTimer = null;
-                if (!this.state.previewHovered) {
-                    this.closePreview();
-                }
-            }, PREVIEW_AUTO_HIDE_MS);
-        };
-
         this.pausePreview = () => {
             this.state.previewHovered = true;
             this._clearPreviewAutoHideTimer();
@@ -526,14 +518,28 @@ class AiFloatingButton extends Component {
 
         this.resumePreview = () => {
             this.state.previewHovered = false;
-            if (this.state.previewVisible) {
-                this._schedulePreviewAutoHide();
-            }
         };
 
         this._onPreviewMessage = (ev) => {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
+
+            if (
+                msg.type === "tutor_push" ||
+                msg.type === "chat_response_complete" ||
+                ev?.kind === "chat_final"
+            ) {
+                this.state.optionalStepVisible =
+                    this.aiWs?.enableSkipStep === true &&
+                    msg.is_optional === true &&
+                    !!msg.exercise_id;
+                this.state.optionalStepExerciseId = this.state.optionalStepVisible
+                    ? msg.exercise_id
+                    : null;
+                if (this.state.optionalStepVisible) {
+                    this._hideHintBadge?.();
+                }
+            }
 
             if (msg.type === "tutor_push") {
                 this._setPreviewMessage(msg.response || "", msg.timestamp, msg.copy_targets);
@@ -546,6 +552,80 @@ class AiFloatingButton extends Component {
             ) {
                 const text = msg.response || msg.message || "";
                 this._setPreviewMessage(text, msg.timestamp);
+            }
+        };
+
+        this._clearHintBadgeAutoHideTimer = () => {
+            if (this._hintBadgeAutoHideTimer) {
+                clearTimeout(this._hintBadgeAutoHideTimer);
+                this._hintBadgeAutoHideTimer = null;
+            }
+        };
+
+        this._hideHintBadge = () => {
+            this._clearHintBadgeAutoHideTimer();
+            this.state.hintBadgeVisible = false;
+        };
+
+        this._showHintBadge = () => {
+            if (this.state.optionalStepVisible) return;
+            this.state.hintBadgeVisible = true;
+            this._clearHintBadgeAutoHideTimer();
+            this._hintBadgeAutoHideTimer = setTimeout(() => {
+                this._hintBadgeAutoHideTimer = null;
+                this.state.hintBadgeVisible = false;
+            }, HINT_BADGE_AUTO_HIDE_MS);
+        };
+
+        this._onTutorHintForBadge = (ev) => {
+            const msg = ev?.kind ? ev.data : ev;
+            if (!msg || typeof msg !== "object") return;
+            if (msg.type !== "tutor_hint") return;
+
+            const offcanvasEl = document.getElementById("offcanvasAiSidebar");
+            const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
+            if (isChatOpen) return;
+
+            this._showHintBadge();
+        };
+
+        this._onTutorHintEventForBadge = (e) => {
+            const data = e?.detail;
+            if (!data) return;
+            this._onTutorHintForBadge({ kind: "tutor_hint", data });
+        };
+
+        this.onSkipOptionalStep = async () => {
+            if (
+                !this.state.optionalStepVisible ||
+                this.state.optionalStepLoading ||
+                !this.state.optionalStepExerciseId
+            ) {
+                return;
+            }
+
+            const exerciseId = this.state.optionalStepExerciseId;
+            this.state.optionalStepLoading = true;
+            try {
+                const context = this._getContextSnapshot?.() || {};
+                const response = await this.aiWs.chat(
+                    buildSkipStepRequest({ exerciseId, context })
+                );
+                const raw = response?.raw || response?.result || response || {};
+                this.state.optionalStepVisible = raw.is_optional === true;
+                this.state.optionalStepExerciseId = this.state.optionalStepVisible
+                    ? raw.exercise_id || exerciseId
+                    : null;
+                if (raw.response || raw.message) {
+                    this._setPreviewMessage(
+                        raw.response || raw.message,
+                        raw.timestamp
+                    );
+                }
+            } catch (error) {
+                console.warn("[AiFloatingButton] optional step skip failed:", error);
+            } finally {
+                this.state.optionalStepLoading = false;
             }
         };
 
@@ -619,6 +699,8 @@ class AiFloatingButton extends Component {
         onMounted(() => {
             this.aiWs?.ensureConnected?.().catch(() => {});
             this.aiWs?.subscribe?.(this._onPreviewMessage);
+            this.aiWs?.subscribe?.(this._onTutorHintForBadge);
+            window.addEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
 
             this._restoreWidgetPosition();
             this._syncChatOpenStateFromDom();
@@ -667,6 +749,7 @@ class AiFloatingButton extends Component {
                     this.state.chatOpen = true;
                     this.state.previewVisible = false;
                     this._clearPreviewAutoHideTimer?.();
+                    this._hideHintBadge?.();
                     this._suppressNextClick = false;
                     this._syncPreviewState?.();
                     this._focusChatInput();
@@ -872,6 +955,29 @@ class AiFloatingButton extends Component {
                 ...gctx,
                 ...base,
             });
+
+            clearTimeout(this._inputFinalTimer);
+            const inputTarget = ev.target;
+            this._inputFinalTimer = setTimeout(() => {
+                try {
+                    const normalized = normalizeDomEvent({
+                        domEventType: "input_final",
+                        originalEvent: { target: inputTarget },
+                        context: this._getContextSnapshot(),
+                        hints: { lastActiveField: this._lastActiveListField },
+                    });
+
+                    if (normalized) {
+                        this.aiWs?.sendEvent?.({
+                            type: "ui_event",
+                            event_name: normalized.type,
+                            event_data: normalized,
+                        }).catch(() => {});
+                    }
+                } catch (e) {
+                    console.warn("[AI_UI] normalize failed", e);
+                }
+            }, 350);
         };
 
         this._onDocChange = (ev) => {
@@ -1022,7 +1128,6 @@ class AiFloatingButton extends Component {
         if (this.state.previewMessage && !this._previewDismissed) {
             this.state.previewVisible = true;
             this.state.previewTick = Date.now();
-            this._schedulePreviewAutoHide?.();
         } else {
             this.state.previewVisible = false;
         }
@@ -1861,6 +1966,18 @@ class AiFloatingButton extends Component {
             this._onPreviewMessage = null;
         }
 
+        if (this._onTutorHintForBadge) {
+            this.aiWs?.unsubscribe?.(this._onTutorHintForBadge);
+            this._onTutorHintForBadge = null;
+        }
+
+        if (this._onTutorHintEventForBadge) {
+            window.removeEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
+            this._onTutorHintEventForBadge = null;
+        }
+
+        this._clearHintBadgeAutoHideTimer?.();
+
         if (this._bindOffcanvasEvents) {
             this._bindOffcanvasEvents = null;
         }
@@ -1928,6 +2045,7 @@ class AiFloatingButton extends Component {
         clearTimeout(this._focusChatTimer2);
         clearTimeout(this._focusChatTimer3);
         clearTimeout(this._focusChatTimer4);
+        clearTimeout(this._inputFinalTimer);
     }
 }
 

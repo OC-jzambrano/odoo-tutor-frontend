@@ -27,6 +27,7 @@ test("skip button sends a hidden forced-next action and renders the next instruc
             response: "Enter the opportunity name.",
             exercise_id: "ex-crm",
             current_step: 1,
+            is_optional: true,
           }),
         );
         return;
@@ -40,6 +41,7 @@ test("skip button sends a hidden forced-next action and renders the next instruc
             response: "Click New.",
             exercise_id: "ex-crm",
             current_step: 0,
+            is_optional: true,
           }),
         );
         return;
@@ -52,12 +54,13 @@ test("skip button sends a hidden forced-next action and renders the next instruc
           response: "Do you want to start this exercise?",
           exercise_id: "ex-crm",
           current_step: null,
+          is_optional: false,
         }),
       );
     });
   });
 
-  await page.goto("/odoo");
+  await page.goto("/odoo?debug=assets");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
   await page.locator("[data-ai-sidebar-toggle]").click();
   await expect(page.locator("#offcanvasAiSidebar")).toHaveClass(/show/);
@@ -69,7 +72,11 @@ test("skip button sends a hidden forced-next action and renders the next instruc
   await composer.press("Enter");
 
   await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
-  await page.locator(".ai-exercise-choice-yes").click();
+  await page.locator("#offcanvasAiSidebar .btn-close").click();
+  await expect(page.locator(".ai-owl-exercise-choice-yes")).toBeVisible();
+  await page.locator(".ai-owl-exercise-choice-yes").click();
+  await page.locator("[data-ai-sidebar-toggle]").click();
+  await expect(page.locator(".ai-exercise-choice-yes")).toBeDisabled();
   await expect(page.getByText("Click New.", { exact: true })).toBeVisible();
 
   const skipButton = page.locator(".ai-skip-step-button");
@@ -121,4 +128,184 @@ test("skip button sends a hidden forced-next action and renders the next instruc
         JSON.stringify(message).includes("Skip to next step"),
     ),
   ).toBe(false);
+});
+
+test("skip button disappears when skipping completes the exercise", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
+    ws.send(
+      JSON.stringify({
+        type: "connection_established",
+        session_id: "playwright-skip-complete-session",
+      }),
+    );
+
+    ws.onMessage((rawMessage) => {
+      const message = JSON.parse(String(rawMessage));
+      if (message.type !== "chat") return;
+
+      if (message.exercise_action === "next") {
+        ws.send(
+          JSON.stringify({
+            type: "chat_response_complete",
+            status: "exercise_completed",
+            response: "Exercise completed.",
+            exercise_id: "ex-crm",
+            is_optional: false,
+          }),
+        );
+        return;
+      }
+
+      ws.send(
+        JSON.stringify({
+          type: "chat_response_complete",
+          status: "complete",
+          response:
+            message.exercise_action === "start"
+              ? "Complete the final step."
+              : "Do you want to start this exercise?",
+          exercise_id: "ex-crm",
+          current_step: message.exercise_action === "start" ? 0 : null,
+          is_optional: message.exercise_action === "start",
+        }),
+      );
+    });
+  });
+
+  await page.goto("/odoo?debug=assets");
+  await page.locator("[data-ai-sidebar-toggle]").click();
+
+  const composer = page.locator(
+    "#chat-ui-container .nlux-comp-composer textarea",
+  );
+  await composer.fill("crm-create-opportunity-manual");
+  await composer.press("Enter");
+  await page.locator(".ai-exercise-choice-yes").click();
+
+  const skipButton = page.locator(".ai-skip-step-button");
+  await expect(skipButton).toBeVisible();
+  await skipButton.click();
+
+  await expect(page.getByText("Exercise completed.", { exact: true })).toBeVisible();
+  await expect(skipButton).toHaveCount(0);
+});
+
+test("skip button is hidden when the current step is not optional", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
+    ws.send(
+      JSON.stringify({
+        type: "connection_established",
+        session_id: "playwright-skip-non-optional-session",
+      }),
+    );
+
+    ws.onMessage((rawMessage) => {
+      const message = JSON.parse(String(rawMessage));
+      if (message.type !== "chat") return;
+
+      ws.send(
+        JSON.stringify({
+          type: "chat_response_complete",
+          status: "complete",
+          response:
+            message.exercise_action === "start"
+              ? "Click New."
+              : "Do you want to start this exercise?",
+          exercise_id: "ex-crm",
+          current_step: message.exercise_action === "start" ? 0 : null,
+          is_optional: false,
+        }),
+      );
+    });
+  });
+
+  await page.goto("/odoo?debug=assets");
+  await page.locator("[data-ai-sidebar-toggle]").click();
+
+  const composer = page.locator(
+    "#chat-ui-container .nlux-comp-composer textarea",
+  );
+  await composer.fill("crm-create-opportunity-manual");
+  await composer.press("Enter");
+  await page.locator(".ai-exercise-choice-yes").click();
+
+  await expect(page.getByText("Click New.", { exact: true })).toBeVisible();
+  await expect(page.locator(".ai-skip-step-button")).toHaveCount(0);
+});
+
+test("skip button and context hint never overlap when both are visible", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
+    ws.send(
+      JSON.stringify({
+        type: "connection_established",
+        session_id: "playwright-skip-hint-overlap-session",
+      }),
+    );
+
+    ws.onMessage((rawMessage) => {
+      const message = JSON.parse(String(rawMessage));
+      if (message.type !== "chat") return;
+
+      ws.send(
+        JSON.stringify({
+          type: "chat_response_complete",
+          status: "complete",
+          response:
+            message.exercise_action === "start"
+              ? "Click New."
+              : "Do you want to start this exercise?",
+          exercise_id: "ex-crm",
+          current_step: message.exercise_action === "start" ? 0 : null,
+          is_optional: true,
+        }),
+      );
+    });
+  });
+
+  await page.goto("/odoo?debug=assets");
+  await page.locator("[data-ai-sidebar-toggle]").click();
+
+  const composer = page.locator(
+    "#chat-ui-container .nlux-comp-composer textarea",
+  );
+  await composer.fill("crm-create-opportunity-manual");
+  await composer.press("Enter");
+  await page.locator(".ai-exercise-choice-yes").click();
+
+  const skipButton = page.locator(".ai-skip-step-button");
+  await expect(skipButton).toBeVisible();
+
+  await page.evaluate(() =>
+    window.aiTutorDebug.showHint(
+      "This is a fairly long tutor hint to make sure the bubble takes up meaningful vertical space in the panel.",
+    ),
+  );
+
+  const hint = page.locator(".ai-inline-hint");
+  await expect(hint).toBeVisible();
+  await expect(skipButton).toBeVisible();
+  await expect(page.locator(".ai-inline-hint-container")).toHaveClass(
+    /ai-inline-hint-container-raised/,
+  );
+
+  const [hintBox, skipBox] = await Promise.all([
+    hint.boundingBox(),
+    skipButton.boundingBox(),
+  ]);
+  expect(hintBox).not.toBeNull();
+  expect(skipBox).not.toBeNull();
+
+  const overlaps =
+    skipBox.x < hintBox.x + hintBox.width &&
+    skipBox.x + skipBox.width > hintBox.x &&
+    skipBox.y < hintBox.y + hintBox.height &&
+    skipBox.y + skipBox.height > hintBox.y;
+
+  expect(overlaps).toBe(false);
 });

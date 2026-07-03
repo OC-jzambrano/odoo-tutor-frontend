@@ -246,6 +246,14 @@
     justify-content: flex-end;
     z-index: 1001;
     pointer-events: none;
+    transition: bottom var(--tutor-motion-base);
+}
+
+/* When the optional-step skip button is also shown, the hint's `bottom`
+   (set inline from JS) is raised above it so the two never share the
+   same vertical band, regardless of composer height. */
+#offcanvasAiSidebar .ai-inline-hint-container.ai-inline-hint-container-raised {
+    z-index: 1000;
 }
 
 #offcanvasAiSidebar .ai-inline-hint {
@@ -1153,7 +1161,7 @@
     position: absolute;
     right: 86px;
     bottom: calc(25px + env(safe-area-inset-bottom, 0px));
-    z-index: 5;
+    z-index: 1002;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1166,9 +1174,14 @@
     color: var(--tutor-accent-strong);
     box-shadow: var(--tutor-shadow-sm);
     transition:
+        bottom var(--tutor-motion-base),
         transform var(--tutor-motion-fast),
         border-color var(--tutor-motion-fast),
         box-shadow var(--tutor-motion-fast);
+}
+
+.ai-chat-panel .ai-skip-step-button i {
+    font-size: 12px;
 }
 
 .ai-chat-panel.has-skip-step #chat-ui-container .nlux-comp-composer > textarea {
@@ -1678,9 +1691,7 @@
 #chat-ui-container .ai-copy-value {
     color: #7c3aed !important;
     font-weight: 700 !important;
-    text-decoration: underline !important;
-    text-decoration-style: dotted !important;
-    text-underline-offset: 2px !important;
+    text-decoration: none !important;
     cursor: pointer !important;
     border-radius: 3px !important;
     padding: 0 2px !important;

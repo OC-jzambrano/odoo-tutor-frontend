@@ -96,4 +96,42 @@ describe("UI event normalization", () => {
     expect(event.label).toBe("Evelin Galindo");
     expect(event.meta.res_id).toBe(243);
   });
+
+  it("uses the visible option label as value for Odoo radio inputs", () => {
+    const fieldWidget = makeElement({
+      tagName: "DIV",
+      attrs: { class: "o_field_widget" },
+      dataset: { name: "type" },
+    });
+    const labelEl = makeElement({ tagName: "LABEL", text: "Invoice" });
+    const target = makeElement({
+      tagName: "INPUT",
+      attrs: {
+        id: "radio_field_1_invoice",
+        type: "radio",
+        "data-value": "invoice",
+      },
+      dataset: { value: "invoice" },
+      closestMap: {
+        ".o_field_widget[data-name]": fieldWidget,
+      },
+    });
+    target.type = "radio";
+    target.ownerDocument = {
+      querySelector(selector) {
+        return selector.includes("radio_field_1_invoice") ? labelEl : null;
+      },
+    };
+
+    const event = normalizeDomEvent({
+      domEventType: "change",
+      originalEvent: { target },
+      context: { model: "res.partner", viewType: "form", resId: 7 },
+    });
+
+    expect(event.type).toBe("field_changed");
+    expect(event.field).toBe("type");
+    expect(event.value).toBe("Invoice");
+    expect(event.meta.radio_value).toBe("invoice");
+  });
 });

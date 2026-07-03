@@ -247,6 +247,7 @@ export class AiSidebar extends Component {
             exerciseCancelLoading: false,
             skipStepEnabled: this.aiWs?.enableSkipStep === true,
             skipStepLoading: false,
+            stepOptional: false,
             firstFailedStep: null,
             finishLoading: false,
             result: "failed",
@@ -478,6 +479,9 @@ export class AiSidebar extends Component {
                 const msg = ev?.kind ? ev.data : ev;
                 if (!msg || typeof msg !== "object") return;
                 if (msg.type !== "context_ack") return;
+                if (typeof msg.is_optional === "boolean") {
+                    this.state.stepOptional = msg.is_optional;
+                }
                 if (
                     msg.mode === "awaiting_resume_confirmation" ||
                     msg.reason === "awaiting_resume_confirmation"
@@ -1679,6 +1683,24 @@ export class AiSidebar extends Component {
         });
     }
 
+    _setExerciseActionsStateForExercise(exerciseId, status, card = null) {
+        const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
+        const cards = new Set(card ? [card] : []);
+
+        this._getChatContainer()
+            ?.querySelectorAll?.(".ai-exercise-actions")
+            ?.forEach((candidate) => {
+                if (
+                    this._normalizeExerciseId(candidate.dataset.exerciseId) ===
+                    normalizedExerciseId
+                ) {
+                    cards.add(candidate);
+                }
+            });
+
+        cards.forEach((candidate) => this._setExerciseActionsState(candidate, status));
+    }
+
     async _sendExerciseChoiceToWs({ exerciseId, answer, action }) {
         const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
         if (!normalizedExerciseId) return null;
@@ -1714,11 +1736,7 @@ export class AiSidebar extends Component {
             status: "sending",
         });
 
-        this._setExerciseActionsState(
-            card,
-            "sending",
-            action === "start" ? _t("Starting...") : _t("Cancelling...")
-        );
+        this._setExerciseActionsStateForExercise(normalizedExerciseId, "sending", card);
 
         if (action === "start") {
             const wasProcessActive = !!this.state.processActive;
@@ -1753,17 +1771,14 @@ export class AiSidebar extends Component {
                 this._pushAssistantMessageToNlux(responseText);
             }
 
-            this._setExerciseActionsState(
-                card,
+            this._setExerciseActionsStateForExercise(
+                normalizedExerciseId,
                 action === "start" ? "accepted" : "cancelled",
-                action === "start" ? _t("Guide started.") : _t("Cancelled.")
+                card
             );
         } catch (e) {
             console.warn("[AiSidebar] exercise choice failed:", e);
-            this._setExerciseActionsState(card, "error", _t("Could not send the answer."));
-            card?.querySelectorAll("button")?.forEach((btn) => {
-                btn.disabled = false;
-            });
+            this._setExerciseActionsStateForExercise(normalizedExerciseId, "error", card);
             this.notification.add(_t("Could not send the exercise answer to WebSocket."), { type: "danger" });
         }
     }
@@ -1806,6 +1821,7 @@ export class AiSidebar extends Component {
         if (
             !this.state.skipStepEnabled ||
             !this.state.processActive ||
+            !this.state.stepOptional ||
             this.state.skipStepLoading
         ) {
             return;
@@ -1829,6 +1845,13 @@ export class AiSidebar extends Component {
             );
             if (responseText) {
                 this._pushAssistantMessageToNlux(responseText);
+            }
+            if (
+                this._isExerciseCompletedPayload(
+                    response?.raw || response?.result || response
+                )
+            ) {
+                this.completeProcess();
             }
         } catch (error) {
             console.warn("[AiSidebar] skip step failed:", error);
@@ -2370,6 +2393,16 @@ export class AiSidebar extends Component {
         this._onTutorPush = (ev) => {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
+
+            if (
+                msg.type === "tutor_push" ||
+                msg.type === "chat_response_complete" ||
+                ev?.kind === "chat_final"
+            ) {
+                if (typeof msg.is_optional === "boolean") {
+                    this.state.stepOptional = msg.is_optional;
+                }
+            }
 
             if (msg.type !== "tutor_push") return;
 
