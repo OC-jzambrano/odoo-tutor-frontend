@@ -9,7 +9,6 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
-import { buildSkipStepRequest } from "../skip_step";
 import "../action_service_context_hook";
 
 // ---------------------
@@ -21,6 +20,7 @@ const EXERCISE_CTA_STATE_KEY = "__AI_TUTOR_EXERCISE_CTA__";
 const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
+const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
 const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
 const HINT_BADGE_AUTO_HIDE_MS = 15000;
 function normalizePreviewTimestamp(ts) {
@@ -536,6 +536,7 @@ class AiFloatingButton extends Component {
                 this.state.optionalStepExerciseId = this.state.optionalStepVisible
                     ? msg.exercise_id
                     : null;
+                this.state.optionalStepLoading = false;
                 if (this.state.optionalStepVisible) {
                     this._hideHintBadge?.();
                 }
@@ -595,7 +596,25 @@ class AiFloatingButton extends Component {
             this._onTutorHintForBadge({ kind: "tutor_hint", data });
         };
 
-        this.onSkipOptionalStep = async () => {
+        // Skipping a step must go through the same code path as the in-chat
+        // skip button (ai_sidebar.js#onSkipStep), otherwise the two surfaces
+        // drift apart: whichever one makes the aiWs.chat() call is the only
+        // one that gets to push the resulting instruction into the visible
+        // nlux conversation. We only dispatch the request here (mirroring
+        // the EXERCISE_CHOICE_EVENT start/cancel pattern below) and let
+        // ai_sidebar.js perform the actual call + history update; this
+        // component's own preview/bubble state is kept in sync afterwards
+        // via the normal chat_final broadcast in _onPreviewMessage.
+        // Skipping a step must go through the same code path as the in-chat
+        // skip button (ai_sidebar.js#onSkipStep), otherwise the two surfaces
+        // drift apart: whichever one makes the aiWs.chat() call is the only
+        // one that gets to push the resulting instruction into the visible
+        // nlux conversation. We only dispatch the request here (mirroring
+        // the EXERCISE_CHOICE_EVENT start/cancel pattern below) and let
+        // ai_sidebar.js perform the actual call + history update; this
+        // component's own preview/bubble state is kept in sync afterwards
+        // via the normal chat_final broadcast in _onPreviewMessage.
+        this.onSkipOptionalStep = () => {
             if (
                 !this.state.optionalStepVisible ||
                 this.state.optionalStepLoading ||
@@ -604,29 +623,10 @@ class AiFloatingButton extends Component {
                 return;
             }
 
-            const exerciseId = this.state.optionalStepExerciseId;
             this.state.optionalStepLoading = true;
-            try {
-                const context = this._getContextSnapshot?.() || {};
-                const response = await this.aiWs.chat(
-                    buildSkipStepRequest({ exerciseId, context })
-                );
-                const raw = response?.raw || response?.result || response || {};
-                this.state.optionalStepVisible = raw.is_optional === true;
-                this.state.optionalStepExerciseId = this.state.optionalStepVisible
-                    ? raw.exercise_id || exerciseId
-                    : null;
-                if (raw.response || raw.message) {
-                    this._setPreviewMessage(
-                        raw.response || raw.message,
-                        raw.timestamp
-                    );
-                }
-            } catch (error) {
-                console.warn("[AiFloatingButton] optional step skip failed:", error);
-            } finally {
-                this.state.optionalStepLoading = false;
-            }
+            window.dispatchEvent(new CustomEvent(EXERCISE_SKIP_STEP_EVENT, {
+                detail: { exerciseId: this.state.optionalStepExerciseId },
+            }));
         };
 
         this._dedup = new Map();

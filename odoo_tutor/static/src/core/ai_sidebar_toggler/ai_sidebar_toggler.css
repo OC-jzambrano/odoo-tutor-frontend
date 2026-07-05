@@ -206,39 +206,44 @@
     animation: tutorInlineHintBadgeIn 0.22s ease-out;
 }
 
+/* Duplicated from .ai-chat-panel .ai-skip-step-button (webclient/sidebar/ai_sidebar.css)
+   so the floating-owl badge and the in-chat button read as the same control. */
 .ai-owl-trigger-skip {
     position: absolute;
     top: -6px;
     right: -6px;
-    width: 28px;
-    height: 28px;
+    width: 22px;
+    height: 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #43b7a4 0%, #2f9f91 100%);
-    color: #fff;
-    font-size: 12px;
-    border: 2px solid #fff;
-    box-shadow: 0 6px 14px rgba(47, 159, 145, 0.4);
+    border: 1px solid var(--tutor-float-border);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--tutor-float-accent-strong);
+    font-size: 8px;
+    box-shadow: var(--tutor-float-shadow-soft);
     cursor: pointer;
     z-index: 3;
+    transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
     animation: tutorInlineHintBadgeIn 0.22s ease-out;
 }
 
 .ai-owl-trigger-skip:hover:not(:disabled) {
-    transform: scale(1.06);
+    transform: translateY(-1px);
+    border-color: var(--tutor-float-accent);
+    box-shadow: var(--tutor-float-shadow);
 }
 
 .ai-owl-trigger-skip:focus-visible {
-    outline: 3px solid rgba(67, 183, 164, 0.35);
+    outline: 3px solid var(--tutor-float-accent-glow);
     outline-offset: 2px;
 }
 
 .ai-owl-trigger-skip:disabled {
     cursor: wait;
-    opacity: 0.7;
+    opacity: 0.62;
 }
 
 @keyframes tutorInlineHintBadgeIn {

@@ -140,6 +140,7 @@ const EXERCISE_CTA_STATE_KEY = "__AI_TUTOR_EXERCISE_CTA__";
 const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
+const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
 
 function getExerciseCtaState() {
     window[EXERCISE_CTA_STATE_KEY] = window[EXERCISE_CTA_STATE_KEY] || {
@@ -173,6 +174,7 @@ export class AiSidebar extends Component {
         this.containerRef = useRef("container");
         this.chatUiRef = useRef("chat-ui");
         this.handleRef = useRef("handle");
+        this.inlineHintRef = useRef("inline-hint");
 
         this._offcanvasQueue = Promise.resolve();
 
@@ -247,7 +249,6 @@ export class AiSidebar extends Component {
             exerciseCancelLoading: false,
             skipStepEnabled: this.aiWs?.enableSkipStep === true,
             skipStepLoading: false,
-            stepOptional: false,
             firstFailedStep: null,
             finishLoading: false,
             result: "failed",
@@ -337,6 +338,12 @@ export class AiSidebar extends Component {
             this.state.hintCycle += 1;
             this.state.hintVisible = true;
             this._scheduleInlineHintAutoHide();
+            // Double rAF: owl's render/patch for the newly-visible hint node
+            // is scheduled as a microtask off the back of this state change,
+            // so a single rAF can still fire before the DOM node exists.
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => this._syncHintScrollPadding());
+            });
         };
 
         this._resetInlineHintState = ({ clearMessage = false } = {}) => {
@@ -348,6 +355,7 @@ export class AiSidebar extends Component {
                 this.state.hintMessage = "";
                 this.state.hintTimestamp = null;
             }
+            this._syncHintScrollPadding();
         };
 
         this.closeInlineHint = () => {
@@ -358,6 +366,7 @@ export class AiSidebar extends Component {
             if (this.state.hintExiting) return;
 
             this.state.hintExiting = true;
+            this._syncHintScrollPadding();
             this._hintExitTimer = setTimeout(() => {
                 this._resetInlineHintState();
             }, 180);
@@ -479,9 +488,6 @@ export class AiSidebar extends Component {
                 const msg = ev?.kind ? ev.data : ev;
                 if (!msg || typeof msg !== "object") return;
                 if (msg.type !== "context_ack") return;
-                if (typeof msg.is_optional === "boolean") {
-                    this.state.stepOptional = msg.is_optional;
-                }
                 if (
                     msg.mode === "awaiting_resume_confirmation" ||
                     msg.reason === "awaiting_resume_confirmation"
@@ -515,6 +521,19 @@ export class AiSidebar extends Component {
             };
 
             window.addEventListener(EXERCISE_CHOICE_EVENT, this._onExerciseChoiceEvent);
+
+            this._onExerciseSkipStepEvent = (e) => {
+                const detail = e?.detail || {};
+                const exerciseId = this._normalizeExerciseId(
+                    detail.exerciseId || this.state.exerciseId
+                );
+                if (exerciseId) {
+                    this.state.exerciseId = exerciseId;
+                }
+                this.onSkipStep();
+            };
+
+            window.addEventListener(EXERCISE_SKIP_STEP_EVENT, this._onExerciseSkipStepEvent);
 
             requestAnimationFrame(() => {
                 this._startCopyButtonsObserver?.();
@@ -580,6 +599,11 @@ export class AiSidebar extends Component {
             if (this._onExerciseChoiceEvent) {
                 window.removeEventListener(EXERCISE_CHOICE_EVENT, this._onExerciseChoiceEvent);
                 this._onExerciseChoiceEvent = null;
+            }
+
+            if (this._onExerciseSkipStepEvent) {
+                window.removeEventListener(EXERCISE_SKIP_STEP_EVENT, this._onExerciseSkipStepEvent);
+                this._onExerciseSkipStepEvent = null;
             }
 
             if (this.state.timerInterval) {
@@ -1821,7 +1845,6 @@ export class AiSidebar extends Component {
         if (
             !this.state.skipStepEnabled ||
             !this.state.processActive ||
-            !this.state.stepOptional ||
             this.state.skipStepLoading
         ) {
             return;
@@ -1844,7 +1867,19 @@ export class AiSidebar extends Component {
                 (text) => this._isDuplicateAssistantText(text)
             );
             if (responseText) {
-                this._pushAssistantMessageToNlux(responseText);
+                // While the sidebar is closed (owl bubble mode), other
+                // in-flight tutor_push instructions get queued via
+                // _queueTutorMessage and flushed in order on reopen. If we
+                // pushed this response straight to nlux here, it would jump
+                // ahead of anything still sitting in that queue, showing up
+                // out of order once the chat is reopened.
+                if (!this.aiChat || !this._isSidebarOpen()) {
+                    this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
+                        exerciseId: response?.raw?.exercise_id || exerciseId,
+                    });
+                } else {
+                    this._pushAssistantMessageToNlux(responseText);
+                }
             }
             if (
                 this._isExerciseCompletedPayload(
@@ -1970,6 +2005,7 @@ export class AiSidebar extends Component {
             this._setupComposerOverflowTracking();
             this._syncComposerOverflowState();
             this._syncComposerDisabledState();
+            this._syncHintScrollPadding();
         });
     }
 
@@ -2393,16 +2429,6 @@ export class AiSidebar extends Component {
         this._onTutorPush = (ev) => {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
-
-            if (
-                msg.type === "tutor_push" ||
-                msg.type === "chat_response_complete" ||
-                ev?.kind === "chat_final"
-            ) {
-                if (typeof msg.is_optional === "boolean") {
-                    this.state.stepOptional = msg.is_optional;
-                }
-            }
 
             if (msg.type !== "tutor_push") return;
 
@@ -3201,6 +3227,34 @@ export class AiSidebar extends Component {
 
     _getConversationContainer() {
         return this._conv || this.chatUiRef?.el?.querySelector(".nlux-conversation-container") || null;
+    }
+
+    // The hint is an absolutely-positioned overlay, so without this it simply
+    // sits on top of whatever message happens to be at the bottom of the
+    // scroll — always covering it, regardless of the "bottom" offset we pick.
+    // Instead we reserve real scroll space equal to the hint's own measured
+    // height, so the conversation never has content sitting behind it.
+    _syncHintScrollPadding() {
+        const conv = this._getConversationContainer();
+        if (!conv) return;
+
+        if (!this.state.hintVisible || this.state.hintExiting) {
+            conv.style.paddingBottom = "";
+            return;
+        }
+
+        const hintEl = this.inlineHintRef?.el;
+        if (!hintEl) return;
+
+        // Reserving the padding doesn't help if the view isn't scrolled down
+        // far enough to reveal it — the hint overlay stays anchored to the
+        // panel's bottom regardless of scroll position, so without this the
+        // newly reserved space just sits off-screen below the fold.
+        const wasNearBottom = this._isConversationNearBottom();
+        conv.style.paddingBottom = `${hintEl.offsetHeight + 24}px`;
+        if (wasNearBottom) {
+            this._scrollConversationToBottom({ smooth: false });
+        }
     }
 
     _isConversationNearBottom(threshold = 72) {

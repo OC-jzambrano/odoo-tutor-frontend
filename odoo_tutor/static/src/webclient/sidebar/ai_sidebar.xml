@@ -204,7 +204,7 @@
                          ========================= -->
                     <div t-att-class="state.showRecorderPanel ? 'd-none' : {
                         'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative': true,
-                        'has-skip-step': state.skipStepEnabled and state.processActive and state.stepOptional,
+                        'has-skip-step': state.skipStepEnabled and state.processActive,
                     }">
                         <!-- OJO: no self-closing. Mejor siempre tag normal para mount de librerías -->
                         <div t-ref="chat-ui"
@@ -215,14 +215,13 @@
                              t-att-aria-busy="state.isLoading ? 'true' : 'false'"></div>
 
                         <button
-                            t-if="state.skipStepEnabled and state.processActive and state.stepOptional"
+                            t-if="state.skipStepEnabled and state.processActive"
                             type="button"
                             class="ai-skip-step-button"
                             data-ai-tutor-ignore-event="true"
                             t-att-disabled="state.skipStepLoading"
                             t-att-title="translate('Skip to next step')"
                             t-att-aria-label="translate('Skip to next step')"
-                            t-attf-style="bottom: {{ state.composerHeight + 25 }}px;"
                             t-on-click.stop.prevent="onSkipStep"
                         >
                             <i t-att-class="state.skipStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
@@ -241,9 +240,10 @@
                         <t t-if="state.hintVisible and state.hintMessage">
                             <div t-att-class="{
                                      'ai-inline-hint-container': true,
-                                     'ai-inline-hint-container-raised': state.skipStepEnabled and state.processActive and state.stepOptional,
+                                     'ai-inline-hint-container-raised': state.skipStepEnabled and state.processActive,
                                  }"
-                                 t-attf-style="bottom: {{ state.composerHeight + ((state.skipStepEnabled and state.processActive and state.stepOptional) ? 76 : 16) }}px;">
+                                 t-attf-style="bottom: {{ state.composerHeight + ((state.skipStepEnabled and state.processActive) ? 66 : 8) }}px;"
+                                 t-ref="inline-hint">
                                 <div class="ai-inline-hint"
                                      t-key="state.hintCycle"
                                      t-att-class="{

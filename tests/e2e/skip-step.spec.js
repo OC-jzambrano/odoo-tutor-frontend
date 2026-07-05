@@ -192,7 +192,7 @@ test("skip button disappears when skipping completes the exercise", async ({
   await expect(skipButton).toHaveCount(0);
 });
 
-test("skip button is hidden when the current step is not optional", async ({
+test("skip button still shows on a non-optional step (always visible during an active exercise, for now)", async ({
   page,
 }) => {
   await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
@@ -234,7 +234,7 @@ test("skip button is hidden when the current step is not optional", async ({
   await page.locator(".ai-exercise-choice-yes").click();
 
   await expect(page.getByText("Click New.", { exact: true })).toBeVisible();
-  await expect(page.locator(".ai-skip-step-button")).toHaveCount(0);
+  await expect(page.locator(".ai-skip-step-button")).toBeVisible();
 });
 
 test("skip button and context hint never overlap when both are visible", async ({
