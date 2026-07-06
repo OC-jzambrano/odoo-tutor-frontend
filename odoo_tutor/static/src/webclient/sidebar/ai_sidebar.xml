@@ -205,7 +205,8 @@
                     <div t-att-class="state.showRecorderPanel ? 'd-none' : {
                         'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative': true,
                         'has-skip-step': state.skipStepEnabled and state.processActive,
-                    }">
+                    }"
+                         t-ref="chat-panel">
                         <!-- OJO: no self-closing. Mejor siempre tag normal para mount de librerías -->
                         <div t-ref="chat-ui"
                              id="chat-ui-container"
@@ -242,7 +243,7 @@
                                      'ai-inline-hint-container': true,
                                      'ai-inline-hint-container-raised': state.skipStepEnabled and state.processActive,
                                  }"
-                                 t-attf-style="bottom: {{ state.composerHeight + ((state.skipStepEnabled and state.processActive) ? 66 : 8) }}px;"
+                                 t-attf-style="bottom: {{ state.composerTopOffset + ((state.skipStepEnabled and state.processActive) ? 58 : 8) }}px;"
                                  t-ref="inline-hint">
                                 <div class="ai-inline-hint"
                                      t-key="state.hintCycle"

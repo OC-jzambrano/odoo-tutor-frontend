@@ -56,6 +56,37 @@ test("closing the in-chat hint with the x button works immediately", async ({ pa
   await expect(hint).toHaveCount(0);
 });
 
+test("duplicate chatbot hints reuse one bubble directly above the composer", async ({
+  page,
+}) => {
+  await page.locator("[data-ai-sidebar-toggle]").click();
+  await expect(page.locator("#offcanvasAiSidebar")).toHaveClass(/show/);
+
+  await page.evaluate(() => {
+    window.aiTutorDebug.showHint("Use the Stage filter.");
+    window.aiTutorDebug.showHint("Use the Stage filter.");
+  });
+
+  const hints = page.locator("#offcanvasAiSidebar .ai-inline-hint");
+  const composer = page.locator(
+    "#chat-ui-container .nlux-composer-container",
+  );
+  await expect(hints).toHaveCount(1);
+  await expect(hints).toBeVisible();
+  await expect(composer).toBeVisible();
+
+  const [hintBox, composerBox] = await Promise.all([
+    hints.boundingBox(),
+    composer.boundingBox(),
+  ]);
+
+  expect(hintBox).not.toBeNull();
+  expect(composerBox).not.toBeNull();
+  const gap = composerBox.y - (hintBox.y + hintBox.height);
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap).toBeLessThanOrEqual(12);
+});
+
 test("owl-mode preview bubble remains visible until dismissed", async ({ page }) => {
   // Chat must be closed for the owl-mode preview to be eligible to show.
   await page.evaluate(() => window.aiTutorDebug.showPreview("Playwright owl preview check"));

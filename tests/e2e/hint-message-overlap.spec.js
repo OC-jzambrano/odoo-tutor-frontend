@@ -1,12 +1,12 @@
 const { test, expect } = require("@playwright/test");
 
-// Regression test: the context hint is an absolutely-positioned overlay
-// anchored to the bottom of the chat panel. Without reserved scroll space,
-// it simply floats on top of whatever message happens to be last in the
-// conversation, covering its text. Fix: ai_sidebar.js#_syncHintScrollPadding
-// adds padding-bottom to the nlux conversation container equal to the
-// hint's own measured height whenever it's shown.
-test("context hint does not visually overlap the last chat message", async ({ page }) => {
+// Regression test: the context hint is a floating overlay anchored above the
+// composer, like a popup/mini-modal — it is allowed to visually sit on top
+// of the last chat message. What it must never do is reserve scroll space
+// (padding-bottom) in the conversation container, because that shifts the
+// message list itself, making the hint look like it's "part of" the chat
+// flow instead of a popup in front of it. See ai_sidebar.js#_syncHintScrollPadding.
+test("context hint overlays the chat without shifting the message layout", async ({ page }) => {
   let wsRef;
 
   await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
@@ -77,6 +77,13 @@ test("context hint does not visually overlap the last chat message", async ({ pa
   );
   await expect(page.getByText(/Make sure to use the exact label/)).toBeVisible();
 
+  const lastMessage = page
+    .locator("#chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container")
+    .last();
+
+  const messageBoxBefore = await lastMessage.boundingBox();
+  expect(messageBoxBefore).not.toBeNull();
+
   await page.evaluate(() =>
     window.aiTutorDebug.showHint(
       "If a new empty task box appears automatically, type directly there. Otherwise click Quick add again.",
@@ -86,23 +93,17 @@ test("context hint does not visually overlap the last chat message", async ({ pa
   const hint = page.locator(".ai-inline-hint");
   await expect(hint).toBeVisible();
 
-  const lastMessage = page
-    .locator("#chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container")
-    .last();
+  // The message must not have shifted to make room for the hint — the hint
+  // is a popup that floats in front of the chat, not an extra chat bubble.
+  const messageBoxAfter = await lastMessage.boundingBox();
+  expect(messageBoxAfter).not.toBeNull();
+  expect(messageBoxAfter.y).toBeCloseTo(messageBoxBefore.y, 0);
 
-  const [hintBox, messageBox] = await Promise.all([
-    hint.boundingBox(),
-    lastMessage.boundingBox(),
-  ]);
-
-  expect(hintBox).not.toBeNull();
-  expect(messageBox).not.toBeNull();
-
-  const overlaps =
-    hintBox.x < messageBox.x + messageBox.width &&
-    hintBox.x + hintBox.width > messageBox.x &&
-    hintBox.y < messageBox.y + messageBox.height &&
-    hintBox.y + hintBox.height > messageBox.y;
-
-  expect(overlaps).toBe(false);
+  const conversationPaddingBottom = await page.evaluate(() => {
+    const conv = document.querySelector(
+      "#chat-ui-container .nlux-conversation-container",
+    );
+    return conv ? conv.style.paddingBottom : null;
+  });
+  expect(conversationPaddingBottom).toBe("");
 });

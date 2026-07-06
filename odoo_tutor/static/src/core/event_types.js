@@ -12,8 +12,8 @@ export function canonicalEventType(type) {
   return EVENT_TYPE_ALIASES[value] || value;
 }
 
-export function canonicalEventEnvelopeType() {
-  return "ui_event";
+export function canonicalEventEnvelopeType(type) {
+  return type === "feedback_event" ? "feedback_event" : "ui_event";
 }
 
 export function canonicalizeEvent(event) {

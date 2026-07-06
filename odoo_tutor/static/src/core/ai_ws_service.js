@@ -68,9 +68,44 @@ function isChatFinal(data) {
   );
 }
 
+const TUTOR_PUSH_TYPES = new Set([
+  "tutor_push",
+  "instruction_push",
+  "reinforce_push",
+  "exercise_completed_push",
+  "welcome_push",
+  "drift_checkin_push",
+]);
+
 /** ✅ NUEVO (mínimo): detectar tutor_push sin tocar tu flujo FIFO */
 function isTutorPush(data) {
-  return !!(data && typeof data === "object" && data.type === "tutor_push");
+  return !!(data && typeof data === "object" && TUTOR_PUSH_TYPES.has(data.type));
+}
+
+function getHttpBaseUrl(wsBaseUrl) {
+  try {
+    const u = new URL(wsBaseUrl);
+    u.protocol = u.protocol === "wss:" ? "https:" : "http:";
+    u.pathname = u.pathname.replace(/\/ws\/?$/, "");
+    u.search = "";
+    u.hash = "";
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
+async function fetchSessionHistory(httpBaseUrl, sessionId) {
+  if (!httpBaseUrl || !sessionId) return [];
+  try {
+    const resp = await fetch(`${httpBaseUrl}/session/${sessionId}/messages`);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return Array.isArray(data?.messages) ? data.messages : [];
+  } catch (e) {
+    console.warn("[ai_ws] fetchSessionHistory failed:", e);
+    return [];
+  }
 }
 
 function getBrowserStorage() {
@@ -162,6 +197,7 @@ function getState() {
 
     // FIFO chats
     pendingChats: [],
+    pendingEvents: new Map(),
 
     // listeners
     listeners: new Set(),
@@ -349,6 +385,20 @@ export const aiWsService = {
 
           console.log("[ai_ws] <<", data);
 
+          if (data && typeof data === "object" && data.request_id) {
+            const pendingEvent = st.pendingEvents.get(data.request_id);
+            if (pendingEvent) {
+              st.pendingEvents.delete(data.request_id);
+              clearTimeout(pendingEvent.timer);
+              if (data.type === "error") {
+                pendingEvent.reject(new Error(data.message || "Event failed"));
+              } else {
+                pendingEvent.resolve(data);
+              }
+              return;
+            }
+          }
+
           // ✅ Capturar session_id del backend
           if (
             data &&
@@ -360,6 +410,26 @@ export const aiWsService = {
             window.__AI_TUTOR_WS_SESSION_ID = data.session_id;
             persistWsSession({ ...sessionScope, wsSessionId: data.session_id });
             console.log("[ai_ws] ✅ WS session_id captured:", data.session_id);
+
+            // ✅ Cargar historial persistido (Redis) para repintar el chat tras un reload.
+            const historySessionId = data.session_id;
+            fetchSessionHistory(getHttpBaseUrl(baseUrl), historySessionId).then((messages) => {
+              if (st.wsSessionId !== historySessionId) return; // conexión superada mientras tanto
+              for (const fn of st.listeners) {
+                try {
+                  fn({ kind: "history", data: { session_id: historySessionId, messages } });
+                } catch (e) {
+                  console.error("[ai_ws] listener error (history)", e);
+                }
+              }
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("ai:history_loaded", {
+                    detail: { session_id: historySessionId, messages },
+                  })
+                );
+              } catch {}
+            });
 
             // resolver waiters
             const waiters = st.wsSessionWaiters.splice(0);
@@ -466,6 +536,11 @@ export const aiWsService = {
             clearTimeout(entry.timer);
             entry.reject(new Error(`WS closed (${ev.code}) ${ev.reason || ""}`));
           }
+          for (const pendingEvent of st.pendingEvents.values()) {
+            clearTimeout(pendingEvent.timer);
+            pendingEvent.reject(new Error(`WS closed (${ev.code}) ${ev.reason || ""}`));
+          }
+          st.pendingEvents.clear();
 
           st.connectPromise = null;
           reject(new Error(`WS closed (${ev.code}) ${ev.reason || ""}`));
@@ -492,7 +567,7 @@ export const aiWsService = {
     }
 
     // ✅ Para tus eventos existentes (step_saved, feedback_event, etc.)
-    async function sendEvent({ type, event_name, event_data }) {
+    async function sendEvent({ type, event_name, event_data, awaitAck = false, timeoutMs = 10000 }) {
       await connect();
       const canonicalData = canonicalizeEvent(event_data);
       const canonicalName = canonicalEventType(event_name || canonicalData?.type);
@@ -503,6 +578,9 @@ export const aiWsService = {
       const eventNow = Date.now();
       const lastSentAt = st.recentEventFingerprints.get(fingerprint) || 0;
       if (eventNow - lastSentAt < 400) {
+        if (awaitAck) {
+          throw new Error("Duplicate event suppressed");
+        }
         return false;
       }
       st.recentEventFingerprints.set(fingerprint, eventNow);
@@ -542,6 +620,25 @@ export const aiWsService = {
         },
         outcome_state: outcomeState,
       };
+      if (awaitAck) {
+        payload.request_id =
+          globalThis.crypto?.randomUUID?.() ||
+          `event-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            st.pendingEvents.delete(payload.request_id);
+            reject(new Error("WS timeout waiting for event acknowledgement"));
+          }, timeoutMs);
+          st.pendingEvents.set(payload.request_id, { resolve, reject, timer });
+          try {
+            safeSend(payload);
+          } catch (error) {
+            clearTimeout(timer);
+            st.pendingEvents.delete(payload.request_id);
+            reject(error);
+          }
+        });
+      }
       safeSend(payload);
       return true;
     }
@@ -698,6 +795,11 @@ export const aiWsService = {
         clearTimeout(entry.timer);
         entry.reject(new Error(`WS disconnected (${code}) ${reason || ""}`));
       }
+      for (const pendingEvent of st.pendingEvents.values()) {
+        clearTimeout(pendingEvent.timer);
+        pendingEvent.reject(new Error(`WS disconnected (${code}) ${reason || ""}`));
+      }
+      st.pendingEvents.clear();
 
       try {
         if (

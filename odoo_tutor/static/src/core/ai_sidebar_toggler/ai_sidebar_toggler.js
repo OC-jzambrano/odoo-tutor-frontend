@@ -15,6 +15,15 @@ import "../action_service_context_hook";
 // Helpers
 // ---------------------
 
+const TUTOR_PUSH_TYPES = new Set([
+    "tutor_push",
+    "instruction_push",
+    "reinforce_push",
+    "exercise_completed_push",
+    "welcome_push",
+    "drift_checkin_push",
+]);
+
 const AI_DOC = window.top?.document || document;
 const EXERCISE_CTA_STATE_KEY = "__AI_TUTOR_EXERCISE_CTA__";
 const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
@@ -525,7 +534,7 @@ class AiFloatingButton extends Component {
             if (!msg || typeof msg !== "object") return;
 
             if (
-                msg.type === "tutor_push" ||
+                TUTOR_PUSH_TYPES.has(msg.type) ||
                 msg.type === "chat_response_complete" ||
                 ev?.kind === "chat_final"
             ) {
@@ -542,7 +551,7 @@ class AiFloatingButton extends Component {
                 }
             }
 
-            if (msg.type === "tutor_push") {
+            if (TUTOR_PUSH_TYPES.has(msg.type)) {
                 this._setPreviewMessage(msg.response || "", msg.timestamp, msg.copy_targets);
                 return;
             }
@@ -977,7 +986,7 @@ class AiFloatingButton extends Component {
                 } catch (e) {
                     console.warn("[AI_UI] normalize failed", e);
                 }
-            }, 350);
+            }, 800);
         };
 
         this._onDocChange = (ev) => {

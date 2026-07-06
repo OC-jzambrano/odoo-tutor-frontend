@@ -90,6 +90,7 @@ describe("event type normalization", () => {
     expect(canonicalEventEnvelopeType("recorder_event")).toBe("ui_event");
     expect(canonicalEventEnvelopeType("state_transition_event")).toBe("ui_event");
     expect(canonicalEventEnvelopeType("ui_event")).toBe("ui_event");
+    expect(canonicalEventEnvelopeType("feedback_event")).toBe("feedback_event");
   });
 
   it("maps legacy button/link names to canonical names", () => {

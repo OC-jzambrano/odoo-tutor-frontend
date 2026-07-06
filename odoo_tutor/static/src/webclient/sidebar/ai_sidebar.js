@@ -20,6 +20,15 @@ import {
 } from "../../core/copy_targets";
 import { shouldQueueTutorMessage } from "../../core/tutor_message_delivery";
 
+const TUTOR_PUSH_TYPES = new Set([
+    "tutor_push",
+    "instruction_push",
+    "reinforce_push",
+    "exercise_completed_push",
+    "welcome_push",
+    "drift_checkin_push",
+]);
+
 const INLINE_HINT_AUTO_HIDE_MS = 15000;
 
 function formatTimeAgo(ts) {
@@ -177,6 +186,7 @@ export class AiSidebar extends Component {
         // Refs
         // -------------------------
         this.containerRef = useRef("container");
+        this.chatPanelRef = useRef("chat-panel");
         this.chatUiRef = useRef("chat-ui");
         this.handleRef = useRef("handle");
         this.inlineHintRef = useRef("inline-hint");
@@ -236,6 +246,7 @@ export class AiSidebar extends Component {
             breadcrumbPath: "",
             placeholder: this.modelPlaceholders.default,
             composerHeight: 0,
+            composerTopOffset: 0,
             composerWidth: 0,
             isChatInitialized: false,
 
@@ -335,8 +346,21 @@ export class AiSidebar extends Component {
 
             if (!cleaned) return;
 
+            const translated = translateKnownTutorText(cleaned);
+            if (
+                this.state.hintVisible &&
+                !this.state.hintExiting &&
+                this.state.hintMessage === translated
+            ) {
+                this._clearInlineHintTimers();
+                this.state.hintTimestamp = normalizeTutorTimestamp(timestamp);
+                this.state.hintHovered = false;
+                this._scheduleInlineHintAutoHide();
+                return;
+            }
+
             this._clearInlineHintTimers();
-            this.state.hintMessage = translateKnownTutorText(cleaned);
+            this.state.hintMessage = translated;
             this.state.hintTimestamp = normalizeTutorTimestamp(timestamp);
             this.state.hintHovered = false;
             this.state.hintExiting = false;
@@ -416,6 +440,7 @@ export class AiSidebar extends Component {
         // Lifecycle
         // -------------------------
         onMounted(() => {
+            this._setupHistoryListener();
             this._setupTutorPushListener();
             this._syncColorScheme();
 
@@ -557,6 +582,7 @@ export class AiSidebar extends Component {
 
             clearInterval(this.contextInterval);
             this._teardownTutorPushListener();
+            this._teardownHistoryListener();
             this._resetInlineHintState({ clearMessage: true });
 
             if (this.observer) this.observer.disconnect();
@@ -1408,6 +1434,8 @@ export class AiSidebar extends Component {
     _isWelcomePromptPayload(payload) {
         if (!payload || typeof payload !== "object") return false;
 
+        if (payload.type === "welcome_push") return true;
+
         const candidates = [
             payload.is_welcome,
             payload.isWelcome,
@@ -1430,6 +1458,10 @@ export class AiSidebar extends Component {
 
     _isExerciseCompletedPayload(payload) {
         if (!payload) return false;
+
+        if (typeof payload === "object" && payload.type === "exercise_completed_push") {
+            return true;
+        }
 
         const responseText = this._extractResponseText(payload);
         const candidates = [];
@@ -2019,11 +2051,20 @@ export class AiSidebar extends Component {
             if (composer) {
                 const nextWidth = composer.offsetWidth;
                 const nextHeight = composer.offsetHeight;
+                const panel = this.chatPanelRef?.el || root.closest(".ai-chat-panel");
+                const panelRect = panel?.getBoundingClientRect();
+                const composerRect = composer.getBoundingClientRect();
+                const nextTopOffset = panelRect
+                    ? Math.max(0, Math.round(panelRect.bottom - composerRect.top))
+                    : nextHeight;
                 if (this.state.composerWidth !== nextWidth) {
                     this.state.composerWidth = nextWidth;
                 }
                 if (this.state.composerHeight !== nextHeight) {
                     this.state.composerHeight = nextHeight;
+                }
+                if (this.state.composerTopOffset !== nextTopOffset) {
+                    this.state.composerTopOffset = nextTopOffset;
                 }
             }
 
@@ -2448,14 +2489,111 @@ export class AiSidebar extends Component {
     // WS Tutor Push
     // =========================================================
 
+    _setupHistoryListener() {
+        if (this._historySubscribed) return;
+
+        if (!this._historyReadyPromise) {
+            this._historyReadyPromise = new Promise((resolve) => {
+                this._resolveHistoryReady = resolve;
+            });
+            // Never let a slow/failed history fetch block the welcome message forever.
+            setTimeout(() => {
+                this._resolveHistoryReady?.();
+                this._resolveHistoryReady = null;
+            }, 4000);
+        }
+
+        this._onHistoryLoaded = (ev) => {
+            const payload = ev?.kind ? ev.data : ev;
+            const sessionId = payload?.session_id;
+            const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+
+            if (this._historyRenderedForSessionId === sessionId) return;
+            this._historyRenderedForSessionId = sessionId;
+
+            try {
+                this._renderHistory(messages);
+            } finally {
+                this._resolveHistoryReady?.();
+                this._resolveHistoryReady = null;
+            }
+        };
+
+        this._onHistoryLoadedEvent = (e) => this._onHistoryLoaded({ kind: "history", data: e?.detail });
+
+        try {
+            this.aiWs?.subscribe?.(this._onHistoryLoaded);
+            this._historySubscribed = true;
+        } catch (e) {
+            console.warn("[AiSidebar] history subscribe failed:", e);
+        }
+        window.addEventListener("ai:history_loaded", this._onHistoryLoadedEvent);
+    }
+
+    _teardownHistoryListener() {
+        try {
+            if (this._onHistoryLoaded) this.aiWs?.unsubscribe?.(this._onHistoryLoaded);
+        } catch {}
+        if (this._onHistoryLoadedEvent) {
+            window.removeEventListener("ai:history_loaded", this._onHistoryLoadedEvent);
+        }
+        this._onHistoryLoaded = null;
+        this._onHistoryLoadedEvent = null;
+        this._historySubscribed = false;
+    }
+
+    _buildManualSentItem(text) {
+        const item = document.createElement("div");
+        item.className = "nlux-comp-chatItem nlux-comp-chatItem--sent nlux-comp-chatItem--bubblesLayout";
+        item.innerHTML = `<div class="nlux-comp-message"><div class="nlux-markdown-container">${this._escapeHtml(text).replace(/\n/g, "<br/>")}</div></div>`;
+        return item;
+    }
+
+    _renderHistory(messages) {
+        const root = this.chatUiRef?.el;
+        if (!root || !Array.isArray(messages) || messages.length === 0) return;
+
+        this._ensureConversationVisible();
+
+        const segments = root.querySelector(".nlux-chatSegments-container");
+        if (!segments) {
+            console.warn("[AiSidebar] NLUX segments container not found for history render");
+            return;
+        }
+
+        for (const entry of messages) {
+            const text = String(entry?.text || "").trim();
+            if (!text) continue;
+
+            const item =
+                entry.role === "user"
+                    ? this._buildManualSentItem(text)
+                    : this._buildManualReceivedItem(text);
+            segments.appendChild(item);
+        }
+
+        try {
+            this._anchorEl = segments.lastElementChild;
+            this._startLockToAnchor();
+        } catch (_) {}
+
+        requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    }
+
     _setupTutorPushListener() {
         if (this._tutorPushSubscribed) return;
 
-        this._onTutorPush = (ev) => {
+        this._onTutorPush = async (ev) => {
+            if (this._historyReadyPromise) {
+                try {
+                    await this._historyReadyPromise;
+                } catch {}
+            }
+
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
 
-            if (msg.type !== "tutor_push") return;
+            if (!TUTOR_PUSH_TYPES.has(msg.type)) return;
 
             const text =
                 msg.response ||
@@ -3257,32 +3395,14 @@ export class AiSidebar extends Component {
         return this._conv || this.chatUiRef?.el?.querySelector(".nlux-conversation-container") || null;
     }
 
-    // The hint is an absolutely-positioned overlay, so without this it simply
-    // sits on top of whatever message happens to be at the bottom of the
-    // scroll — always covering it, regardless of the "bottom" offset we pick.
-    // Instead we reserve real scroll space equal to the hint's own measured
-    // height, so the conversation never has content sitting behind it.
+    // The hint is a floating overlay anchored above the composer, like a
+    // popup/mini-modal. It intentionally overlaps whatever message sits
+    // behind it rather than reserving scroll space, so showing/hiding it
+    // must never shift the conversation's own layout or scroll position.
     _syncHintScrollPadding() {
         const conv = this._getConversationContainer();
         if (!conv) return;
-
-        if (!this.state.hintVisible || this.state.hintExiting) {
-            conv.style.paddingBottom = "";
-            return;
-        }
-
-        const hintEl = this.inlineHintRef?.el;
-        if (!hintEl) return;
-
-        // Reserving the padding doesn't help if the view isn't scrolled down
-        // far enough to reveal it — the hint overlay stays anchored to the
-        // panel's bottom regardless of scroll position, so without this the
-        // newly reserved space just sits off-screen below the fold.
-        const wasNearBottom = this._isConversationNearBottom();
-        conv.style.paddingBottom = `${hintEl.offsetHeight + 24}px`;
-        if (wasNearBottom) {
-            this._scrollConversationToBottom({ smooth: false });
-        }
+        conv.style.paddingBottom = "";
     }
 
     _isConversationNearBottom(threshold = 72) {
@@ -3986,8 +4106,17 @@ export class AiSidebar extends Component {
                 type: "feedback_event",
                 event_name: eventName,
                 event_data: fullPayload,
+                awaitAck: true,
             })
-            .catch((e) => console.warn("[ai_sidebar] feedback send failed:", e));
+            .then(() => {
+                this.notification.add(_t("Feedback sent. Thank you for helping improve the tutor!"), {
+                    type: "success",
+                });
+            })
+            .catch((e) => {
+                console.warn("[ai_sidebar] feedback send failed:", e);
+                this.notification.add(_t("Could not send your feedback."), { type: "danger" });
+            });
     }
 
     // =========================================================
