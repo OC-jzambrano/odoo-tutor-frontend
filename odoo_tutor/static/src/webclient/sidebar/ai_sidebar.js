@@ -13,7 +13,12 @@ import {
     buildSkipStepRequest,
     getVisibleSkipResponse,
 } from "../../core/skip_step";
-import { buildCopySegments, normalizeForCopyTargetLookup } from "../../core/copy_targets";
+import {
+    buildCopySegments,
+    normalizeForCopyTargetLookup,
+    stripNewlinesAroundCopyTargets,
+} from "../../core/copy_targets";
+import { shouldQueueTutorMessage } from "../../core/tutor_message_delivery";
 
 const INLINE_HINT_AUTO_HIDE_MS = 15000;
 
@@ -1792,7 +1797,17 @@ export class AiSidebar extends Component {
             const responseText = this._extractResponseText(response);
 
             if (responseText && !this._isDuplicateAssistantText(responseText)) {
-                this._pushAssistantMessageToNlux(responseText);
+                // Same ordering guard as onSkipStep/_onTutorPush: if the
+                // sidebar is closed, queue instead of pushing straight to
+                // nlux, or it jumps ahead of anything still queued and
+                // renders out of order once the chat reopens.
+                if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
+                    this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
+                        exerciseId: response?.raw?.exercise_id || normalizedExerciseId,
+                    });
+                } else {
+                    this._pushAssistantMessageToNlux(responseText);
+                }
             }
 
             this._setExerciseActionsStateForExercise(
@@ -1827,10 +1842,20 @@ export class AiSidebar extends Component {
             this.cancelProcess();
 
             if (responseText && !this._isDuplicateAssistantText(responseText)) {
-                const inserted = this._pushAssistantMessageToNlux(responseText);
-                if (inserted) {
-                    this._lastInjectedTutorText = responseText;
-                    this._lastInjectedTutorAt = Date.now();
+                // Same ordering guard as onSkipStep/_onTutorPush: if the
+                // sidebar is closed, queue instead of pushing straight to
+                // nlux, or it jumps ahead of anything still queued and
+                // renders out of order once the chat reopens.
+                if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
+                    this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
+                        exerciseId: response?.raw?.exercise_id || normalizedExerciseId,
+                    });
+                } else {
+                    const inserted = this._pushAssistantMessageToNlux(responseText);
+                    if (inserted) {
+                        this._lastInjectedTutorText = responseText;
+                        this._lastInjectedTutorAt = Date.now();
+                    }
                 }
             }
         } catch (e) {
@@ -1873,7 +1898,7 @@ export class AiSidebar extends Component {
                 // pushed this response straight to nlux here, it would jump
                 // ahead of anything still sitting in that queue, showing up
                 // out of order once the chat is reopened.
-                if (!this.aiChat || !this._isSidebarOpen()) {
+                if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || exerciseId,
                     });
@@ -2441,7 +2466,10 @@ export class AiSidebar extends Component {
 
             const cleaned = String(text || "").trim();
             if (!cleaned) return;
-            const displayText = translateKnownTutorText(cleaned);
+            const displayText = stripNewlinesAroundCopyTargets(
+                translateKnownTutorText(cleaned),
+                msg.copy_targets
+            );
             this._registerCopyTargets(displayText, msg.copy_targets);
             const isExerciseCompleted = this._isExerciseCompletedPayload(msg);
 
@@ -2489,7 +2517,7 @@ export class AiSidebar extends Component {
 
             // Si el chat aún no está listo o el sidebar está cerrado,
             // se guarda para mostrarlo después.
-            if (!this.aiChat || !this._isSidebarOpen()) {
+            if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
                     allowExercisePromptWhileActive,

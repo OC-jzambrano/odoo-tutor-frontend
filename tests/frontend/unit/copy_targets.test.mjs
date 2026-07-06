@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCopySegments,
   normalizeForCopyTargetLookup,
+  stripNewlinesAroundCopyTargets,
 } from "../../../odoo_tutor/static/src/core/copy_targets.js";
 
 describe("buildCopySegments", () => {
@@ -95,6 +96,50 @@ describe("buildCopySegments", () => {
     ]);
 
     expect(segments.filter((s) => s.isCopy)).toHaveLength(1);
+  });
+});
+
+describe("stripNewlinesAroundCopyTargets", () => {
+  it("glues a value stranded on its own line back into the sentence", () => {
+    expect(
+      stripNewlinesAroundCopyTargets(
+        "Set the Quantity of Premium Desk to\n4\n.",
+        [{ text: "4" }]
+      )
+    ).toBe("Set the Quantity of Premium Desk to 4 .");
+  });
+
+  it("handles multiple newlines and surrounding spaces around the target", () => {
+    expect(
+      stripNewlinesAroundCopyTargets(
+        "Select\n\n  Azure Interior  \n\nin the Customer field.",
+        [{ text: "Azure Interior" }]
+      )
+    ).toBe("Select Azure Interior in the Customer field.");
+  });
+
+  it("leaves text unchanged when there are no targets", () => {
+    const text = "Line one\nLine two";
+    expect(stripNewlinesAroundCopyTargets(text, [])).toBe(text);
+    expect(stripNewlinesAroundCopyTargets(text, null)).toBe(text);
+  });
+
+  it("does not touch newlines unrelated to a copy target, e.g. bullet lists", () => {
+    const text = "Hi, I'm Odoo Tutor.\n• Practice exercises\n• Answer questions";
+    expect(stripNewlinesAroundCopyTargets(text, [{ text: "Odoo Tutor" }])).toBe(
+      text
+    );
+  });
+
+  it("handles several distinct targets in the same message", () => {
+    expect(
+      stripNewlinesAroundCopyTargets(
+        "Enter\n25000\nin Expected Revenue and select\nMitchell Admin\nas Salesperson.",
+        [{ text: "25000" }, { text: "Mitchell Admin" }]
+      )
+    ).toBe(
+      "Enter 25000 in Expected Revenue and select Mitchell Admin as Salesperson."
+    );
   });
 });
 

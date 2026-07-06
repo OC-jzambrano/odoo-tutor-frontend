@@ -69,6 +69,40 @@ export function buildCopySegments(text, targets) {
 }
 
 /**
+ * LLM-generated instructions occasionally put a copy-target value on its
+ * own line (e.g. "Set the Quantity of Premium Desk to\n4\n."). The bubble
+ * preview renders plain text, where stray newlines just collapse into
+ * whitespace, so it looks fine there — but the full chat view renders
+ * through nlux's markdown parser, which turns those newlines into real
+ * line/paragraph breaks, stranding the value chip (and any trailing
+ * punctuation) on their own line.
+ *
+ * This glues a copy target's value back into its sentence by collapsing
+ * newlines that sit directly against a known target's exact text into a
+ * single space, without touching newlines anywhere else in the message
+ * (e.g. intentional bullet lists, which never have copy targets).
+ *
+ * @param {string} text
+ * @param {Array<{text: string}>} targets
+ * @returns {string}
+ */
+export function stripNewlinesAroundCopyTargets(text, targets) {
+  let result = String(text ?? "");
+
+  const sorted = (Array.isArray(targets) ? targets : [])
+    .filter((t) => t && t.text != null && String(t.text).trim() !== "")
+    .sort((a, b) => String(b.text).length - String(a.text).length);
+
+  for (const target of sorted) {
+    const needle = String(target.text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`[ \\t]*\\n+[ \\t]*(${needle})[ \\t]*\\n+[ \\t]*`, "gi");
+    result = result.replace(re, " $1 ");
+  }
+
+  return result.replace(/[ \t]{2,}/g, " ").trim();
+}
+
+/**
  * Normalizes assistant text the same way ai_sidebar.js does before using it
  * as a lookup key, so copy targets registered against a raw tutor_push
  * payload can be matched against the (possibly reformatted) rendered DOM
