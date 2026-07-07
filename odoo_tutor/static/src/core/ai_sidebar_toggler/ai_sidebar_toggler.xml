@@ -22,6 +22,7 @@
                     <div class="ai-owl-preview"
                          role="button"
                          tabindex="0"
+                         data-ai-tutor-ignore-event="true"
                          t-on-click.stop.prevent="toggleChat"
                          t-on-mouseenter="pausePreview"
                          t-on-mouseleave="resumePreview">
