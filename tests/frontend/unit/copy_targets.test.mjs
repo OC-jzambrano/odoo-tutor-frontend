@@ -106,7 +106,7 @@ describe("stripNewlinesAroundCopyTargets", () => {
         "Set the Quantity of Premium Desk to\n4\n.",
         [{ text: "4" }]
       )
-    ).toBe("Set the Quantity of Premium Desk to 4 .");
+    ).toBe("Set the Quantity of Premium Desk to 4.");
   });
 
   it("handles multiple newlines and surrounding spaces around the target", () => {
@@ -129,6 +129,62 @@ describe("stripNewlinesAroundCopyTargets", () => {
     expect(stripNewlinesAroundCopyTargets(text, [{ text: "Odoo Tutor" }])).toBe(
       text
     );
+  });
+
+  it("glues a markdown-bold value stranded on its own line back into the sentence", () => {
+    expect(
+      stripNewlinesAroundCopyTargets(
+        "Good job. In the Product field, create a new storable product named\n**Product Z**\n.",
+        [{ text: "Product Z" }]
+      )
+    ).toBe(
+      "Good job. In the Product field, create a new storable product named **Product Z**."
+    );
+  });
+
+  it("glues punctuation that immediately follows a stranded copy target", () => {
+    expect(
+      stripNewlinesAroundCopyTargets("Create\nProduct Z\n, then save.", [
+        { text: "Product Z" },
+      ])
+    ).toBe("Create Product Z, then save.");
+    expect(
+      stripNewlinesAroundCopyTargets("Create\nProduct Z\n. Then save.", [
+        { text: "Product Z" },
+      ])
+    ).toBe("Create Product Z. Then save.");
+  });
+
+  it("normalizes the screenshot Product Z message end-to-end", () => {
+    expect(
+      stripNewlinesAroundCopyTargets(
+        "Good job. In the Product field, create a new storable product named\n**Product Z**\n.",
+        [{ text: "Product Z", field: "name", field_label: "Product" }]
+      )
+    ).toBe(
+      "Good job. In the Product field, create a new storable product named **Product Z**."
+    );
+  });
+
+  it("handles backtick-wrapped values around newlines", () => {
+    expect(
+      stripNewlinesAroundCopyTargets("Type\n`SO001`\nin the field.", [
+        { text: "SO001" },
+      ])
+    ).toBe("Type `SO001` in the field.");
+  });
+
+  it("glues a value with a newline on only one side", () => {
+    expect(
+      stripNewlinesAroundCopyTargets("Create a product named\n**Product Z**.", [
+        { text: "Product Z" },
+      ])
+    ).toBe("Create a product named **Product Z**.");
+    expect(
+      stripNewlinesAroundCopyTargets("Enter 4\nin the Quantity field.", [
+        { text: "4" },
+      ])
+    ).toBe("Enter 4 in the Quantity field.");
   });
 
   it("handles several distinct targets in the same message", () => {

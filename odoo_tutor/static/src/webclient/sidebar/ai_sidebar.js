@@ -876,6 +876,18 @@ export class AiSidebar extends Component {
         }
     }
 
+    _prepareAssistantDisplayText(rawText, copyTargets) {
+        const cleaned = String(rawText || "").trim();
+        if (!cleaned) return "";
+
+        const displayText = stripNewlinesAroundCopyTargets(
+            translateKnownTutorText(cleaned),
+            copyTargets
+        );
+        this._registerCopyTargets(displayText, copyTargets);
+        return displayText;
+    }
+
     _highlightCopyTargets(items) {
         const registry = getCopyTargetsRegistry();
         if (!registry.size) return;
@@ -1431,6 +1443,19 @@ export class AiSidebar extends Component {
         ).trim();
     }
 
+    _extractCopyTargets(payload) {
+        if (!payload || typeof payload !== "object") return [];
+
+        const candidates = [
+            payload.copy_targets,
+            payload.result?.copy_targets,
+            payload.data?.copy_targets,
+            payload.raw?.copy_targets,
+        ];
+
+        return candidates.find((value) => Array.isArray(value)) || [];
+    }
+
     _isWelcomePromptPayload(payload) {
         if (!payload || typeof payload !== "object") return false;
 
@@ -1826,7 +1851,10 @@ export class AiSidebar extends Component {
 
         try {
             const response = await this._sendExerciseChoiceToWs({ exerciseId: normalizedExerciseId, answer, action });
-            const responseText = this._extractResponseText(response);
+            const responseText = this._prepareAssistantDisplayText(
+                this._extractResponseText(response),
+                this._extractCopyTargets(response)
+            );
 
             if (responseText && !this._isDuplicateAssistantText(responseText)) {
                 // Same ordering guard as onSkipStep/_onTutorPush: if the
@@ -1870,7 +1898,10 @@ export class AiSidebar extends Component {
                 answer: "No",
                 action: "cancel",
             });
-            const responseText = this._extractResponseText(response);
+            const responseText = this._prepareAssistantDisplayText(
+                this._extractResponseText(response),
+                this._extractCopyTargets(response)
+            );
             this.cancelProcess();
 
             if (responseText && !this._isDuplicateAssistantText(responseText)) {
@@ -1920,7 +1951,11 @@ export class AiSidebar extends Component {
             );
             const responseText = getVisibleSkipResponse(
                 response,
-                (payload) => this._extractResponseText(payload),
+                (payload) =>
+                    this._prepareAssistantDisplayText(
+                        this._extractResponseText(payload),
+                        this._extractCopyTargets(payload)
+                    ),
                 (text) => this._isDuplicateAssistantText(text)
             );
             if (responseText) {
@@ -2604,11 +2639,10 @@ export class AiSidebar extends Component {
 
             const cleaned = String(text || "").trim();
             if (!cleaned) return;
-            const displayText = stripNewlinesAroundCopyTargets(
-                translateKnownTutorText(cleaned),
-                msg.copy_targets
+            const displayText = this._prepareAssistantDisplayText(
+                cleaned,
+                this._extractCopyTargets(msg)
             );
-            this._registerCopyTargets(displayText, msg.copy_targets);
             const isExerciseCompleted = this._isExerciseCompletedPayload(msg);
 
             const allowExercisePromptWhileActive = this._isExerciseResumePromptText(cleaned);
@@ -2885,8 +2919,18 @@ export class AiSidebar extends Component {
     async sendMessage(message) {
         this._expectingAssistant = true;
         const data = await this.aiWs.chat({ message, context: this.state.currentContext });
-        const text = this._extractResponseText(data);
-        return { result: { response: text, exercise_id: this._extractExerciseId(data) }, raw: data };
+        const text = this._prepareAssistantDisplayText(
+            this._extractResponseText(data),
+            this._extractCopyTargets(data)
+        );
+        return {
+            result: {
+                response: text,
+                exercise_id: this._extractExerciseId(data),
+                copy_targets: this._extractCopyTargets(data),
+            },
+            raw: data,
+        };
     }
 
     createAiChat() {
@@ -3022,7 +3066,7 @@ export class AiSidebar extends Component {
                 this.completeProcess();
             }
 
-            return new String(translateKnownTutorText(messageText));
+            return new String(messageText);
         } catch (error) {
             return `Error: ${error.message}`;
         } finally {

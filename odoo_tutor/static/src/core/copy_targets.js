@@ -93,10 +93,29 @@ export function stripNewlinesAroundCopyTargets(text, targets) {
     .filter((t) => t && t.text != null && String(t.text).trim() !== "")
     .sort((a, b) => String(b.text).length - String(a.text).length);
 
+  // The LLM may wrap the value in markdown emphasis or backticks
+  // (e.g. "**Product Z**"), which sit between the newline and the target's
+  // raw text — so the match must tolerate them on both edges.
+  const MD_WRAP = "(?:\\*{1,2}|_{1,2}|`)?";
+
   for (const target of sorted) {
     const needle = String(target.text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`[ \\t]*\\n+[ \\t]*(${needle})[ \\t]*\\n+[ \\t]*`, "gi");
-    result = result.replace(re, " $1 ");
+    const wrapped = `${MD_WRAP}${needle}${MD_WRAP}`;
+
+    // Newline(s) immediately before the (possibly markdown-wrapped) value.
+    result = result.replace(
+      new RegExp(`[ \\t]*\\n+[ \\t]*(${wrapped})`, "gi"),
+      " $1"
+    );
+    // Newline(s) immediately after it (strands trailing punctuation like ".").
+    result = result.replace(
+      new RegExp(`(${wrapped})[ \\t]*\\n+[ \\t]*([.,;:!?])`, "gi"),
+      "$1$2"
+    );
+    result = result.replace(
+      new RegExp(`(${wrapped})[ \\t]*\\n+[ \\t]*`, "gi"),
+      "$1 "
+    );
   }
 
   return result.replace(/[ \t]{2,}/g, " ").trim();
