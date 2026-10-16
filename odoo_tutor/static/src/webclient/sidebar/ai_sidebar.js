@@ -2920,13 +2920,20 @@ export class AiSidebar extends Component {
     async sendMessage(message) {
         this._expectingAssistant = true;
         let data;
+        const currentContext = this.state.currentContext || this.contextService?.getContext?.() || {};
+        const safeContext = {
+            ...currentContext,
+            model: currentContext.model || this._getCurrentBreadcrumbPath() || "base",
+        };
+
         try {
             data = await this.rpc("/odoo_tutor/chat", {
                 message: message,
+                context: safeContext,
             });
         } catch (error) {
             try {
-                data = await this.aiWs.chat({ message, context: this.state.currentContext });
+                data = await this.aiWs.chat({ message, context: safeContext });
             } catch (wsErr) {
                 data = { error: true, response: error?.message || String(error) };
             }
