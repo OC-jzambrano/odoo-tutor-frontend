@@ -1,33 +1,29 @@
-<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <record id="res_config_settings_view_form_inherit_chatbot" model="ir.ui.view">
-        <field name="name">res.config.settings.view.form.inherit.chatbot</field>
+    <record id="res_config_settings_view_form_odoo_tutor" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.odoo.tutor</field>
         <field name="model">res.config.settings</field>
-        <field name="inherit_id" ref="base.res_config_settings_view_form" />
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//block[@id='user_default_rights']" position="inside">
-                <setting
-                    string="Chatbot API"
-                    help="Configure chatbot connection settings"
-                >
-                    <div class="content-group mt16">
-                        <label
-                            for="chatbot_ws_base_url"
-                            class="o_light_label mr8"
-                        >WebSocket URL</label>
-                        <field
-                            name="chatbot_ws_base_url"
-                            placeholder="wss://tutor-backend.odooconcept.com/ws"
-                        />
-                    </div>
-                    <div class="content-group mt16">
-                        <label
-                            for="chatbot_api_key"
-                            class="o_light_label mr8"
-                        >API Key</label>
-                        <field name="chatbot_api_key" password="True" />
-                    </div>
-                </setting>
+            <xpath expr="//form" position="inside">
+                <app data-string="Odoo AI Tutor" string="Odoo AI Tutor" name="odoo_tutor">
+                    <block title="Configuración de IA (BYOK)" name="odoo_tutor_setting_container">
+                        <setting string="OpenAI API Key" help="Introduce tu propia API Key de OpenAI (sk-...) para usar Odoo Tutor gratis.">
+                            <field name="odoo_tutor_openai_key" password="True" placeholder="sk-proj-..."/>
+                        </setting>
+                        <setting string="Servidor Backend" help="URL del servicio de ejercicios y evaluación de Odoo Tutor.">
+                            <field name="odoo_tutor_backend_url" placeholder="https://api.tudominio.com"/>
+                        </setting>
+                    </block>
+                    <block title="Conexión WebSocket (Opcional)" name="odoo_tutor_ws_container">
+                        <setting string="WebSocket URL" help="URL del servidor WebSocket para sesiones interactivas.">
+                            <field name="chatbot_ws_base_url" placeholder="wss://tutor-backend.odooconcept.com/ws"/>
+                        </setting>
+                        <setting string="API Key WebSocket" help="Clave de autenticación para el servidor WebSocket.">
+                            <field name="chatbot_api_key" password="True"/>
+                        </setting>
+                    </block>
+                </app>
             </xpath>
         </field>
     </record>

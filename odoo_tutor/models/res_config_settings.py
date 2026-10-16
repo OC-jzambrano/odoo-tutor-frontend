@@ -6,6 +6,18 @@ from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
 class ResConfigSettings(models.TransientModel):
     _inherit = "res.config.settings"
 
+    odoo_tutor_openai_key = fields.Char(
+        string="OpenAI API Key (BYOK)",
+        config_parameter="odoo_tutor.openai_key",
+        help="Introduce tu clave sk-... de OpenAI para activar el tutor de IA.",
+    )
+    odoo_tutor_backend_url = fields.Char(
+        string="Odoo Tutor Backend URL",
+        config_parameter="odoo_tutor.backend_url",
+        default="http://localhost:8001",
+        help="URL del servidor ms_ai de Odoo Tutor.",
+    )
+
     chatbot_ws_base_url = fields.Char(string="WebSocket URL")
     chatbot_api_key = fields.Char(string="API Key")
 

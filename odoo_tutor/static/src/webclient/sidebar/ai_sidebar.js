@@ -181,6 +181,7 @@ export class AiSidebar extends Component {
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
         this.aiChatStore = useService("ai_chat_store");
+        this.rpc = useService("rpc");
 
         // -------------------------
         // Refs
@@ -2918,7 +2919,18 @@ export class AiSidebar extends Component {
 
     async sendMessage(message) {
         this._expectingAssistant = true;
-        const data = await this.aiWs.chat({ message, context: this.state.currentContext });
+        let data;
+        try {
+            data = await this.rpc("/odoo_tutor/chat", {
+                message: message,
+            });
+        } catch (error) {
+            try {
+                data = await this.aiWs.chat({ message, context: this.state.currentContext });
+            } catch (wsErr) {
+                data = { error: true, response: error?.message || String(error) };
+            }
+        }
         const text = this._prepareAssistantDisplayText(
             this._extractResponseText(data),
             this._extractCopyTargets(data)
@@ -2930,6 +2942,7 @@ export class AiSidebar extends Component {
                 copy_targets: this._extractCopyTargets(data),
             },
             raw: data,
+            response: text,
         };
     }
 
