@@ -2926,14 +2926,20 @@ export class AiSidebar extends Component {
             model: currentContext.model || this._getCurrentBreadcrumbPath() || "base",
         };
 
+        const sessionId = this.aiWs?.wsSessionId || window.__AI_TUTOR_WS_SESSION_ID || null;
+
         try {
             data = await this.rpc("/odoo_tutor/chat", {
                 message: message,
                 context: safeContext,
+                session_id: sessionId,
             });
+            if (data?.session_id) {
+                window.__AI_TUTOR_WS_SESSION_ID = data.session_id;
+            }
         } catch (error) {
             try {
-                data = await this.aiWs.chat({ message, context: safeContext });
+                data = await this.aiWs.chat({ message, context: safeContext, session_id: sessionId });
             } catch (wsErr) {
                 data = { error: true, response: error?.message || String(error) };
             }

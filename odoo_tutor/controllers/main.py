@@ -12,27 +12,35 @@ _logger = logging.getLogger(__name__)
 class OdooTutorController(http.Controller):
 
     @http.route('/odoo_tutor/chat', type='jsonrpc', auth='user', methods=['POST'])
-    def tutor_chat(self, message=None, context=None, **kwargs):
+    def tutor_chat(self, message=None, context=None, session_id=None, **kwargs):
         """
         Proxy controller between OWL frontend and FastAPI AI microservice:
-        - Forwards user's message and active Odoo context.
+        - Forwards user's message, active Odoo context, and session identifier.
         - Injects user's OpenAI API key (BYOK) via X-OpenAI-Key header.
         - Injects backend authentication credential via X-API-Key header.
         """
-        # Resolve message and context from parameters or request body
+        # Resolve message, context, and session_id from parameters or request body
         if not message:
             message = kwargs.get('message')
         if not context:
             context = kwargs.get('context')
+        if not session_id:
+            session_id = kwargs.get('session_id')
 
-        if (not message or not context) and request.httprequest.data:
+        if request.httprequest.data:
             try:
                 raw_body = json.loads(request.httprequest.data.decode('utf-8'))
                 params_body = raw_body.get('params', {})
                 message = message or params_body.get('message') or raw_body.get('message')
                 context = context or params_body.get('context') or raw_body.get('context')
+                session_id = session_id or params_body.get('session_id') or raw_body.get('session_id')
             except Exception:
                 pass
+
+        if not session_id:
+            user_rec = getattr(getattr(request, 'env', None), 'user', None)
+            uid = getattr(user_rec, 'id', None) or 'default'
+            session_id = f"odoo_user_{uid}"
 
         # Validate message
         if not message or not isinstance(message, str) or not message.strip():
@@ -63,6 +71,7 @@ class OdooTutorController(http.Controller):
         payload = {
             "message": message.strip(),
             "context": context,
+            "session_id": str(session_id).strip(),
         }
 
         headers = {
