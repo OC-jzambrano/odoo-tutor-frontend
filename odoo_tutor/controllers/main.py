@@ -1,6 +1,8 @@
 import json
 import logging
+
 import requests
+
 from odoo import http
 from odoo.http import request
 
@@ -9,7 +11,7 @@ _logger = logging.getLogger(__name__)
 
 class OdooTutorController(http.Controller):
 
-    @http.route('/odoo_tutor/chat', type='json', auth='user', methods=['POST'])
+    @http.route('/odoo_tutor/chat', type='jsonrpc', auth='user', methods=['POST'])
     def tutor_chat(self, message=None, context=None, **kwargs):
         """
         Proxy controller between OWL frontend and FastAPI AI microservice:
@@ -108,5 +110,5 @@ class OdooTutorController(http.Controller):
             _logger.exception("Error connecting to Odoo Tutor backend: %s", e)
             return {
                 "error": True,
-                "response": f"No se pudo conectar con el servidor de Odoo Tutor: {str(e)}"
+                "response": f"No se pudo conectar con el servidor de Odoo Tutor: {e!s}"
             }
