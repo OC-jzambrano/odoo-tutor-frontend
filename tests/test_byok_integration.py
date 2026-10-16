@@ -23,6 +23,10 @@ class TestManifestAndAssets:
         for key in required_keys:
             assert key in manifest_data, f"Missing key in __manifest__.py: {key}"
 
+        # Odoo Apps store vendor guidelines
+        assert len(manifest_data["name"]) <= 25, "Module name must be <= 25 characters for Odoo Apps Store"
+        assert manifest_data["version"].startswith("20.0."), f"Expected version starting with '20.0.', got {manifest_data['version']}"
+
         # Verify depends
         assert "base" in manifest_data["depends"]
         assert "web" in manifest_data["depends"]
@@ -299,7 +303,11 @@ class TestEndToEndChain:
         mock_odoo.tools = mock_tools
         mock_odoo.api = mock_api
 
-        with patch.dict(sys.modules, {
+        with patch.dict(os.environ, {
+            "OPENAI_MODEL": "gpt-4o-2024-11-20",
+            "OPENAI_API_KEY": "sk-dummy-test-key",
+            "API_KEY": "your-super-secret-key-123",
+        }), patch.dict(sys.modules, {
             "odoo": mock_odoo,
             "odoo.http": mock_http,
             "odoo.models": mock_models,
@@ -308,7 +316,10 @@ class TestEndToEndChain:
             "odoo.api": mock_api,
         }):
             import odoo_tutor.controllers.main as main_mod
-            from ms_ai.app.main import app as fastapi_app
+            try:
+                from ms_ai.app.main import app as fastapi_app
+            except ImportError:
+                from ai.main import app as fastapi_app
             from fastapi.testclient import TestClient
 
             self.main_mod = main_mod
@@ -316,50 +327,53 @@ class TestEndToEndChain:
             self.controller = main_mod.OdooTutorController()
             yield
 
-    @patch("ms_ai.app.main.ChatOpenAI")
-    def test_complete_e2e_request_chain(self, mock_chat_openai):
-        # 1. Mock OpenAI
-        mock_llm_instance = MagicMock()
-        mock_llm_response = MagicMock()
-        mock_llm_response.content = "Para confirmar el pedido en sale.order, haz clic en Confirmar."
-        mock_llm_instance.invoke.return_value = mock_llm_response
-        mock_chat_openai.return_value = mock_llm_instance
+    def test_complete_e2e_request_chain(self):
+        target = "ai.api.routes.chat.ChatOpenAI" if "ai.api.routes.chat" in sys.modules else "ms_ai.app.main.ChatOpenAI"
+        with patch(target, create=True) as mock_chat_openai:
+            # 1. Mock OpenAI
+            from unittest.mock import AsyncMock
+            mock_llm_instance = MagicMock()
+            mock_llm_response = MagicMock()
+            mock_llm_response.content = "Para confirmar el pedido en sale.order, haz clic en Confirmar."
+            mock_llm_instance.invoke.return_value = mock_llm_response
+            mock_llm_instance.ainvoke = AsyncMock(return_value=mock_llm_response)
+            mock_chat_openai.return_value = mock_llm_instance
 
-        # 2. Configure Odoo ir.config_parameter
-        mock_request = self.main_mod.request
-        mock_params = MagicMock()
-        mock_params.get_param.side_effect = lambda key, default=None: {
-            "odoo_tutor.openai_key": "sk-customer-test-key",
-            "odoo_tutor.backend_url": "http://fastapi-test",
-            "odoo_tutor.chatbot_api_key": "your-super-secret-key-123",
-        }.get(key, default)
-        mock_request.env = {"ir.config_parameter": MagicMock(sudo=MagicMock(return_value=mock_params))}
-        mock_request.params = {}
+            # 2. Configure Odoo ir.config_parameter
+            mock_request = self.main_mod.request
+            mock_params = MagicMock()
+            mock_params.get_param.side_effect = lambda key, default=None: {
+                "odoo_tutor.openai_key": "sk-customer-test-key",
+                "odoo_tutor.backend_url": "http://fastapi-test",
+                "odoo_tutor.chatbot_api_key": "your-super-secret-key-123",
+            }.get(key, default)
+            mock_request.env = {"ir.config_parameter": MagicMock(sudo=MagicMock(return_value=mock_params))}
+            mock_request.params = {}
 
-        # 3. Intercept requests.post in controller and pipe directly to fastapi_client
-        def simulated_network_post(url, json=None, headers=None, timeout=None):
-            path = url.replace("http://fastapi-test", "")
-            fastapi_res = self.fastapi_client.post(path, json=json, headers=headers)
-            # Create a mock requests.Response matching the FastAPI TestClient response
-            resp = requests.Response()
-            resp.status_code = fastapi_res.status_code
-            resp._content = fastapi_res.content
-            resp.headers = fastapi_res.headers
-            return resp
+            # 3. Intercept requests.post in controller and pipe directly to fastapi_client
+            def simulated_network_post(url, json=None, headers=None, timeout=None):
+                path = url.replace("http://fastapi-test", "")
+                fastapi_res = self.fastapi_client.post(path, json=json, headers=headers)
+                # Create a mock requests.Response matching the FastAPI TestClient response
+                resp = requests.Response()
+                resp.status_code = fastapi_res.status_code
+                resp._content = fastapi_res.content
+                resp.headers = fastapi_res.headers
+                return resp
 
-        with patch("odoo_tutor.controllers.main.requests.post", side_effect=simulated_network_post):
-            # 4. User invokes tutor_chat from Odoo OWL sidebar
-            result = self.controller.tutor_chat(
-                message="¿Cómo confirmo un pedido de venta?",
-                context={"model": "sale.order", "res_id": 42}
+            with patch("odoo_tutor.controllers.main.requests.post", side_effect=simulated_network_post):
+                # 4. User invokes tutor_chat from Odoo OWL sidebar
+                result = self.controller.tutor_chat(
+                    message="¿Cómo confirmo un pedido de venta?",
+                    context={"model": "sale.order", "res_id": 42}
+                )
+
+            # 5. Verify the full chain outcome
+            assert result.get("error") is None or result.get("error") is False
+            assert result.get("response") == "Para confirmar el pedido en sale.order, haz clic en Confirmar."
+
+            # Verify ChatOpenAI was instantiated with customer's key
+            mock_chat_openai.assert_called_once_with(
+                model="gpt-4o-2024-11-20",
+                api_key="sk-customer-test-key"
             )
-
-        # 5. Verify the full chain outcome
-        assert result.get("error") is None or result.get("error") is False
-        assert result.get("response") == "Para confirmar el pedido en sale.order, haz clic en Confirmar."
-
-        # Verify ChatOpenAI was instantiated with customer's key
-        mock_chat_openai.assert_called_once_with(
-            model="gpt-4o-2024-11-20",
-            api_key="sk-customer-test-key"
-        )
