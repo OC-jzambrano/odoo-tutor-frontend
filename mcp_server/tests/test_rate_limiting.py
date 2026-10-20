@@ -72,7 +72,7 @@ class TestRateLimiting(common.TransactionCase):
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
             limit = rate_limiting.get_request_limit()
-            self.assertEqual(limit, 0)  # Should return 0 for unlimited
+            self.assertEqual(limit, 0)
 
     def test_get_request_limit_minimum_enforced(self):
         """Test that minimum request limit is enforced"""
@@ -87,7 +87,7 @@ class TestRateLimiting(common.TransactionCase):
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
             limit = rate_limiting.get_request_limit()
-            self.assertEqual(limit, rate_limiting.MINIMUM_REQUEST_LIMIT)  # Should be 10
+            self.assertEqual(limit, rate_limiting.MINIMUM_REQUEST_LIMIT)
 
     @mute_logger("odoo.addons.mcp_server.controllers.rate_limiting")
     def test_get_request_limit_invalid_value(self):
@@ -105,7 +105,7 @@ class TestRateLimiting(common.TransactionCase):
             limit = rate_limiting.get_request_limit()
             self.assertEqual(
                 limit, rate_limiting.DEFAULT_REQUEST_LIMIT
-            )  # Should fallback to 300
+            )
 
     def test_record_api_request(self):
         """Test recording API requests"""
@@ -154,7 +154,7 @@ class TestRateLimiting(common.TransactionCase):
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
             result = rate_limiting.check_rate_limit(user_id)
-            self.assertTrue(result)  # Should be within limit
+            self.assertTrue(result)
 
     def test_check_rate_limit_within_limit(self):
         """Test rate limit check within limit"""
@@ -171,7 +171,7 @@ class TestRateLimiting(common.TransactionCase):
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
             result = rate_limiting.check_rate_limit(user_id)
-            self.assertTrue(result)  # Should be within limit
+            self.assertTrue(result)
 
     def test_check_rate_limit_exceeded(self):
         """Test rate limit check when limit is exceeded"""
@@ -189,11 +189,11 @@ class TestRateLimiting(common.TransactionCase):
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
             # Record requests exceeding the limit of 12
-            for _ in range(13):  # More than the limit of 12
+            for _ in range(13):
                 rate_limiting.record_api_request(user_id)
 
             result = rate_limiting.check_rate_limit(user_id)
-            self.assertFalse(result)  # Should exceed limit
+            self.assertFalse(result)
 
     def test_check_rate_limit_old_requests_ignored(self):
         """Test that old requests don't count towards limit"""
@@ -208,7 +208,7 @@ class TestRateLimiting(common.TransactionCase):
         old_time = datetime.now(timezone.utc) - timedelta(minutes=2)
         rate_limiting._api_request_cache[user_id] = [
             old_time
-        ] * 15  # More than limit but old
+        ] * 15
 
         mock_request = MagicMock()
         mock_request.env = self.env
@@ -217,7 +217,7 @@ class TestRateLimiting(common.TransactionCase):
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
             result = rate_limiting.check_rate_limit(user_id)
-            self.assertTrue(result)  # Should be within limit (old requests ignored)
+            self.assertTrue(result)
 
     def test_check_rate_limit_unlimited(self):
         """Test rate limit check with unlimited setting (0)"""
@@ -235,11 +235,11 @@ class TestRateLimiting(common.TransactionCase):
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
             # Record many requests
-            for _ in range(1000):  # Way more than any reasonable limit
+            for _ in range(1000):
                 rate_limiting.record_api_request(user_id)
 
             result = rate_limiting.check_rate_limit(user_id)
-            self.assertTrue(result)  # Should always pass with unlimited
+            self.assertTrue(result)
 
     def test_rate_limit_decorator_enabled_within_limit(self):
         """Test rate limit decorator when enabled and within limit"""
@@ -322,13 +322,13 @@ class TestRateLimiting(common.TransactionCase):
         with patch(
             "odoo.addons.mcp_server.controllers.rate_limiting.request", mock_request
         ):
-            result = test_endpoint()  # No user provided
+            result = test_endpoint()
             self.assertEqual(result["success"], True)
 
             # Check that anonymous request was recorded
             self.assertIn(
                 -1, rate_limiting._api_request_cache
-            )  # Anonymous user ID is -1
+            )
 
     def test_rate_limit_decorator_anonymous_exceeded(self):
         """Test rate limit decorator for anonymous user when limit exceeded"""
@@ -356,7 +356,7 @@ class TestRateLimiting(common.TransactionCase):
             ):
                 # Fill anonymous cache to exceed limit of 11
                 for _ in range(12):
-                    rate_limiting.record_api_request(-1)  # Anonymous user ID
+                    rate_limiting.record_api_request(-1)
 
                 result = test_endpoint()
                 self.assertEqual(result, mock_error_response)

@@ -21,7 +21,8 @@ def get_user_from_api_key(api_key):
     try:
         user_id = (
             request.env["res.users.apikeys"]
-            .sudo()  # sudo: validate API key without user context
+            # Validate the API key without the current user context.
+            .sudo()
             ._check_credentials(scope="rpc", key=api_key)
         )
         if not user_id:

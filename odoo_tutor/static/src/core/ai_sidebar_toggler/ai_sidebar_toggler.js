@@ -1,7 +1,7 @@
 /* eslint-disable */
 /** @odoo-module **/
 
-import { Component, onMounted, onWillUnmount, useState } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, proxy, signal } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
@@ -9,12 +9,7 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
-import "../action_service_context_hook";
-
-// ---------------------
 // Helpers
-// ---------------------
-
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
     "instruction_push",
@@ -32,6 +27,12 @@ const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
 const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
 const HINT_BADGE_AUTO_HIDE_MS = 15000;
+
+function makeRef() {
+    const ref = signal(null);
+    Object.defineProperty(ref, "el", { get: () => ref() });
+    return ref;
+}
 function normalizePreviewTimestamp(ts) {
     const now = Date.now();
 
@@ -404,13 +405,9 @@ function buildTargetElement(el, uiType, uniqueKey, labelKey) {
 
     return uniqueKey || `${tag}.unknown`;
 }
-
-// ---------------------
 // Component
-// ---------------------
 class AiFloatingButton extends Component {
     static template = "ai_chat.AiFloatingButton";
-    static props = {};
 
     setup() {
         this.actionService = useService("action");
@@ -429,8 +426,9 @@ class AiFloatingButton extends Component {
         this._suppressNextClick = false;
         this._rafDrag = null;
         this._showButtonGraceUntil = 0;
+        this.floatingRoot = makeRef();
 
-        this.state = useState({
+        this.state = proxy({
             showButton: false,
             chatOpen: false,
             dragging: false,
@@ -605,24 +603,7 @@ class AiFloatingButton extends Component {
             this._onTutorHintForBadge({ kind: "tutor_hint", data });
         };
 
-        // Skipping a step must go through the same code path as the in-chat
-        // skip button (ai_sidebar.js#onSkipStep), otherwise the two surfaces
-        // drift apart: whichever one makes the aiWs.chat() call is the only
-        // one that gets to push the resulting instruction into the visible
-        // nlux conversation. We only dispatch the request here (mirroring
-        // the EXERCISE_CHOICE_EVENT start/cancel pattern below) and let
-        // ai_sidebar.js perform the actual call + history update; this
-        // component's own preview/bubble state is kept in sync afterwards
-        // via the normal chat_final broadcast in _onPreviewMessage.
-        // Skipping a step must go through the same code path as the in-chat
-        // skip button (ai_sidebar.js#onSkipStep), otherwise the two surfaces
-        // drift apart: whichever one makes the aiWs.chat() call is the only
-        // one that gets to push the resulting instruction into the visible
-        // nlux conversation. We only dispatch the request here (mirroring
-        // the EXERCISE_CHOICE_EVENT start/cancel pattern below) and let
-        // ai_sidebar.js perform the actual call + history update; this
-        // component's own preview/bubble state is kept in sync afterwards
-        // via the normal chat_final broadcast in _onPreviewMessage.
+        // Delegate skip requests to the sidebar so chat history and preview state stay synchronized.
         this.onSkipOptionalStep = () => {
             if (
                 !this.state.optionalStepVisible ||
@@ -1209,7 +1190,7 @@ class AiFloatingButton extends Component {
     }
 
     _getWidgetRect() {
-        const root = this.el?.querySelector?.(".ai-floating-button");
+        const root = this.floatingRoot.el;
         if (!root) return { width: 90, height: 90 };
 
         const rect = root.getBoundingClientRect();

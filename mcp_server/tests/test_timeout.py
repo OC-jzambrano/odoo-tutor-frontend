@@ -15,7 +15,7 @@ class TestRequestTimeout(common.TransactionCase):
         # Set default timeout configuration
         self.env["ir.config_parameter"].sudo().set_param(
             "mcp_server.request_timeout", "2"
-        )  # 2 seconds for testing
+        )
 
     def test_request_timeout_decorator_success(self):
         """Test that request completes successfully within timeout"""
@@ -41,7 +41,7 @@ class TestRequestTimeout(common.TransactionCase):
         @rate_limiting.request_timeout
         def slow_endpoint():
             # Simulate a slow operation that exceeds timeout
-            time.sleep(3)  # Longer than our 2 second timeout
+            time.sleep(3)
             return {"success": True}
 
         mock_request = MagicMock()

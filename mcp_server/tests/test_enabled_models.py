@@ -19,9 +19,7 @@ class TestMcpEnabledModels(TransactionCase):
             [("model", "=", "res.users")], limit=1
         )
 
-        # Ensure test isolation by cleaning up any existing
-        # res.users enabled model records
-        # that might have been created by other tests
+        # Remove stale res.users records left by other tests.
         existing_user_models = self.env["mcp.enabled.model"].search(
             [("model_id", "=", self.user_model.id)]
         )
@@ -137,8 +135,7 @@ class TestMcpEnabledModels(TransactionCase):
     @mute_logger("odoo.sql_db")
     def test_unique_constraint(self):
         """Test that the same model cannot be enabled twice."""
-        # Try to create another record for the same model
-        # Find a different model to use for this test
+        # Find a different model before creating another record.
         different_model = self.env["ir.model"].search(
             [
                 ("model", "not like", "ir.%"),
@@ -164,8 +161,7 @@ class TestMcpEnabledModels(TransactionCase):
             }
         )
 
-        # Now try to create a duplicate, which should fail
-        # The model has an SQL constraint, so it will raise IntegrityError
+        # Create a duplicate to verify the SQL constraint raises IntegrityError.
         with mute_logger("odoo.sql_db"):
             with self.assertRaises(IntegrityError):
                 self.env["mcp.enabled.model"].create(

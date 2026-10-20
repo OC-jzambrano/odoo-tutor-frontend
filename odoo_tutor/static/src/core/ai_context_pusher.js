@@ -8,7 +8,7 @@ function extractModelFromHash() {
   const s = hash.startsWith("#") ? hash.slice(1) : hash;
   const params = new URLSearchParams(s);
 
-  // Odoo suele usar model=
+  // Odoo commonly uses the model parameter.
   return (
     params.get("model") ||
     params.get("active_model") ||
@@ -49,7 +49,7 @@ function getCurrentRouteFromDom() {
 
 export const aiContextPushService = {
   start(env) {
-    // ✅ si el archivo se carga dos veces, no dupliques listeners
+    // Prevent duplicate listeners if the file is loaded more than once.
     if (window.__AI_TUTOR_CONTEXT_PUSH_INSTALLED) {
       return {};
     }
@@ -73,17 +73,17 @@ export const aiContextPushService = {
       aiWs?.sendLiveContext?.({ context_model: model, route });
     };
 
-    // 1) al cargar
+    // Emit the initial context after startup.
     setTimeout(emit, 0);
     requestAnimationFrame(() => emit());
 
-    // 2) al navegar
+    // Emit context when the user navigates.
     let remove = null;
     try {
-      // en Odoo router.addListener suele devolver función de unsubscribe
+      // Odoo's router listener usually returns an unsubscribe function.
       remove = router?.addListener?.(() => emit());
     } catch (e) {
-      // fallback: escucha hashchange nativo
+      // Fall back to the native hashchange event.
       window.addEventListener("hashchange", emit, true);
       remove = () => window.removeEventListener("hashchange", emit, true);
     }
@@ -96,7 +96,7 @@ export const aiContextPushService = {
   },
 };
 
-// ✅ registrar una sola vez
+// Register the service only once.
 if (!window.__AI_TUTOR_CONTEXT_PUSH_SERVICE_REGISTERED) {
   window.__AI_TUTOR_CONTEXT_PUSH_SERVICE_REGISTERED = true;
   registry.category("services").add("ai_context_push", aiContextPushService);

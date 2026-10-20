@@ -60,7 +60,7 @@ class TestConfigSettings(TransactionCase):
         """Test that request limit can be set to 0 for unlimited."""
         settings = self.Settings.create(
             {
-                "mcp_request_limit": 0,  # 0 means unlimited
+                "mcp_request_limit": 0,
                 "mcp_enable_rate_limiting": True,
             }
         )

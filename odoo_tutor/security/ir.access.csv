@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,operation,domain
+access_ai_chat_feedback_user,ai.chat.feedback user,model_ai_chat_feedback,base.group_user,cr,

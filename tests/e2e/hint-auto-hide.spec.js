@@ -1,7 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-// Real-time timers: the hint auto-hide window is 15s, so these tests
-// deliberately wait past it. Generous per-test timeout to accommodate.
+// These tests wait past the 15-second auto-hide window, so they use a generous timeout.
 test.setTimeout(90_000);
 
 test.beforeEach(async ({ page }) => {
@@ -35,7 +34,8 @@ test("hovering the in-chat hint pauses the countdown, leaving resumes it", async
 
   await hint.hover();
   await page.waitForTimeout(16_000);
-  await expect(hint).toBeVisible(); // still visible: hover paused the timer
+  // Hovering pauses the timer, so the hint remains visible.
+  await expect(hint).toBeVisible();
 
   // Move the mouse elsewhere to trigger mouseleave and resume the timer.
   await page.mouse.move(5, 5);

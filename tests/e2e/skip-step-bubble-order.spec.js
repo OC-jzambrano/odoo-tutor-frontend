@@ -1,16 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-// Regression test: skipping a step from the floating "owl bubble" while the
-// chat sidebar is closed must not jump the queue ahead of other tutor
-// instructions that arrive later while it's still closed. Root cause:
-// onSkipStep() pushed its response straight into the nlux conversation
-// (_pushAssistantMessageToNlux) regardless of whether the sidebar was open,
-// while normal tutor_push progression messages go through
-// _queueTutorMessage/_flushPendingTutorMessages when the sidebar is closed.
-// If the skip response resolved slower than a subsequent tutor_push (a
-// realistic race, since skip is a full chat() round trip), it still landed
-// in the DOM immediately, ahead of the later-arriving-but-earlier-queued
-// messages once the sidebar was reopened.
+// Verify skipped instructions remain ordered with queued tutor messages while the sidebar is closed.
 test("skip response from the bubble does not jump ahead of later tutor_push messages once chat reopens", async ({
   page,
 }) => {
@@ -30,8 +20,7 @@ test("skip response from the bubble does not jump ahead of later tutor_push mess
       if (message.type !== "chat") return;
 
       if (message.exercise_action === "next") {
-        // Simulate the skip round trip resolving slower than the
-        // subsequent tutor_push messages sent below.
+        // Delay the skip response until after the subsequent tutor_push messages.
         setTimeout(() => {
           ws.send(
             JSON.stringify({
@@ -97,9 +86,7 @@ test("skip response from the bubble does not jump ahead of later tutor_push mess
   await expect(bubbleSkipButton).toBeVisible();
   await bubbleSkipButton.click();
 
-  // While the skip response is still in flight (400ms delay above), push
-  // two "normal" progression messages that arrive first, while the sidebar
-  // is still closed.
+  // Push two progression messages while the skip response is still delayed.
   await page.waitForTimeout(50);
   wsRef.send(
     JSON.stringify({

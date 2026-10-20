@@ -2,7 +2,7 @@ from odoo.tests.common import HttpCase, tagged
 
 from .test_helpers import create_test_user
 
-TEST_PASSWORD = "a_safe_test_password_for_mcp"  # nosec
+TEST_PASSWORD = "a_safe_test_password_for_mcp"
 
 
 @tagged("much_unit", "post_install", "-at_install")
@@ -94,7 +94,7 @@ class TestModelSelectionUI(HttpCase):
             self.env["mcp.model.selection.wizard"]
             .with_user(
                 self.env.ref("mcp_server.group_mcp_admin").users[0]
-            )  # Run as MCP Admin
+            )
             .create(
                 {
                     "model_ids": [(6, 0, models_to_enable.ids)],

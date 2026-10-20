@@ -1,5 +1,6 @@
 import logging
-import xmlrpc.client as xmlrpclib  # nosec
+# Use XML-RPC for Odoo's authenticated API.
+import xmlrpc.client as xmlrpclib
 from unittest.mock import patch
 
 from odoo.tests.common import HttpCase, tagged
@@ -70,8 +71,7 @@ class TestMCPCommonController(HttpCase):
             headers={"Content-Type": "text/xml"},
         )
 
-        # Parse the fault response
-        # xmlrpclib.loads raises a Fault exception for fault responses
+        # Parse XML-RPC faults raised by xmlrpclib.loads.
         with self.assertRaises(xmlrpclib.Fault) as cm:
             xmlrpclib.loads(response.content)
 
@@ -145,8 +145,7 @@ class TestMCPDatabaseController(HttpCase):
             headers={"Content-Type": "text/xml"},
         )
 
-        # Parse the fault response
-        # xmlrpclib.loads raises a Fault exception for fault responses
+        # Parse XML-RPC faults raised by xmlrpclib.loads.
         with self.assertRaises(xmlrpclib.Fault) as cm:
             xmlrpclib.loads(response.content)
 
@@ -218,8 +217,7 @@ class TestMCPObjectController(HttpCase):
             headers={"Content-Type": "text/xml"},
         )
 
-        # Parse the fault response
-        # xmlrpclib.loads raises a Fault exception for fault responses
+        # Parse XML-RPC faults raised by xmlrpclib.loads.
         with self.assertRaises(xmlrpclib.Fault) as cm:
             xmlrpclib.loads(response.content)
 
@@ -261,7 +259,8 @@ class TestMCPObjectController(HttpCase):
         # Clear the cache to ensure the new value is used
         utils.clear_mcp_caches()
 
-        params = ("test_db", 1)  # Not enough params for execute_kw
+        # Provide too few parameters for execute_kw.
+        params = ("test_db", 1)
         request_data = xmlrpclib.dumps(params, "execute_kw", allow_none=1)
 
         response = self.url_open(

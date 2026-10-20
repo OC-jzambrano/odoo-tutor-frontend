@@ -18,7 +18,8 @@ class TestMcpMainController(common.HttpCase):
         # Create test user with unique login to avoid conflicts
         import time
 
-        unique_id = str(int(time.time() * 1000))[-6:]  # Last 6 digits of timestamp
+        # Use the last six digits of the current timestamp.
+        unique_id = str(int(time.time() * 1000))[-6:]
         login = f"mcp_test_user_{unique_id}"
 
         self.mcp_user = create_test_user(

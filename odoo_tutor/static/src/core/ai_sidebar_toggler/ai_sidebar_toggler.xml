@@ -1,90 +1,90 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <templates xml:space="preserve">
     <t t-name="ai_chat.AiFloatingButton">
-        <t t-if="state.showButton">
+        <t t-if="this.state.showButton">
             <div
                 class="ai-floating-button"
-                t-ref="floatingRoot"
+                t-ref="this.floatingRoot"
                 t-att-class="{
-                    'is-dragging': state.dragging,
-                    'is-open': state.chatOpen,
-                    'has-preview': state.previewVisible &amp;&amp; state.previewMessage &amp;&amp; !state.chatOpen &amp;&amp; !state.dragging,
-                    'has-exercise-cta': launcherExerciseCtaVisible,
-                    'has-attention': launcherHasAttention,
-                    'is-fresh': isPreviewFresh,
+                    'is-dragging': this.state.dragging,
+                    'is-open': this.state.chatOpen,
+                    'has-preview': this.state.previewVisible &amp;&amp; this.state.previewMessage &amp;&amp; !this.state.chatOpen &amp;&amp; !this.state.dragging,
+                    'has-exercise-cta': this.launcherExerciseCtaVisible,
+                    'has-attention': this.launcherHasAttention,
+                    'is-fresh': this.isPreviewFresh,
                 }"
                 t-att-style="
-                    'transform: translate3d(' + state.dragX + 'px, ' + state.dragY + 'px, 0);' +
-                    (state.chatOpen ? ' opacity:0; pointer-events:none;' : '')
+                    'transform: translate3d(' + this.state.dragX + 'px, ' + this.state.dragY + 'px, 0);' +
+                    (this.state.chatOpen ? ' opacity:0; pointer-events:none;' : '')
                 "
             >
-                <t t-if="state.previewVisible and state.previewMessage and !state.chatOpen and !state.dragging">
+                <t t-if="this.state.previewVisible and this.state.previewMessage and !this.state.chatOpen and !this.state.dragging">
                     <div class="ai-owl-preview"
                          role="button"
                          tabindex="0"
                          data-ai-tutor-ignore-event="true"
-                         t-on-click.stop.prevent="toggleChat"
-                         t-on-mouseenter="pausePreview"
-                         t-on-mouseleave="resumePreview">
+                         t-on-click.stop.prevent="this.toggleChat"
+                         t-on-mouseenter="this.pausePreview"
+                         t-on-mouseleave="this.resumePreview">
                         <button
                             type="button"
                             class="ai-owl-preview-close"
-                            t-on-mousedown.stop.prevent="noop"
-                            t-on-touchstart.stop.prevent="noop"
-                            t-on-click.stop.prevent="closePreview"
-                            t-att-aria-label="translate('Close preview')"
+                            t-on-mousedown.stop.prevent="this.noop"
+                            t-on-touchstart.stop.prevent="this.noop"
+                            t-on-click.stop.prevent="this.closePreview"
+                            t-att-aria-label="this.translate('Close preview')"
                         >×</button>
                         <div class="ai-owl-preview-time">
-                            <t t-esc="previewTimeAgo"/>
+                            <t t-out="this.previewTimeAgo"/>
                         </div>
 
                         <div class="ai-owl-preview-text">
-                            <t t-foreach="previewSegments" t-as="seg" t-key="seg_index">
+                            <t t-foreach="this.previewSegments" t-as="seg" t-key="seg_index">
                                 <t t-if="seg.isCopy">
                                     <span
                                         class="ai-copy-value"
-                                        t-att-class="{ 'is-copied': state.previewCopiedText === seg.text }"
+                                        t-att-class="{ 'is-copied': this.state.previewCopiedText === seg.text }"
                                         role="button"
                                         tabindex="0"
-                                        t-att-title="state.previewCopiedText === seg.text ? translate('Copied!') : seg.copyLabel"
+                                        t-att-title="this.state.previewCopiedText === seg.text ? this.translate('Copied!') : seg.copyLabel"
                                         t-att-aria-label="seg.copyLabel"
                                         t-on-click="(ev) => this.onCopyPreviewSegment(seg, ev)"
-                                        t-on-mousedown.stop.prevent="noop"
-                                        t-on-touchstart.stop.prevent="noop"
-                                        t-esc="seg.text"
+                                        t-on-mousedown.stop.prevent="this.noop"
+                                        t-on-touchstart.stop.prevent="this.noop"
+                                        t-out="seg.text"
                                     />
                                 </t>
                                 <t t-else="">
-                                    <t t-esc="seg.text"/>
+                                    <t t-out="seg.text"/>
                                 </t>
                             </t>
                         </div>
 
-                        <t t-if="launcherExerciseCtaVisible">
+                        <t t-if="this.launcherExerciseCtaVisible">
                             <div class="ai-owl-exercise-actions"
                                  role="group"
-                                 t-att-aria-label="translate('Exercise invitation actions')">
+                                 t-att-aria-label="this.translate('Exercise invitation actions')">
                                 <button
                                     type="button"
                                     class="ai-owl-exercise-choice ai-owl-exercise-choice-yes"
-                                    t-att-disabled="exerciseCtaBusy"
-                                    t-on-mousedown.stop.prevent="noop"
-                                    t-on-touchstart.stop.prevent="noop"
-                                    t-on-click.stop.prevent="onExerciseCtaStart"
+                                    t-att-disabled="this.exerciseCtaBusy"
+                                    t-on-mousedown.stop.prevent="this.noop"
+                                    t-on-touchstart.stop.prevent="this.noop"
+                                    t-on-click.stop.prevent="this.onExerciseCtaStart"
                                 >
-                                    <t t-if="exerciseCtaBusy" t-esc="translate('Starting...')"/>
-                                    <t t-else="" t-esc="translate('Yes')"/>
+                                    <t t-if="this.exerciseCtaBusy" t-out="this.translate('Starting...')"/>
+                                    <t t-else="" t-out="this.translate('Yes')"/>
                                 </button>
 
                                 <button
                                     type="button"
                                     class="ai-owl-exercise-choice ai-owl-exercise-choice-cancel"
-                                    t-att-disabled="exerciseCtaBusy"
-                                    t-on-mousedown.stop.prevent="noop"
-                                    t-on-touchstart.stop.prevent="noop"
-                                    t-on-click.stop.prevent="onExerciseCtaCancel"
+                                    t-att-disabled="this.exerciseCtaBusy"
+                                    t-on-mousedown.stop.prevent="this.noop"
+                                    t-on-touchstart.stop.prevent="this.noop"
+                                    t-on-click.stop.prevent="this.onExerciseCtaCancel"
                                 >
-                                    <t t-esc="translate('Cancel')"/>
+                                    <t t-out="this.translate('Cancel')"/>
                                 </button>
                             </div>
                         </t>
@@ -96,13 +96,13 @@
                 <button
                     class="ai-owl-trigger"
                     type="button"
-                    t-on-mousedown.stop.prevent="onIconDragStart"
-                    t-on-touchstart.stop.prevent="onIconDragStart"
-                    t-on-click="onIconClick"
+                    t-on-mousedown.stop.prevent="this.onIconDragStart"
+                    t-on-touchstart.stop.prevent="this.onIconDragStart"
+                    t-on-click="this.onIconClick"
                     data-ai-sidebar-toggle="1"
                     aria-controls="offcanvasAiSidebar"
-                    t-att-aria-label="openTutorLabel"
-                    t-att-title="openTutorTitle"
+                    t-att-aria-label="this.openTutorLabel"
+                    t-att-title="this.openTutorTitle"
                 >
                     <span class="ai-owl-trigger-halo"/>
                     <span class="ai-owl-trigger-shell">
@@ -116,22 +116,22 @@
                     </span>
 
                     <span class="ai-owl-trigger-badge">AI</span>
-                    <span t-if="!state.optionalStepVisible and state.hintBadgeVisible" class="ai-owl-trigger-hint" title="Nueva pista">
+                    <span t-if="!this.state.optionalStepVisible and this.state.hintBadgeVisible" class="ai-owl-trigger-hint" title="Nueva pista">
                         <i class="fa fa-lightbulb-o"/>
                     </span>
                 </button>
                 <button
-                    t-if="state.optionalStepVisible"
+                    t-if="this.state.optionalStepVisible"
                     type="button"
                     class="ai-owl-trigger-skip"
-                    t-att-disabled="state.optionalStepLoading"
-                    t-att-title="translate('Skip optional step')"
-                    t-att-aria-label="translate('Skip optional step')"
-                    t-on-mousedown.stop.prevent="noop"
-                    t-on-touchstart.stop.prevent="noop"
-                    t-on-click.stop.prevent="onSkipOptionalStep"
+                    t-att-disabled="this.state.optionalStepLoading"
+                    t-att-title="this.translate('Skip optional step')"
+                    t-att-aria-label="this.translate('Skip optional step')"
+                    t-on-mousedown.stop.prevent="this.noop"
+                    t-on-touchstart.stop.prevent="this.noop"
+                    t-on-click.stop.prevent="this.onSkipOptionalStep"
                 >
-                    <i t-att-class="state.optionalStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
+                    <i t-att-class="this.state.optionalStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
                 </button>
             </div>
         </t>

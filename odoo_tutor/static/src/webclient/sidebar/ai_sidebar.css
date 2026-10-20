@@ -1,4 +1,4 @@
-/* ===== FOUNDATION ===== */
+/* Foundation styles. */
 
 #offcanvasAiSidebar {
     --tutor-accent: #875a7b;
@@ -234,9 +234,9 @@
     transform: scale(1.08);
 }
 
-/* ===== HINT ===== */
+/* Hint styles. */
 
-/* ===== INLINE HINT ===== */
+/* Inline hint styles. */
 
 #offcanvasAiSidebar .ai-inline-hint-container {
     position: absolute;
@@ -249,9 +249,7 @@
     transition: bottom var(--tutor-motion-base);
 }
 
-/* When the optional-step skip button is also shown, the hint's `bottom`
-   (set inline from JS) is raised above it so the two never share the
-   same vertical band, regardless of composer height. */
+/* Raise the hint above the optional-step button without depending on composer height. */
 #offcanvasAiSidebar .ai-inline-hint-container.ai-inline-hint-container-raised {
     z-index: 1000;
 }
@@ -519,7 +517,7 @@
     }
 }
 
-/* ===== RECORDER TOGGLE ===== */
+/* Recorder toggle styles. */
 
 #offcanvasAiSidebar .btn-recorder-toggle {
     min-height: 34px;
@@ -565,7 +563,7 @@
     transform: scale(0.96);
 }
 
-/* ===== RESULT MODAL ===== */
+/* Result modal styles. */
 
 #offcanvasAiSidebar .result-modal-overlay {
     position: fixed;
@@ -618,7 +616,7 @@
     text-align: right;
 }
 
-/* ===== NEW MESSAGE INDICATOR ===== */
+/* New message indicator styles. */
 
 #offcanvasAiSidebar .ai-new-message-indicator {
     position: absolute;
@@ -666,7 +664,7 @@
     white-space: nowrap;
 }
 
-/* ===== CHAT SHELL ===== */
+/* Chat shell styles. */
 
 #offcanvasAiSidebar .ai-chat-panel {
     min-height: 0;
@@ -1210,7 +1208,7 @@
     color: #d8b4d0;
 }
 
-/* ===== CHAT ACTION BUTTONS ===== */
+/* Chat action button styles. */
 
 #offcanvasAiSidebar .ai-buttons-container {
     position: absolute;
@@ -1293,7 +1291,7 @@
     animation: tutor-ripple 1s ease-out;
 }
 
-/* ===== RECORDER PANEL ===== */
+/* Recorder panel styles. */
 
 #offcanvasAiSidebar .o_ai_recorder_panel {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(252, 252, 254, 1) 100%);
@@ -1551,9 +1549,9 @@
     color: var(--tutor-text-muted);
 }
 
-/* ===== COPY + FOOTER ACTIONS ===== */
+/* Copy and footer action styles. */
 
-/* Fila de acciones debajo del mensaje */
+/* Action row below each message. */
 #chat-ui-container .nlux-comp-messageFeedback,
 #chat-ui-container .nlux-comp-chatItem-actions,
 #chat-ui-container .nlux-comp-message-actions,
@@ -1587,7 +1585,7 @@
     width: fit-content !important;
 }
 
-/* ===== PERMITIR COPIA MANUAL SOLO EN EL TEXTO ===== */
+/* Allow manual copying only from message text. */
 
 #chat-ui-container .nlux-markdown-container,
 #chat-ui-container .nlux-markdown-container *,
@@ -1608,7 +1606,7 @@
     cursor: text !important;
 }
 
-/* ===== NO convertir botones/acciones en texto seleccionable ===== */
+/* Prevent text selection on buttons and actions. */
 
 #chat-ui-container button,
 #chat-ui-container button *,
@@ -1647,7 +1645,7 @@
     cursor: not-allowed !important;
 }
 
-/* ===== botón copiar ===== */
+/* Copy button. */
 
 #chat-ui-container .ai-msg-action,
 #chat-ui-container .ai-copy-btn,
@@ -1725,9 +1723,7 @@
     cursor: pointer !important;
 }
 
-/* =========================
-   Colores base del chat
-   ========================= */
+/* Base chat colors. */
 
 #chat-ui-container {
     --ai-user-bubble-bg: var(--tutor-accent-strong);
@@ -1739,9 +1735,7 @@
     --ai-assistant-action-color: var(--tutor-text);
 }
 
-/* =========================
-   Mensajes enviados por el usuario
-   ========================= */
+/* User messages. */
 
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-markdown-container,
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-bubble {
@@ -1750,13 +1744,13 @@
     border-color: transparent !important;
 }
 
-/* texto dentro del mensaje enviado */
+/* Text inside sent messages. */
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-markdown-container *,
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-bubble * {
     color: var(--ai-user-bubble-text) !important;
 }
 
-/* botón copiar + feedback en mensajes enviados */
+/* Copy button and feedback for sent messages. */
 #chat-ui-container .nlux-comp-chatItem--sent .ai-copy-btn,
 #chat-ui-container .nlux-comp-chatItem--sent .ai-msg-action,
 #chat-ui-container .nlux-comp-chatItem--sent .ai_feedback_btn,
@@ -1764,9 +1758,7 @@
     color: var(--ai-user-action-color) !important;
 }
 
-/* =========================
-   Mensajes recibidos del asistente
-   ========================= */
+/* Assistant messages. */
 
 #chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container,
 #chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble {
@@ -1799,9 +1791,7 @@
     color: var(--ai-assistant-action-color) !important;
 }
 
-/* =========================
-   Hover / estados
-   ========================= */
+/* Hover states. */
 
 #chat-ui-container .ai-copy-btn:hover,
 #chat-ui-container .ai_feedback_btn:hover,
@@ -1817,9 +1807,7 @@
     color: #ef4444 !important;
 }
 
-/* =========================
-   Dark mode
-   ========================= */
+/* Dark mode. */
 
 #offcanvasAiSidebar.is-dark-theme #chat-ui-container {
     --ai-user-bubble-bg: #8a617d;

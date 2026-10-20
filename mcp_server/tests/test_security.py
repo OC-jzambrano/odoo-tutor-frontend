@@ -181,24 +181,21 @@ class TestMcpSecurity(common.TransactionCase):
         mcp_admin_group = self.env.ref("mcp_server.group_mcp_admin")
         mcp_user_group = self.env.ref("mcp_server.group_mcp_user")
 
-        # Check if MCP Admin has access to the menu
-        # The menu should be restricted to mcp_admin group only
+        # Verify the menu is restricted to the MCP Admin group.
         self.assertIn(
             mcp_admin_group,
             menu_root.groups_id,
             "Menu should be restricted to MCP Admin group",
         )
 
-        # Check that the menu is NOT directly accessible to MCP User group
-        # Even though mcp_admin implies mcp_user, the menu should only list mcp_admin
+        # Verify MCP User cannot access the menu even though MCP Admin implies MCP User.
         self.assertNotIn(
             mcp_user_group,
             menu_root.groups_id,
             "Menu should NOT be directly accessible to MCP User group",
         )
 
-        # Verify actual access using check_access_rights
-        # MCP Admin should have access
+        # Verify MCP Admin access through check_access_rights.
         menu_as_admin = menu_root.with_user(self.mcp_admin)
         self.assertTrue(
             menu_as_admin._filter_visible_menus(),

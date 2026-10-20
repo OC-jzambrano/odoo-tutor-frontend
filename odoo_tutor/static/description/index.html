@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Odoo AI Tutor - Interactive Learning Sidebar</title>
+    <style>
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            font-family: 'Montserrat', sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            color: #2b2b2b;
+            line-height: 1.6;
+        }
+        .header {
+            text-align: center;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #714B67 0%, #017E84 100%);
+            color: white;
+            border-radius: 12px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        .header p {
+            font-size: 1.15rem;
+            opacity: 0.95;
+            max-width: 680px;
+            margin: 0 auto;
+        }
+        .card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        .badge {
+            display: inline-block;
+            background-color: #e6fffa;
+            color: #047481;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+        }
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background-color: #714B67;
+            color: white;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+        .step-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .feature-box {
+            background: #f8fafc;
+            border-left: 4px solid #017E84;
+            padding: 16px;
+            border-radius: 0 8px 8px 0;
+        }
+        .feature-box h4 {
+            margin-top: 0;
+            color: #017E84;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Odoo AI Tutor</h1>
+            <p>Tutor interactivo de Inteligencia Artificial para aprender y dominar Odoo paso a paso.</p>
+        </div>
+
+        <div class="card">
+            <span class="badge">BYOK - Bring Your Own Key</span>
+            <h2>Configuración Rápida en 3 Pasos</h2>
+            <p>Este módulo es 100% gratuito y funciona con tu propia clave de OpenAI (BYOK), garantizando que tú tienes el control total de tu consumo y privacidad.</p>
+
+            <div style="margin-top: 25px;">
+                <div class="step-title">
+                    <span class="step-number">1</span> Instala el módulo
+                </div>
+                <p>Ve a <strong>Aplicaciones</strong> en tu menú de Odoo, actualiza la lista de aplicaciones e instala <strong>Odoo AI Tutor</strong>.</p>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <div class="step-title">
+                    <span class="step-number">2</span> Obtén tu OpenAI API Key
+                </div>
+                <p>Inicia sesión en la plataforma de OpenAI (<a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a>), crea una clave de API secreta (formato <code>sk-...</code>) y cópiala en el portapapeles.</p>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <div class="step-title">
+                    <span class="step-number">3</span> Pega tu clave en Ajustes
+                </div>
+                <p>En tu Odoo, dirígete a <strong>Ajustes &gt; Odoo AI Tutor</strong>. En el bloque <strong>Configuración de IA (BYOK)</strong>, pega tu OpenAI API Key y haz clic en <strong>Guardar</strong>.</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>¿Por qué Odoo AI Tutor?</h3>
+            <div class="features">
+                <div class="feature-box">
+                    <h4>Asistencia Contextual</h4>
+                    <p>El tutor comprende la vista y modelo actual donde estás trabajando en Odoo para ofrecer respuestas exactas.</p>
+                </div>
+                <div class="feature-box">
+                    <h4>Sin intermediarios de saldo</h4>
+                    <p>Usa directamente tu clave de OpenAI sin comisiones ni suscripciones extra de terceros.</p>
+                </div>
+                <div class="feature-box">
+                    <h4>Privacidad y Seguridad</h4>
+                    <p>Tus claves se resguardan de forma segura en los parámetros del sistema de tu propia base de datos.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

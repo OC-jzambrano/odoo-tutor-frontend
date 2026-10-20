@@ -91,13 +91,7 @@ function parseHashParams() {
   };
 }
 
-/**
- * Odoo-aware field resolver:
- * - canonical OWL Field metadata injected by field_event_metadata.xml
- * - form fields: .o_field_widget[data-name]
- * - list cells: td[data-name]
- * - fallback: name attr
- */
+/** Resolve field metadata from Odoo widgets, list cells, or the name attribute. */
 function resolveOwlFieldMeta(el) {
   const wrapper = el?.closest?.("[data-odoo-field]");
   const field = wrapper?.getAttribute?.("data-odoo-field") || null;
@@ -125,9 +119,7 @@ function resolveFieldName(el, owlFieldMeta = resolveOwlFieldMeta(el)) {
   const name = el.getAttribute?.("name");
   if (name) return name;
 
-  // Autocomplete dropdown options are frequently portaled outside the field
-  // widget's DOM subtree, so id patterns like "partner_id_1_0_0" are the
-  // only remaining signal linking the option back to its source field.
+  // Resolve portaled autocomplete options from their generated field ID.
   const idMatch = /^([a-z_][a-z0-9_]*?)(?:_\d+)+$/i.exec(el.id || "");
   if (idMatch) return idMatch[1];
 
@@ -235,8 +227,7 @@ function resolveTabName(tabEl) {
 function resolveRadioOption(el) {
   if (!el || el.type !== "radio") return null;
 
-  // Odoo RadioField inputs carry no value attr (el.value === "on"); the
-  // technical value lives in data-value and the visible text in the <label>.
+      // Read radio values from data-value because the input value is always "on".
   const labelEl =
     (el.id &&
       el.ownerDocument?.querySelector?.(`label[for="${safeCssEscape(el.id)}"]`)) ||
@@ -301,11 +292,7 @@ function computeQuality({ model, view_type, field, target_name, owlFieldMeta }) 
   return { level, missing, sources };
 }
 
-/**
- * Main normalizer: produces BOTH
- * - ticket style: {type,label,field,value}
- * - rich meta for evidence: {meta, quality, dom}
- */
+/** Normalize a browser event into the tutor ticket and evidence formats. */
 export function normalizeDomEvent({
   domEventType,
   originalEvent,
@@ -358,7 +345,8 @@ export function normalizeDomEvent({
 
       radioOption = resolveRadioOption(el);
       if (el?.type === "checkbox") {
-        value = !!el.checked;   // 🔥 boolean real
+        // Use the actual boolean state.
+        value = !!el.checked;
       } else if (radioOption) {
         // el.value is "on" for Odoo radios; prefer the visible option label.
         value = radioOption.label || radioOption.value;
@@ -390,9 +378,7 @@ export function normalizeDomEvent({
       field = target_name;
     }
     else if (autocompleteOption) {
-      // Many2one autocomplete option: "select existing" or "quick-create".
-      // Resolve field via OWL props first, falling back to id-pattern parsing
-      // since the dropdown is often portaled outside the field's DOM subtree.
+      // Resolve Many2one autocomplete fields from OWL metadata or the generated ID.
       type = "link_clicked";
       field = resolveFieldName(el, owlFieldMeta);
       target_name = field;
@@ -420,8 +406,7 @@ export function normalizeDomEvent({
     type = domEventType || "unknown";
   }
 
-  // For menu clicks the xmlid slug is a poor label for contract matching.
-  // Prefer the visible text; keep the xmlid only in meta.target_name.
+  // Use visible menu text as the label and retain the XML ID in target_name.
   const menuVisibleText =
     type === "menu_clicked"
       ? cleanText(el?.getAttribute?.("title") || el?.innerText || el?.textContent || "")

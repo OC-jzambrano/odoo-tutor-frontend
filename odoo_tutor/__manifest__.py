@@ -1,23 +1,23 @@
 {
-    "name": "Odoo Tutor",
-    "version": "1.0.1",
-    "category": "Extra Tools",
-    "summary": "Módulo integrador para Odoo Tutor",
-    "author": "Erick Birbe <ebirbe@odooconcept.com>, Odoo Concept",
-    "website": "https://odooconcept.com",
+    "name": "Odoo AI Tutor",
+    "version": "20.0.1.0.0",
+    "category": "Productivity/AI",
+    "summary": "Interactive AI-powered tutor with practical exercises and real-time hints for Odoo",
+    "author": "Juan Diego Zambrano, Odoo Concept",
+    "website": "https://github.com/OC-jzambrano/odoo-tutor-frontend",
+    "license": "LGPL-3",
+    "price": 0.0,
+    "currency": "EUR",
     "depends": [
-        "sale_management",
-        "stock",
-        "crm",
-        "sale",
+        "base",
         "web",
-        "web_tour",
-        "bus",
+        "mail",
     ],
     "data": [
-        "security/ir.model.access.csv",
+        "security/ir.access.csv",
         "views/odoo_tutor_menus.xml",
         "views/res_config_settings_views.xml",
+        "views/res_users_views.xml",
     ],
     "assets": {
         "web.assets_backend": [
@@ -26,12 +26,10 @@
             "odoo_tutor/static/src/**/*",
         ],
     },
-    "i18n": [
-        "i18n/es.po",
+    "images": [
+        "static/description/banner.png",
     ],
     "installable": True,
     "application": True,
     "auto_install": False,
-    'images': ['static/images/iabot.png'],
-    "license": "OPL-1",
 }

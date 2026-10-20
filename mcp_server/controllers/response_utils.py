@@ -9,13 +9,13 @@ _logger = logging.getLogger(__name__)
 
 # Standard error codes
 ERROR_CODES = {
-    400: "E400",  # Bad Request
-    401: "E401",  # Unauthorized
-    403: "E403",  # Forbidden
-    404: "E404",  # Not Found
-    429: "E429",  # Too Many Requests
-    500: "E500",  # Internal Server Error
-    503: "E503",  # Service Unavailable
+    400: "E400",
+    401: "E401",
+    403: "E403",
+    404: "E404",
+    429: "E429",
+    500: "E500",
+    503: "E503",
 }
 
 
