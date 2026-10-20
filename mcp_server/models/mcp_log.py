@@ -33,7 +33,8 @@ class MCPLog(models.Model):
     # User and authentication info
     user_id = fields.Many2one("res.users", string="User", index=True)
     api_key_used = fields.Boolean(string="API Key Used", default=False)
-    ip_address = fields.Char(string="IP Address", size=45)  # Size 45 for IPv6
+    # IPv6 addresses require up to 45 characters.
+    ip_address = fields.Char(string="IP Address", size=45)
 
     # Request details
     endpoint = fields.Char(index=True)
@@ -75,15 +76,11 @@ class MCPLog(models.Model):
         ):
             return self.env["mcp.log"]
 
-        # Skip logging only if explicitly requested via context
-        # This allows tests to control when logging should be skipped
+        # Skip logging only when the context explicitly requests it.
         if self.env.context.get("skip_mcp_logging"):
             return self.env["mcp.log"]
 
-        # Detect test mode properly:
-        # 1. Check if we're in actual test mode (not just dev mode)
-        # 2. test_cr is set when running with --test-enable
-        # 3. Skip logging in test mode UNLESS we're specifically testing logging
+        # Skip test-mode logging unless the test specifically covers logging.
         in_test_mode = (
             hasattr(self.env.registry, "test_cr")
             and self.env.registry.test_cr is not None
@@ -281,7 +278,7 @@ class MCPLog(models.Model):
             "code": "model.cleanup_old_logs()",
             "interval_type": "days",
             "interval_number": 1,
-            # 'numbercall': -1,  # This field doesn't exist in Odoo 18
+            # Odoo no longer provides the numbercall field.
             "active": True,
         }
         cron = self.env["ir.cron"].search([("name", "=", "MCP Log Cleanup")])

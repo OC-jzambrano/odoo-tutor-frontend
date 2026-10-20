@@ -7,11 +7,25 @@
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
                 <app data-string="Odoo AI Tutor" string="Odoo AI Tutor" name="odoo_tutor">
-                    <block title="Configuración de IA (BYOK)" name="odoo_tutor_setting_container">
-                        <setting string="OpenAI API Key" help="Introduce tu propia API Key de OpenAI (sk-...) para usar Odoo Tutor gratis.">
-                            <field name="odoo_tutor_openai_key" password="True" placeholder="sk-proj-..."/>
+                    <block title="Proveedor de IA personal" name="odoo_tutor_llm_settings">
+                        <setting string="Proveedor" help="La selección y las credenciales se guardan para el usuario actual.">
+                            <field name="odoo_tutor_llm_provider"/>
                         </setting>
-                        <setting string="Servidor Backend" help="URL del servicio de ejercicios y evaluación de Odoo Tutor.">
+                        <setting string="Modelo" help="Opcional; deja vacío para usar el modelo predeterminado del proveedor.">
+                            <field name="odoo_tutor_llm_model" placeholder="Predeterminado"/>
+                        </setting>
+                        <setting string="API key" help="Clave personal del proveedor. Se envía directamente de Odoo al backend en un ticket de un solo uso.">
+                            <field name="odoo_tutor_llm_api_key" password="True" placeholder="Pega la clave del proveedor"/>
+                        </setting>
+                        <setting string="AWS secret key" help="Solo para credenciales AWS personales de Bedrock. Si se deja vacío, el backend usa su rol o perfil de servidor.">
+                            <field name="odoo_tutor_llm_api_secret" password="True"/>
+                        </setting>
+                        <setting string="AWS region" help="Región de Amazon Bedrock cuando el proveedor seleccionado es Bedrock.">
+                            <field name="odoo_tutor_llm_region" placeholder="eu-north-1"/>
+                        </setting>
+                    </block>
+                    <block title="Servidor del tutor" name="odoo_tutor_setting_container">
+                        <setting string="Servidor Backend" help="URL interna del backend del tutor. La clave de acceso al backend la configura el administrador.">
                             <field name="odoo_tutor_backend_url" placeholder="https://api.tudominio.com"/>
                         </setting>
                     </block>

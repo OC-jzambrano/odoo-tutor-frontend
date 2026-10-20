@@ -8,7 +8,7 @@ An Odoo module that enables Model Context Protocol (MCP) integration, allowing A
 - 🎯 **Granular Permissions**: Control read/write/create/delete access per model
 - 🌐 **REST & XML-RPC APIs**: Dual protocol support for maximum compatibility
 - 👥 **Role-Based Access**: MCP Administrator and MCP User security groups
-- 🖥️ **User-Friendly UI**: Integrated configuration in Odoo settings
+- **User-Friendly UI**: Integrated configuration in Odoo settings
 - 📊 **Model Selection**: Easy-to-use wizard for enabling models
 - 🔍 **Access Control**: Multi-layered security with Odoo's permission system
 
@@ -63,10 +63,10 @@ To use this module, you need:
    - Click "Configure Models" or go to MCP Server > Enabled Models
    - Add models you want to expose (e.g., res.partner, product.product)
    - Set permissions for each model:
-     - ✅ Can Read
-     - ✅ Can Write
-     - ✅ Can Create
-     - ✅ Can Delete
+     - Can Read
+     - Can Write
+     - Can Create
+     - Can Delete
 
 3. **Generate API Keys**:
    - Go to Settings > Users & Companies > Users

@@ -99,8 +99,7 @@ class McpAPIController(http.Controller):
             }
             return response_utils.success_response(data)
         else:
-            # This case should ideally not be reached
-            # if require_api_key works as expected
+            # This case should not occur when require_api_key works correctly.
             return response_utils.error_response(
                 "API key validation failed unexpectedly.", "E500", status=500
             )
@@ -175,8 +174,7 @@ class McpAPIController(http.Controller):
                 status=400,
             )
 
-        # Check if the model itself exists in ir.model
-        # to give a more specific error if not.
+            # Check ir.model so missing models return a specific error.
         ir_model = (
             env["ir.model"].sudo().search([("model", "=", model_tech_name)], limit=1)
         )

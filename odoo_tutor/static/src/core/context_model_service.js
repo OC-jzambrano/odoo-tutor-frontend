@@ -1,12 +1,12 @@
 /* eslint-disable */
 /** @odoo-module **/
-import { reactive } from "@odoo/owl";
+import { proxy } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 
 export const contextService = {
   dependencies: [],
   start() {
-    const state = reactive({
+    const state = proxy({
       currentModel: null,
       view_type: null,
       mode: null,

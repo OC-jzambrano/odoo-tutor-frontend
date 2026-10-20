@@ -4,33 +4,33 @@
         <div
             class="offcanvas offcanvas-end d-flex flex-column"
             t-att-class="{
-                'is-dark-theme': state.colorScheme === 'dark',
-                'is-light-theme': state.colorScheme !== 'dark',
+                'is-dark-theme': this.state.colorScheme === 'dark',
+                'is-light-theme': this.state.colorScheme !== 'dark',
             }"
             tabindex="-1"
             id="offcanvasAiSidebar"
             aria-labelledby="offcanvasAiSidebarLabel"
-            t-attf-style="width: {{ state.width }};"
-            t-ref="container"
+            t-attf-style="width: {{ this.state.width }};"
+            t-ref="this.containerRef"
         >
             <div
                 class="handle ai-sidebar-handle"
-                t-ref="handle"
-                t-on-mousedown="onHandleMouseDown"
+                t-ref="this.handleRef"
+                t-on-mousedown="this.onHandleMouseDown"
             />
 
             <div class="offcanvas-header ai-sidebar-header">
                 <div class="ai-sidebar-header-main">
                     <div class="ai-sidebar-brand">
                         <span class="ai-sidebar-brand-mark">
-                            <i t-att-class="state.showRecorderPanel ? 'fa fa-dot-circle-o' : 'fa fa-comments-o'"/>
+                            <i t-att-class="this.state.showRecorderPanel ? 'fa fa-dot-circle-o' : 'fa fa-comments-o'"/>
                         </span>
 
                         <div class="ai-sidebar-brand-copy">
                             <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo Tutor</h5>
                             <div class="ai-sidebar-subtitle">
-                                <t t-if="state.showRecorderPanel" t-esc="translate('Recorder workspace for guided flows')"/>
-                                <t t-else="" t-esc="currentRouteLabel"/>
+                                <t t-if="this.state.showRecorderPanel" t-out="this.translate('Recorder workspace for guided flows')"/>
+                                <t t-else="" t-out="this.currentRouteLabel"/>
                             </div>
                         </div>
                     </div>
@@ -38,38 +38,38 @@
 
                 <div class="ai-sidebar-header-actions">
                     <button
-                        t-if="!state.showRecorderPanel"
+                        t-if="!this.state.showRecorderPanel"
                         type="button"
                         class="btn rounded-circle p-1 btn-refresh ai-sidebar-reset"
-                        t-att-aria-label="translate('Reset')"
-                        t-on-click.stop.prevent="reset"
+                        t-att-aria-label="this.translate('Reset')"
+                        t-on-click.stop.prevent="this.reset"
                     >
                         <i class="fa fa-repeat"/>
                     </button>
 
                     <button
-                        t-if="state.canSeeRecorderToggle"
+                        t-if="this.state.canSeeRecorderToggle"
                         type="button"
                         class="btn btn-sm btn-recorder-toggle"
-                        t-on-click.stop.prevent="toggleRecorderPanel"
-                        t-att-title="state.showRecorderPanel ? translate('Switch to Chat') : translate('Switch to Recorder')"
+                        t-on-click.stop.prevent="this.toggleRecorderPanel"
+                        t-att-title="this.state.showRecorderPanel ? this.translate('Switch to Chat') : this.translate('Switch to Recorder')"
                     >
-                        <i t-att-class="state.showRecorderPanel ? 'fa fa-comments me-1' : 'fa fa-dot-circle-o me-1'"/>
-                        <t t-esc="state.showRecorderPanel ? translate('Chat') : translate('Recorder')"/>
+                        <i t-att-class="this.state.showRecorderPanel ? 'fa fa-comments me-1' : 'fa fa-dot-circle-o me-1'"/>
+                        <t t-out="this.state.showRecorderPanel ? this.translate('Chat') : this.translate('Recorder')"/>
                     </button>
 
-                    <div t-if="state.processActive and !state.showRecorderPanel" class="d-flex align-items-center">
+                    <div t-if="this.state.processActive and !this.state.showRecorderPanel" class="d-flex align-items-center">
                         <button
                             type="button"
                             class="timer-display"
-                            t-att-title="translate('Cancel exercise')"
-                            t-att-aria-label="translate('Cancel exercise')"
-                            t-att-disabled="state.exerciseCancelLoading"
-                            t-on-click.stop.prevent="onTimerCancelExercise"
+                            t-att-title="this.translate('Cancel exercise')"
+                            t-att-aria-label="this.translate('Cancel exercise')"
+                            t-att-disabled="this.state.exerciseCancelLoading"
+                            t-on-click.stop.prevent="this.onTimerCancelExercise"
                         >
-                            <t t-esc="state.timerValue" t-if="state.timerValue"/>
+                            <t t-out="this.state.timerValue" t-if="this.state.timerValue"/>
                             <t t-else="">00:00:00</t>
-                            <i t-if="state.exerciseCancelLoading" class="fa fa-spinner fa-spin timer-cancel-icon"/>
+                            <i t-if="this.state.exerciseCancelLoading" class="fa fa-spinner fa-spin timer-cancel-icon"/>
                             <i t-else="" class="fa fa-times timer-cancel-icon"/>
                         </button>
                     </div>
@@ -77,8 +77,8 @@
                     <button
                         type="button"
                         class="btn-close text-reset"
-                        t-att-aria-label="translate('Close')"
-                        t-on-click.stop.prevent="onCloseSidebar"
+                        t-att-aria-label="this.translate('Close')"
+                        t-on-click.stop.prevent="this.onCloseSidebar"
                     />
                 </div>
             </div>
@@ -86,110 +86,108 @@
             <div class="offcanvas-body ai-sidebar-body flex-grow-1 d-flex flex-column">
                 <div class="ai-sidebar-content flex-grow-1 d-flex flex-column h-100">
 
-                    <!-- =========================
-                         RECORDER PANEL (SIEMPRE MONTADO, SOLO SE OCULTA)
-                         ========================= -->
-                    <div t-att-class="state.showRecorderPanel ? 'flex-grow-1 d-flex flex-column h-100' : 'd-none'">
-                        <div class="o_ai_recorder_panel" t-att-class="state.recorderStatus === 'recording' ? 'is-recording' : ''">
+                    <!-- Keep the recorder panel mounted and hide it when inactive. -->
+                    <div t-att-class="this.state.showRecorderPanel ? 'flex-grow-1 d-flex flex-column h-100' : 'd-none'">
+                        <div class="o_ai_recorder_panel" t-att-class="this.state.recorderStatus === 'recording' ? 'is-recording' : ''">
                             <div class="o_ai_recorder_header">
                                 <div class="o_ai_recorder_left">
-                                    <span t-if="state.recorderStatus === 'recording'" class="o_ai_rec_badge">
+                                    <span t-if="this.state.recorderStatus === 'recording'" class="o_ai_rec_badge">
                                         <i class="fa fa-circle"/>
-                                        <t t-esc="translate('Recording')"/>
+                                        <t t-out="this.translate('Recording')"/>
                                     </span>
-                                    <span class="o_ai_rec_title" t-esc="translate('Recorder')"/>
+                                    <span class="o_ai_rec_title" t-out="this.translate('Recorder')"/>
                                 </div>
 
                                 <div class="o_ai_recorder_right">
-                                    <button t-if="state.recorderStatus !== 'recording'"
+                                    <button t-if="this.state.recorderStatus !== 'recording'"
                                             type="button"
                                             class="btn btn-sm btn-primary"
-                                            t-on-click.stop.prevent="onRecorderStart">
-                                        <i class="fa fa-play"/> <t t-esc="translate('Start')"/>
+                                            t-on-click.stop.prevent="this.onRecorderStart">
+                                        <i class="fa fa-play"/> <t t-out="this.translate('Start')"/>
                                     </button>
 
-                                    <button t-if="state.recorderStatus === 'recording'"
+                                    <button t-if="this.state.recorderStatus === 'recording'"
                                             type="button"
                                             class="btn btn-sm btn-secondary"
-                                            t-on-click.stop.prevent="onRecorderPause">
-                                        <i class="fa fa-pause"/> <t t-esc="translate('Pause')"/>
+                                            t-on-click.stop.prevent="this.onRecorderPause">
+                                        <i class="fa fa-pause"/> <t t-out="this.translate('Pause')"/>
                                     </button>
 
-                                    <button t-if="state.recorderStatus !== 'idle'"
+                                    <button t-if="this.state.recorderStatus !== 'idle'"
                                             type="button"
                                             class="btn btn-sm btn-danger"
-                                            t-on-click.stop.prevent="onRecorderFinish">
-                                        <i class="fa fa-stop"/> <t t-esc="translate('Finish')"/>
+                                            t-on-click.stop.prevent="this.onRecorderFinish">
+                                        <i class="fa fa-stop"/> <t t-out="this.translate('Finish')"/>
                                     </button>
                                 </div>
                             </div>
 
                             <div class="o_ai_recorder_meta">
                                 <div class="o_ai_rec_meta_row">
-                                    <span class="lbl" t-esc="translate('Session ID:')"/>
-                                    <span class="val" t-esc="state.recorderSessionId || '-'"/>
+                                    <span class="lbl" t-out="this.translate('Session ID:')"/>
+                                    <span class="val" t-out="this.state.recorderSessionId || '-'"/>
                                 </div>
                                 <div class="o_ai_rec_meta_row">
-                                    <span class="lbl" t-esc="translate('WebSocket:')"/>
-                                    <span class="val" t-esc="wsStatusLabel"/>
+                                    <span class="lbl" t-out="this.translate('WebSocket:')"/>
+                                    <span class="val" t-out="this.wsStatusLabel"/>
                                 </div>
                             </div>
 
                             <div class="o_ai_recorder_controls">
                                 <button type="button"
                                         class="btn btn-sm btn-outline-secondary"
-                                        t-att-disabled="state.recorderStatus === 'idle' or state.recorderPicking"
-                                        t-on-click.stop.prevent="onRecorderPick">
-                                    <t t-if="state.recorderPicking">
-                                        <i class="fa fa-crosshairs fa-spin"/> <t t-esc="translate('Picking...')"/>
+                                        t-att-disabled="this.state.recorderStatus === 'idle' or this.state.recorderPicking"
+                                        t-on-click.stop.prevent="this.onRecorderPick">
+                                    <t t-if="this.state.recorderPicking">
+                                        <i class="fa fa-crosshairs fa-spin"/> <t t-out="this.translate('Picking...')"/>
                                     </t>
                                     <t t-else="">
-                                        <i class="fa fa-crosshairs"/> <t t-esc="translate('Pick element')"/>
+                                        <i class="fa fa-crosshairs"/> <t t-out="this.translate('Pick element')"/>
                                     </t>
                                 </button>
 
-                                <button t-if="state.recorderPicked"
+                                <button t-if="this.state.recorderPicked"
                                         type="button"
                                         class="btn btn-sm btn-outline-secondary"
-                                        t-on-click.stop.prevent="onRecorderClearPick">
-                                    <i class="fa fa-times"/> <t t-esc="translate('Clear')"/>
+                                        t-on-click.stop.prevent="this.onRecorderClearPick">
+                                    <i class="fa fa-times"/> <t t-out="this.translate('Clear')"/>
                                 </button>
 
-                                <div class="o_ai_recorder_pick" t-if="state.recorderPicked">
+                                <div class="o_ai_recorder_pick" t-if="this.state.recorderPicked">
                                     <i class="fa fa-bullseye"/>
-                                    <span t-esc="state.recorderPicked.target_key"/>
+                                    <span t-out="this.state.recorderPicked.target_key"/>
                                 </div>
                             </div>
 
                             <div class="o_ai_recorder_step">
                                 <textarea class="form-control"
                                           rows="2"
-                                          t-model="state.recorderNote"
-                                          t-att-placeholder="translate('Step instruction (optional)...')"></textarea>
+                                          t-att-value="this.state.recorderNote" t-on-input="(ev) => this.state.recorderNote = ev.target.value"
+                                          t-att-placeholder="this.translate('Step instruction (optional)...')"></textarea>
 
                                 <div class="o_ai_rec_step_actions">
                                     <button type="button"
                                             class="btn btn-sm btn-success"
-                                            t-att-disabled="state.recorderStatus === 'idle'"
-                                            t-on-click.stop.prevent="onRecorderSaveStep">
-                                        <i class="fa fa-save"/> <t t-esc="translate('Save step')"/>
+                                            t-att-disabled="this.state.recorderStatus === 'idle'"
+                                            t-on-click.stop.prevent="this.onRecorderSaveStep">
+                                        <i class="fa fa-save"/> <t t-out="this.translate('Save step')"/>
                                     </button>
                                 </div>
                             </div>
 
                             <div class="o_ai_recorder_feed">
-                                <div class="o_ai_rec_feed_title" t-esc="translate('Real-time event feed')"/>
+                                <div class="o_ai_rec_feed_title" t-out="this.translate('Real-time event feed')"/>
 
                                 <div class="o_ai_rec_feed_list">
-                                    <t t-foreach="state.recorderFeed" t-as="ev" t-key="ev._id">
+                                    <t t-foreach="this.state.recorderFeed" t-as="ev" t-key="ev._id">
                                         <t t-if="ev.event_type === 'STEP_SAVED'">
                                             <div class="o_ai_rec_feed_item">
                                                 <div class="line1">
-                                                    <span class="typ" t-esc="ev.event_type"/>
-                                                    <span class="tgt" t-esc="ev.target"/>
+                                                    <span class="typ" t-out="ev.event_type"/>
+                                                    <span class="tgt" t-out="ev.target"/>
                                                 </div>
                                                 <div class="line2">
-                                                    <span class="ts" t-esc="ev.timestamp"/>
+                                                    <span class="ts" t-out="ev.timestamp"/>
                                                 </div>
                                             </div>
                                         </t>
@@ -199,105 +197,103 @@
                         </div>
                     </div>
 
-                    <!-- =========================
-                         CHAT PANEL (SIEMPRE MONTADO, SOLO SE OCULTA)
-                         ========================= -->
-                    <div t-att-class="state.showRecorderPanel ? 'd-none' : {
+                    <!-- Keep the chat panel mounted and hide it when inactive. -->
+                    <div t-att-class="this.state.showRecorderPanel ? 'd-none' : {
                         'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative': true,
-                        'has-skip-step': state.skipStepEnabled and state.processActive,
+                        'has-skip-step': this.state.skipStepEnabled and this.state.processActive,
                     }"
-                         t-ref="chat-panel">
-                        <!-- OJO: no self-closing. Mejor siempre tag normal para mount de librerías -->
-                        <div t-ref="chat-ui"
+                         t-ref="this.chatPanelRef">
+                        <!-- Keep this as a normal element so libraries can mount into it. -->
+                        <div t-ref="this.chatUiRef"
                              id="chat-ui-container"
                              t-att-class="{
                                  'h-100': true,
                              }"
-                             t-att-aria-busy="state.isLoading ? 'true' : 'false'"></div>
+                             t-att-aria-busy="this.state.isLoading ? 'true' : 'false'"></div>
 
                         <button
-                            t-if="state.skipStepEnabled and state.processActive"
+                            t-if="this.state.skipStepEnabled and this.state.processActive"
                             type="button"
                             class="ai-skip-step-button"
                             data-ai-tutor-ignore-event="true"
-                            t-att-disabled="state.skipStepLoading"
-                            t-att-title="translate('Skip to next step')"
-                            t-att-aria-label="translate('Skip to next step')"
-                            t-on-click.stop.prevent="onSkipStep"
+                            t-att-disabled="this.state.skipStepLoading"
+                            t-att-title="this.translate('Skip to next step')"
+                            t-att-aria-label="this.translate('Skip to next step')"
+                            t-on-click.stop.prevent="this.onSkipStep"
                         >
-                            <i t-att-class="state.skipStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
+                            <i t-att-class="this.state.skipStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
                         </button>
 
                         <button t-if="showUnreadIndicator"
                                 type="button"
                                 class="ai-new-message-indicator"
-                                t-attf-style="bottom: {{ state.composerHeight + 16 }}px;"
-                                t-on-click.stop.prevent="jumpToNewestMessage"
-                                t-att-aria-label="unreadIndicatorLabel">
+                                t-attf-style="bottom: {{ this.state.composerHeight + 16 }}px;"
+                                t-on-click.stop.prevent="this.jumpToNewestMessage"
+                                t-att-aria-label="this.unreadIndicatorLabel">
                             <span class="ai-new-message-dot"/>
-                            <span class="ai-new-message-label" t-esc="unreadIndicatorLabel"/>
+                            <span class="ai-new-message-label" t-out="this.unreadIndicatorLabel"/>
                         </button>
 
-                        <t t-if="state.hintVisible and state.hintMessage">
+                        <t t-if="this.state.hintVisible and this.state.hintMessage">
                             <div t-att-class="{
                                      'ai-inline-hint-container': true,
-                                     'ai-inline-hint-container-raised': state.skipStepEnabled and state.processActive,
+                                     'ai-inline-hint-container-raised': this.state.skipStepEnabled and this.state.processActive,
                                  }"
-                                 t-attf-style="bottom: {{ state.composerTopOffset + ((state.skipStepEnabled and state.processActive) ? 58 : 8) }}px;"
-                                 t-ref="inline-hint">
+                                 t-attf-style="bottom: {{ this.state.composerTopOffset + ((this.state.skipStepEnabled and this.state.processActive) ? 58 : 8) }}px;"
+                                 t-ref="this.inlineHintRef">
                                 <div class="ai-inline-hint"
-                                     t-key="state.hintCycle"
+                                     t-key="this.state.hintCycle"
                                      t-att-class="{
-                                         'is-exiting': state.hintExiting,
-                                         'is-paused': state.hintHovered,
+                                         'is-exiting': this.state.hintExiting,
+                                         'is-paused': this.state.hintHovered,
                                      }"
-                                     t-on-mouseenter="pauseInlineHint"
-                                     t-on-mouseleave="resumeInlineHint">
+                                     t-on-mouseenter="this.pauseInlineHint"
+                                     t-on-mouseleave="this.resumeInlineHint">
                                     <div class="ai-inline-hint-header">
                                         <div class="ai-inline-hint-badge">
                                             <span class="ai-inline-hint-badge-icon">
                                                 <i class="fa fa-lightbulb-o"/>
                                             </span>
-                                            <span class="ai-inline-hint-badge-text" t-esc="translate('Context hint')"/>
+                                            <span class="ai-inline-hint-badge-text" t-out="this.translate('Context hint')"/>
                                         </div>
 
                                         <div class="ai-inline-hint-time">
-                                            <t t-esc="hintTimeAgo"/>
+                                            <t t-out="this.hintTimeAgo"/>
                                         </div>
                                     </div>
 
                                     <button
                                         type="button"
                                         class="ai-inline-hint-close"
-                                        t-on-click.stop.prevent="closeInlineHint"
-                                        t-att-aria-label="translate('Close hint')"
+                                        t-on-click.stop.prevent="this.closeInlineHint"
+                                        t-att-aria-label="this.translate('Close hint')"
                                     >×</button>
 
                                     <div class="ai-inline-hint-text">
-                                        <t t-esc="state.hintMessage"/>
+                                        <t t-out="this.state.hintMessage"/>
                                     </div>
                                 </div>
                             </div>
                         </t>
 
                         <div class="ai-buttons-container"
-                             t-att-class="{'visible': state.showButtons and state.processActive}"
-                             t-attf-style="bottom: {{ state.composerHeight + 25 }}px;">
+                             t-att-class="{'visible': this.state.showButtons and this.state.processActive}"
+                             t-attf-style="bottom: {{ this.state.composerHeight + 25 }}px;">
 
-                            <div t-if="state.processActive" class="d-flex align-items-center">
+                            <div t-if="this.state.processActive" class="d-flex align-items-center">
                                 <button
                                     class="dk-btn dk-btn-secondary me-2"
-                                    t-on-click.stop.prevent="cancelProcess">
-                                    <t t-esc="translate('Cancel')"/>
+                                    t-on-click.stop.prevent="this.cancelProcess">
+                                    <t t-out="this.translate('Cancel')"/>
                                 </button>
 
                                 <button class="dk-btn dk-btn-accent"
-                                        t-on-click.stop.prevent="showResultModal"
-                                        t-att-disabled="state.finishLoading">
-                                    <t t-if="state.finishLoading">
+                                        t-on-click.stop.prevent="this.showResultModal"
+                                        t-att-disabled="this.state.finishLoading">
+                                    <t t-if="this.state.finishLoading">
                                         <i class="fa fa-spinner fa-spin mr-2"/>
                                     </t>
-                                    <t t-else="" t-esc="translate('Finish')"/>
+                                    <t t-else="" t-out="this.translate('Finish')"/>
                                 </button>
                             </div>
                         </div>

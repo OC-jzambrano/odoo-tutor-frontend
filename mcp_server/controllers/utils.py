@@ -10,8 +10,8 @@ from odoo.http import request
 
 _logger = logging.getLogger(__name__)
 
-# Constants for configuration
-CACHE_TTL_SECONDS = 300  # 5 minutes
+# Configuration constants and cache settings.
+CACHE_TTL_SECONDS = 300
 
 # Cache for MCP enabled status (TTL: 5 minutes)
 _mcp_enabled_cache: Dict[str, Optional[Union[datetime, bool]]] = {
@@ -22,8 +22,7 @@ _mcp_enabled_cache: Dict[str, Optional[Union[datetime, bool]]] = {
 # Cache for model access checks (model_name: {'timestamp': datetime, 'value': bool})
 _model_enabled_cache: Dict[str, Dict[str, Union[datetime, bool]]] = {}
 
-# Cache for operation access checks (model_name-operation:
-# {'timestamp': datetime, 'value': bool})
+# Cache operation access checks by model and operation with timestamped values.
 _operation_enabled_cache: Dict[str, Dict[str, Union[datetime, bool]]] = {}
 
 
@@ -109,7 +108,7 @@ def is_model_mcp_enabled(env: Environment, model_name: str) -> bool:
     :return: True if the model is MCP-enabled, False otherwise.
     :rtype: bool
     """
-    if not is_mcp_enabled():  # Check global switch first
+    if not is_mcp_enabled():
         return False
 
     now = datetime.now(timezone.utc)
@@ -160,7 +159,7 @@ def check_model_operation_allowed(
     :return: True if the operation is allowed, False otherwise.
     :rtype: bool
     """
-    if not is_mcp_enabled():  # Check global switch first
+    if not is_mcp_enabled():
         return False
 
     # Normalize and validate inputs
@@ -371,7 +370,7 @@ def check_mcp_access(env: Environment, model_name: str, method_name: str) -> boo
 
     method_name = str(method_name).strip()
 
-    if not is_mcp_enabled():  # Global check
+    if not is_mcp_enabled():
         _logger.info("MCP: Access denied because MCP is globally disabled.")
         return False
 
@@ -417,8 +416,7 @@ def check_mcp_access(env: Environment, model_name: str, method_name: str) -> boo
         _logger.info(message)
         return False
 
-    # Additional security check: Don't allow methods that start
-    # with underscore (private methods)
+    # Reject private methods whose names start with an underscore.
     if method_name.startswith("_"):
         _logger.warning(
             f"MCP: Attempted access to private method {method_name}. Access denied."
@@ -460,7 +458,7 @@ def get_mcp_server_version() -> str:
         return version
     except Exception as e:
         _logger.error(f"Error retrieving MCP server version from manifest: {e}")
-        return "1.0.0"  # Fallback version
+        return "1.0.0"
 
 
 def get_system_info(env: Environment) -> Dict[str, Union[str, int]]:
@@ -480,23 +478,23 @@ def get_system_info(env: Environment) -> Dict[str, Union[str, int]]:
     lang = env.context.get("lang")
     if not lang and env.user:
         lang = env.user.lang
-    if not lang:  # Fallback if no user context or user has no lang
+    if not lang:
         lang = (
             env["ir.default"].sudo().get("res.partner", "lang")
-        )  # A common place for default lang
-    if not lang:  # Further fallback
+        )
+    if not lang:
         lang = env["ir.config_parameter"].sudo().get_param("base.language", "en_US")
 
     enabled_mcp_models_count = 0
-    if is_mcp_enabled():  # Only count if MCP is globally on
+    if is_mcp_enabled():
         enabled_mcp_models_count = (
             env["mcp.enabled.model"].sudo().search_count([("active", "=", True)])
         )
 
-    server_timezone = env.context.get("tz")  # Get timezone from context
+    server_timezone = env.context.get("tz")
     if not server_timezone and env.user:
         server_timezone = env.user.tz
-    if not server_timezone:  # Fallback to UTC if not set
+    if not server_timezone:
         server_timezone = "UTC"
 
     return {

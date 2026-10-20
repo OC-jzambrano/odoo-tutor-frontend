@@ -87,13 +87,14 @@ def check_rate_limit(user_id: int) -> bool:
 
     with _cache_lock:
         if user_id not in _api_request_cache:
-            return True  # No requests recorded yet
+            # No requests have been recorded for this user yet.
+            return True
 
         # Filter requests in the last minute
         recent_requests = [
             ts for ts in _api_request_cache[user_id] if ts > one_minute_ago
         ]
-        _api_request_cache[user_id] = recent_requests  # Update cache
+        _api_request_cache[user_id] = recent_requests
 
         return len(recent_requests) < limit
 
@@ -126,8 +127,7 @@ def rate_limit(func):
         if not rate_limiting_enabled:
             return func(*args, **kwargs)
 
-        # This decorator expects the user to be identified
-        # and passed, typically by `require_api_key`
+    # The caller must identify the user, usually through require_api_key.
         user = kwargs.get("user")
         if not user:
             # For anonymous requests, use a special ID
@@ -227,7 +227,7 @@ def request_timeout(func: Callable) -> Callable:
                     f"Request processing exceeded timeout "
                     f"limit of {timeout_seconds} seconds.",
                     "E408",
-                    status=408,  # Request Timeout
+                    status=408,
                 )
             finally:
                 # Restore the old handler

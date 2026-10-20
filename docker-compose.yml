@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - odoo20_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  odoo:
+    image: odoo:20.0
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8069:8069"
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: odoo
+    command:
+      - odoo
+      - --database=odoo20_local
+      - --db-filter=^odoo20_local$
+      - --dev=assets,qweb
+      - --addons-path=/usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
+    volumes:
+      - odoo20_data:/var/lib/odoo
+      - ./odoo_tutor:/mnt/extra-addons/odoo_tutor:ro
+
+volumes:
+  odoo20_db_data:
+  odoo20_data:

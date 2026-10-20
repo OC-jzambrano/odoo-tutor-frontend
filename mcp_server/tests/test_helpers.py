@@ -74,8 +74,7 @@ class TestHelpers:
                 elif field_type == "datetime":
                     defaults[field_name] = "2025-01-01 00:00:00"
                 elif field_type == "many2one":
-                    # For many2one, we'd need to create or find a record
-                    # Skip for now as it's more complex
+        # Skip many2one fields because they require an existing related record.
                     pass
 
         cls._cache[cache_key] = defaults.copy()
@@ -125,8 +124,7 @@ class TestHelpers:
             if "autopost_bills" in partner_fields:
                 partner_has_autopost_bills = True
         except (AttributeError, KeyError):
-            # AttributeError: env["res.partner"] might not exist
-            # KeyError: _fields might not be accessible
+            # Handle environments where the partner model or field metadata is unavailable.
             _logger.debug("Could not access 'autopost_bills' field on res.partner")
 
         # If autopost_bills exists and we need to set it, create partner first
@@ -135,7 +133,7 @@ class TestHelpers:
             partner_vals = {
                 "name": name,
                 "email": kwargs.get("email", ""),
-                "autopost_bills": "ask",  # Safe default
+                "autopost_bills": "ask",
             }
             # Get partner defaults
             partner_defaults = cls.get_required_defaults(env, "res.partner")

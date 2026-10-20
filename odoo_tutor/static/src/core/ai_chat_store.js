@@ -1,12 +1,13 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { reactive } from "@odoo/owl";
+import { proxy } from "@odoo/owl";
 
 export const aiChatStoreService = {
   start() {
-    const state = reactive({
-      tutorPushes: [],     // <- aquí pintaremos
+    const state = proxy({
+      // Tutor messages awaiting display.
+      tutorPushes: [],
       unreadCount: 0,
       isChatOpen: false,
       isAtBottom: true,

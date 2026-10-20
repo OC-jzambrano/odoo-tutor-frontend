@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="res_users_view_form_odoo_tutor_preferences" model="ir.ui.view">
+        <field name="name">res.users.form.odoo.tutor.preferences</field>
+        <field name="model">res.users</field>
+        <field name="inherit_id" ref="base.view_users_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='preferences']/group/group[@name='other_preferences']" position="inside">
+                <group string="Odoo AI Tutor" invisible="id != uid">
+                    <field name="tutor_llm_provider"/>
+                    <field name="tutor_llm_model" placeholder="Predeterminado del proveedor"/>
+                    <field name="tutor_llm_api_key" password="True" placeholder="Clave personal del proveedor"/>
+                    <field name="tutor_llm_api_secret" password="True" invisible="tutor_llm_provider != 'bedrock'" placeholder="Solo si usas credenciales AWS personales"/>
+                    <field name="tutor_llm_region" invisible="tutor_llm_provider != 'bedrock'" placeholder="eu-north-1"/>
+                    <div class="text-muted" colspan="2">Si dejas vacías las credenciales AWS, el backend usa su rol o perfil de servidor.</div>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

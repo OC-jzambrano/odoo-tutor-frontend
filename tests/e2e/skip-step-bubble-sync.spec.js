@@ -1,12 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-// Regression test for the bug where skipping a step from the floating
-// "owl bubble" (visible while the chat sidebar is closed) advanced the
-// bubble's own preview text but never appeared in the actual chat
-// conversation once the sidebar was reopened. Root cause: the bubble had
-// its own separate aiWs.chat() call that only updated its local preview
-// state, instead of going through the same code path the in-chat skip
-// button uses to push the response into the nlux conversation.
+// Verify that skipping from the floating bubble also adds the response to chat history.
 test("skipping a step from the owl bubble is reflected in the chat once reopened", async ({
   page,
 }) => {
@@ -77,8 +71,7 @@ test("skipping a step from the owl bubble is reflected in the chat once reopened
 
   await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
 
-  // Close the sidebar so the exchange continues through the floating
-  // "owl bubble" surface instead of the in-chat panel.
+  // Close the sidebar to use the floating bubble.
   await page.locator("#offcanvasAiSidebar .btn-close").click();
   await expect(page.locator(".ai-owl-exercise-choice-yes")).toBeVisible();
   await page.locator(".ai-owl-exercise-choice-yes").click();
@@ -93,8 +86,7 @@ test("skipping a step from the owl bubble is reflected in the chat once reopened
     "Enter the opportunity name.",
   );
 
-  // The real assertion: reopening the sidebar must show the skip-produced
-  // instruction in the actual chat history, not just in the bubble preview.
+  // Confirm the skipped instruction appears in chat history after reopening.
   await page.locator("[data-ai-sidebar-toggle]").click();
   await expect(page.locator("#offcanvasAiSidebar")).toHaveClass(/show/);
   await expect(

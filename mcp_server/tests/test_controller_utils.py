@@ -18,7 +18,8 @@ class TestMcpUtils(common.TransactionCase):
         # Create test user with unique login to avoid conflicts
         import time
 
-        unique_id = str(int(time.time() * 1000))[-6:]  # Last 6 digits of timestamp
+        # Use the last six digits of the current timestamp.
+        unique_id = str(int(time.time() * 1000))[-6:]
         login = f"test_user_utils_{unique_id}"
 
         self.test_user = create_test_user(
@@ -105,10 +106,10 @@ class TestMcpUtils(common.TransactionCase):
     def test_sanitize_model_name_invalid(self):
         """Test model name sanitization with invalid names"""
         invalid_names = [
-            "res partner",  # space
-            "res-partner",  # dash
-            "",  # empty string
-            None,  # None value
+            "res partner",
+            "res-partner",
+            "",
+            None,
         ]
 
         for invalid_name in invalid_names:

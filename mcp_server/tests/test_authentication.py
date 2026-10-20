@@ -21,7 +21,8 @@ class TestMCPAuthentication(HttpCase):
         cls.test_user = create_test_user(
             cls.env,
             "Test MCP User",
-            "test_mcp_user",  # nosec
+            # Use a fixed test username.
+            "test_mcp_user",
             password="test_password",
             groups_id=[(6, 0, [cls.env.ref("mcp_server.group_mcp_user").id])],
         )

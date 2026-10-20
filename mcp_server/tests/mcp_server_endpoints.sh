@@ -1,15 +1,13 @@
 #!/bin/bash
 
-# Test script for MCP Server endpoints based on official documentation
-# This script provides comprehensive testing of all documented MCP Server endpoints
-# Version: 2.0.0
+# Exercise the MCP endpoints documented for this module.
 
 # Exit on error if not in debug mode
 if [ "${DEBUG:-false}" != "true" ]; then
     set -e
 fi
 
-# ====================== CONFIGURATION ======================
+# Configuration.
 
 # Find the script directory and project root
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -20,8 +18,7 @@ else
     PROJECT_ROOT="$SCRIPT_DIR"
 fi
 
-# Authentication Configuration
-# WARNING: Use dedicated test credentials, never production credentials
+# Use dedicated test credentials, never production credentials.
 
 # Look for .env file in the project root
 ENV_FILE="$PROJECT_ROOT/.env"
@@ -52,13 +49,14 @@ USER_ID="${MCP_TEST_USER_ID:-${ODOO_USER_ID:-2}}"
 USERNAME="${MCP_TEST_USERNAME:-$ODOO_USER}"
 PASSWORD="${MCP_TEST_PASSWORD:-$ODOO_PASSWORD}"
 
-# Test Configuration
-DEBUG="${DEBUG:-false}"  # Set to true for verbose output
-SKIP_RATE_LIMIT_TEST="${SKIP_RATE_LIMIT_TEST:-true}"  # Rate limit test takes time
-CLEANUP_TEST_DATA="${CLEANUP_TEST_DATA:-true}"  # Clean up created test records
+# Set DEBUG to true to enable verbose output.
+DEBUG="${DEBUG:-false}"
+# Rate limit tests take additional time.
+SKIP_RATE_LIMIT_TEST="${SKIP_RATE_LIMIT_TEST:-true}"
+# Remove test records after the script completes.
+CLEANUP_TEST_DATA="${CLEANUP_TEST_DATA:-true}"
 
-# Model Configuration for Testing
-# These should match your MCP configuration in Odoo
+# Use model names that match the MCP configuration in Odoo.
 ENABLED_MODEL="${MCP_TEST_ENABLED_MODEL:-res.users}"
 READ_ONLY_MODEL="${MCP_TEST_READ_ONLY_MODEL:-res.country}"
 READ_WRITE_MODEL="${MCP_TEST_READ_WRITE_MODEL:-res.partner}"
@@ -69,7 +67,7 @@ DISABLED_MODEL="${MCP_TEST_DISABLED_MODEL:-ir.attachment}"
 INVALID_API_KEY="0ef5b399e9ee9c11b053dfb6eeba8de473c29fca"
 TEST_PARTNER_NAME="MCP Test Partner $(date +%s)"
 TEST_COMPANY_NAME="MCP Test Company $(date +%s)"
-CREATED_IDS=()  # Track created records for cleanup
+CREATED_IDS=()
 
 # Output Colors
 GREEN='\033[0;32m'
@@ -78,7 +76,7 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # Test Counters
 SUCCESS_COUNT=0
@@ -105,7 +103,7 @@ echo "  Cleanup Test Data: $CLEANUP_TEST_DATA"
 echo "===================================================="
 echo
 
-# ====================== HELPER FUNCTIONS ======================
+# Helper functions.
 
 # Function to safely check JSON content using jq
 check_json_expr() {
@@ -151,7 +149,8 @@ get_xmlrpc_fault_message() {
 # Function to extract XML-RPC result value
 get_xmlrpc_result() {
     local response="$1"
-    local result_type="${2:-auto}"  # auto, int, bool, string, array
+    # Supported result types are auto, int, bool, string, and array.
+    local result_type="${2:-auto}"
     
     case "$result_type" in
         int)
@@ -379,7 +378,8 @@ test_xmlrpc() {
     local expect_fault="$5"
     local alt_api_key="${6:-$API_KEY}"
     local capture_result_var="${7:-}"
-    local kwargs_xml="${8:-}"  # Optional kwargs parameter
+    # The kwargs parameter is optional.
+    local kwargs_xml="${8:-}"
 
     # Increment test counter
     TEST_COUNT=$((TEST_COUNT + 1))
@@ -502,7 +502,7 @@ finish_test_group() {
 skip_test() {
     local reason="$1"
     SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-    echo -e "${YELLOW}⚠ Skipped: $reason${NC}"
+    echo -e "${YELLOW}Skipped: $reason${NC}"
 }
 
 # Function to test rate limiting
@@ -547,7 +547,7 @@ test_rate_limiting() {
     sleep 60
 }
 
-# ====================== TEST EXECUTION ======================
+# Test execution.
 
 # Test 1: Basic Health Check
 print_test_group "1. Health Check Endpoint"
@@ -881,15 +881,14 @@ print_test_group "12. Rate Limiting"
 test_rate_limiting
 finish_test_group
 
-# ====================== TEST SUMMARY ======================
+# Test summary.
 
 echo
 echo "===================================================="
 echo "              TEST EXECUTION SUMMARY"
 echo "===================================================="
 
-# Calculate final statistics
-# Count actual failures (excluding skipped tests)
+# Calculate final statistics, excluding skipped tests from the failure count.
 FAIL_COUNT=${#FAILURES[@]}
 SCRIPT_END_TIME=$(date +%s)
 TOTAL_DURATION=$((SCRIPT_END_TIME - SCRIPT_START_TIME))
@@ -931,15 +930,15 @@ fi
 # Final status
 echo "===================================================="
 if [ $FAIL_COUNT -eq 0 ]; then
-    echo -e "${GREEN}✅ ALL TESTS PASSED!${NC}"
+    echo -e "${GREEN}ALL TESTS PASSED!${NC}"
     echo "===================================================="
     exit 0
 else
     if [ $SUCCESS_RATE -ge 80 ]; then
-        echo -e "${YELLOW}⚠️  TESTS COMPLETED WITH WARNINGS${NC}"
+        echo -e "${YELLOW}TESTS COMPLETED WITH WARNINGS${NC}"
         echo -e "${YELLOW}   Most tests passed ($SUCCESS_RATE%), but some failures detected.${NC}"
     else
-        echo -e "${RED}❌ TESTS FAILED${NC}"
+        echo -e "${RED}TESTS FAILED${NC}"
         echo -e "${RED}   Multiple test failures detected ($SUCCESS_RATE% success rate).${NC}"
     fi
     echo "===================================================="

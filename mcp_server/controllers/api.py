@@ -1,5 +1,6 @@
 import logging
-import xmlrpc.client as xmlrpclib  # nosec
+# Use XML-RPC for Odoo's authenticated API.
+import xmlrpc.client as xmlrpclib
 from datetime import datetime
 from typing import Any, Optional, Tuple
 
@@ -293,8 +294,7 @@ class MCPObjectController(http.Controller):
         """
         self._validate_request(xmlrpc_method, params)
 
-        # Standard params for execute_kw: (db_name, uid, password, model_name,
-        # model_method, args_array, kwargs_dict)
+        # Standard execute_kw parameters are database, user, password, model, method, args, and kwargs.
         uid = params[1]
         auth_token = params[2]
         model_method = params[4]

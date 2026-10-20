@@ -39,7 +39,7 @@
     box-shadow: none !important;
 }
 
-/* Preserve avatar alignment inside chat messages */
+/* Keep avatars aligned inside chat messages. */
 #chat-ui-container .nlux-comp-chatItem.nlux-comp-chatItem--received.nlux-comp-chatItem--bubblesLayout {
     display: flex;
     flex-direction: row;
@@ -70,7 +70,7 @@
     border-radius: 0;
 }
 
-/* ===== LAUNCHER ===== */
+/* Floating launcher styles. */
 
 .ai-owl-trigger {
     position: relative !important;
@@ -206,8 +206,7 @@
     animation: tutorInlineHintBadgeIn 0.22s ease-out;
 }
 
-/* Duplicated from .ai-chat-panel .ai-skip-step-button (webclient/sidebar/ai_sidebar.css)
-   so the floating-owl badge and the in-chat button read as the same control. */
+/* Match the floating skip button to the in-chat control. */
 .ai-owl-trigger-skip {
     position: absolute;
     top: -6px;
@@ -286,7 +285,7 @@
     transform: none;
 }
 
-/* ===== PREVIEW ===== */
+/* Preview styles. */
 
 .ai-owl-preview {
     position: absolute !important;
@@ -449,7 +448,7 @@
     color: var(--tutor-float-text-muted);
 }
 
-/* While dragging, avoid accidental selection */
+/* Prevent accidental text selection while dragging. */
 body.ai-widget-dragging,
 body.ai-widget-dragging * {
     user-select: none !important;
@@ -478,7 +477,7 @@ body.ai-widget-dragging * {
     }
 }
 
-/* Responsive */
+/* Responsive layout. */
 @media (max-width: 480px) {
     .ai-floating-button {
         --tutor-launcher-size: 82px;

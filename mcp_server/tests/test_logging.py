@@ -144,7 +144,8 @@ class TestMCPLogging(TransactionCase):
 
     def test_data_truncation(self):
         """Test that large data fields are truncated."""
-        large_data = "x" * 15000  # Larger than max_text_length (10000)
+        # Exceed the configured text limit.
+        large_data = "x" * 15000
 
         log = self.MCPLog.log_event(
             "error",
@@ -158,7 +159,7 @@ class TestMCPLogging(TransactionCase):
         self.assertTrue(log.request_data.endswith("... [truncated]"))
         self.assertTrue(log.response_data.endswith("... [truncated]"))
         self.assertTrue(log.user_agent.endswith("... [truncated]"))
-        self.assertLessEqual(len(log.error_message), 10020)  # 10000 + '... [truncated]'
+        self.assertLessEqual(len(log.error_message), 10020)
 
     def test_cleanup_old_logs(self):
         """Test cleanup of old log entries."""
@@ -248,7 +249,7 @@ class TestMCPLogging(TransactionCase):
         self.assertIn("model_access", summary)
         self.assertIn("res.partner", summary)
         self.assertIn("search", summary)
-        self.assertIn("...", summary)  # Error message should be truncated
+        self.assertIn("...", summary)
 
     def test_display_name_computation(self):
         """Test display name computation."""
