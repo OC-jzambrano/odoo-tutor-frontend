@@ -72,6 +72,8 @@
                                     t-on-touchstart.stop.prevent="this.noop"
                                     t-on-click.stop.prevent="this.onExerciseCtaStart"
                                 >
+                                    <i t-if="this.exerciseCtaBusy" class="oi tutor-oi-spinner" data-icon="refresh"/>
+                                    <i t-else="" class="oi" data-icon="check"/>
                                     <t t-if="this.exerciseCtaBusy" t-out="this.translate('Starting...')"/>
                                     <t t-else="" t-out="this.translate('Yes')"/>
                                 </button>
@@ -84,6 +86,7 @@
                                     t-on-touchstart.stop.prevent="this.noop"
                                     t-on-click.stop.prevent="this.onExerciseCtaCancel"
                                 >
+                                    <i class="oi" data-icon="close"/>
                                     <t t-out="this.translate('Cancel')"/>
                                 </button>
                             </div>
@@ -117,7 +120,7 @@
 
                     <span class="ai-owl-trigger-badge">AI</span>
                     <span t-if="!this.state.optionalStepVisible and this.state.hintBadgeVisible" class="ai-owl-trigger-hint" title="Nueva pista">
-                        <i class="fa fa-lightbulb-o"/>
+                        <i class="oi" data-icon="lightbulb"/>
                     </span>
                 </button>
                 <button
@@ -131,7 +134,7 @@
                     t-on-touchstart.stop.prevent="this.noop"
                     t-on-click.stop.prevent="this.onSkipOptionalStep"
                 >
-                    <i t-att-class="this.state.optionalStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
+                    <i t-att-class="this.state.optionalStepLoading ? 'oi tutor-oi-spinner' : 'oi'" t-att-data-icon="this.state.optionalStepLoading ? 'refresh' : 'skip_next'"/>
                 </button>
             </div>
         </t>

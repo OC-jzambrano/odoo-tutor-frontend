@@ -23,7 +23,7 @@
                 <div class="ai-sidebar-header-main">
                     <div class="ai-sidebar-brand">
                         <span class="ai-sidebar-brand-mark">
-                            <i t-att-class="this.state.showRecorderPanel ? 'fa fa-dot-circle-o' : 'fa fa-comments-o'"/>
+                            <i class="oi" t-att-data-icon="this.state.showRecorderPanel ? 'radio_button_checked' : 'chat_bubble'"/>
                         </span>
 
                         <div class="ai-sidebar-brand-copy">
@@ -44,18 +44,7 @@
                         t-att-aria-label="this.translate('Reset')"
                         t-on-click.stop.prevent="this.reset"
                     >
-                        <i class="fa fa-repeat"/>
-                    </button>
-
-                    <button
-                        t-if="this.state.canSeeRecorderToggle"
-                        type="button"
-                        class="btn btn-sm btn-recorder-toggle"
-                        t-on-click.stop.prevent="this.toggleRecorderPanel"
-                        t-att-title="this.state.showRecorderPanel ? this.translate('Switch to Chat') : this.translate('Switch to Recorder')"
-                    >
-                        <i t-att-class="this.state.showRecorderPanel ? 'fa fa-comments me-1' : 'fa fa-dot-circle-o me-1'"/>
-                        <t t-out="this.state.showRecorderPanel ? this.translate('Chat') : this.translate('Recorder')"/>
+                        <i class="oi" data-icon="refresh"/>
                     </button>
 
                     <div t-if="this.state.processActive and !this.state.showRecorderPanel" class="d-flex align-items-center">
@@ -69,17 +58,17 @@
                         >
                             <t t-out="this.state.timerValue" t-if="this.state.timerValue"/>
                             <t t-else="">00:00:00</t>
-                            <i t-if="this.state.exerciseCancelLoading" class="fa fa-spinner fa-spin timer-cancel-icon"/>
-                            <i t-else="" class="fa fa-times timer-cancel-icon"/>
+                            <i t-if="this.state.exerciseCancelLoading" class="oi tutor-oi-spinner timer-cancel-icon" data-icon="refresh"/>
+                            <i t-else="" class="oi timer-cancel-icon" data-icon="close"/>
                         </button>
                     </div>
 
                     <button
                         type="button"
-                        class="btn-close text-reset"
+                        class="btn ai-sidebar-close text-reset"
                         t-att-aria-label="this.translate('Close')"
                         t-on-click.stop.prevent="this.onCloseSidebar"
-                    />
+                    ><i class="oi" data-icon="close"/></button>
                 </div>
             </div>
 
@@ -92,7 +81,7 @@
                             <div class="o_ai_recorder_header">
                                 <div class="o_ai_recorder_left">
                                     <span t-if="this.state.recorderStatus === 'recording'" class="o_ai_rec_badge">
-                                        <i class="fa fa-circle"/>
+                                        <i class="oi oi-filled" data-icon="circle"/>
                                         <t t-out="this.translate('Recording')"/>
                                     </span>
                                     <span class="o_ai_rec_title" t-out="this.translate('Recorder')"/>
@@ -103,21 +92,21 @@
                                             type="button"
                                             class="btn btn-sm btn-primary"
                                             t-on-click.stop.prevent="this.onRecorderStart">
-                                        <i class="fa fa-play"/> <t t-out="this.translate('Start')"/>
+                                        <i class="oi" data-icon="play_arrow"/> <t t-out="this.translate('Start')"/>
                                     </button>
 
                                     <button t-if="this.state.recorderStatus === 'recording'"
                                             type="button"
                                             class="btn btn-sm btn-secondary"
                                             t-on-click.stop.prevent="this.onRecorderPause">
-                                        <i class="fa fa-pause"/> <t t-out="this.translate('Pause')"/>
+                                        <i class="oi" data-icon="pause"/> <t t-out="this.translate('Pause')"/>
                                     </button>
 
                                     <button t-if="this.state.recorderStatus !== 'idle'"
                                             type="button"
                                             class="btn btn-sm btn-danger"
                                             t-on-click.stop.prevent="this.onRecorderFinish">
-                                        <i class="fa fa-stop"/> <t t-out="this.translate('Finish')"/>
+                                        <i class="oi" data-icon="stop"/> <t t-out="this.translate('Finish')"/>
                                     </button>
                                 </div>
                             </div>
@@ -139,10 +128,10 @@
                                         t-att-disabled="this.state.recorderStatus === 'idle' or this.state.recorderPicking"
                                         t-on-click.stop.prevent="this.onRecorderPick">
                                     <t t-if="this.state.recorderPicking">
-                                        <i class="fa fa-crosshairs fa-spin"/> <t t-out="this.translate('Picking...')"/>
+                                        <i class="oi tutor-oi-spinner" data-icon="my_location"/> <t t-out="this.translate('Picking...')"/>
                                     </t>
                                     <t t-else="">
-                                        <i class="fa fa-crosshairs"/> <t t-out="this.translate('Pick element')"/>
+                                        <i class="oi" data-icon="my_location"/> <t t-out="this.translate('Pick element')"/>
                                     </t>
                                 </button>
 
@@ -150,11 +139,11 @@
                                         type="button"
                                         class="btn btn-sm btn-outline-secondary"
                                         t-on-click.stop.prevent="this.onRecorderClearPick">
-                                    <i class="fa fa-times"/> <t t-out="this.translate('Clear')"/>
+                                    <i class="oi" data-icon="close"/> <t t-out="this.translate('Clear')"/>
                                 </button>
 
                                 <div class="o_ai_recorder_pick" t-if="this.state.recorderPicked">
-                                    <i class="fa fa-bullseye"/>
+                                    <i class="oi" data-icon="adjust"/>
                                     <span t-out="this.state.recorderPicked.target_key"/>
                                 </div>
                             </div>
@@ -170,7 +159,7 @@
                                             class="btn btn-sm btn-success"
                                             t-att-disabled="this.state.recorderStatus === 'idle'"
                                             t-on-click.stop.prevent="this.onRecorderSaveStep">
-                                        <i class="fa fa-save"/> <t t-out="this.translate('Save step')"/>
+                                        <i class="oi" data-icon="save"/> <t t-out="this.translate('Save step')"/>
                                     </button>
                                 </div>
                             </div>
@@ -221,7 +210,7 @@
                             t-att-aria-label="this.translate('Skip to next step')"
                             t-on-click.stop.prevent="this.onSkipStep"
                         >
-                            <i t-att-class="this.state.skipStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
+                            <i t-att-class="this.state.skipStepLoading ? 'oi tutor-oi-spinner' : 'oi'" t-att-data-icon="this.state.skipStepLoading ? 'refresh' : 'skip_next'"/>
                         </button>
 
                         <button t-if="showUnreadIndicator"
@@ -252,7 +241,7 @@
                                     <div class="ai-inline-hint-header">
                                         <div class="ai-inline-hint-badge">
                                             <span class="ai-inline-hint-badge-icon">
-                                                <i class="fa fa-lightbulb-o"/>
+                                                <i class="oi" data-icon="lightbulb"/>
                                             </span>
                                             <span class="ai-inline-hint-badge-text" t-out="this.translate('Context hint')"/>
                                         </div>
@@ -283,17 +272,21 @@
                             <div t-if="this.state.processActive" class="d-flex align-items-center">
                                 <button
                                     class="dk-btn dk-btn-secondary me-2"
+                                    t-att-title="this.translate('Cancel')"
+                                    t-att-aria-label="this.translate('Cancel')"
                                     t-on-click.stop.prevent="this.cancelProcess">
-                                    <t t-out="this.translate('Cancel')"/>
+                                    <i class="oi" data-icon="close"/>
                                 </button>
 
                                 <button class="dk-btn dk-btn-accent"
+                                        t-att-title="this.translate('Finish')"
+                                        t-att-aria-label="this.translate('Finish')"
                                         t-on-click.stop.prevent="this.showResultModal"
                                         t-att-disabled="this.state.finishLoading">
                                     <t t-if="this.state.finishLoading">
-                                        <i class="fa fa-spinner fa-spin mr-2"/>
+                                        <i class="oi tutor-oi-spinner" data-icon="refresh"/>
                                     </t>
-                                    <t t-else="" t-out="this.translate('Finish')"/>
+                                    <i t-else="" class="oi" data-icon="check"/>
                                 </button>
                             </div>
                         </div>

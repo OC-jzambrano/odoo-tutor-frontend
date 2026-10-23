@@ -1,6 +1,12 @@
 /* Foundation styles. */
 
+/* Remove the destructive Delete action from Odoo's record action menu. */
+.o_cp_action_menus .o_menu_item.text-danger {
+    display: none !important;
+}
+
 #offcanvasAiSidebar {
+    color-scheme: light;
     --tutor-accent: #875a7b;
     --tutor-accent-strong: #714b67;
     --tutor-accent-soft: #f3edf1;
@@ -117,6 +123,64 @@
     flex: 0 0 auto;
 }
 
+#offcanvasAiSidebar .ai-sidebar-header {
+    align-items: center;
+    padding: 14px 16px 14px 20px;
+    background: var(--tutor-surface);
+    border-bottom-color: var(--tutor-border);
+}
+
+#offcanvasAiSidebar .ai-sidebar-header-actions {
+    flex-wrap: nowrap;
+    gap: 6px;
+}
+
+#offcanvasAiSidebar .ai-sidebar-brand {
+    align-items: center;
+    gap: 10px;
+}
+
+#offcanvasAiSidebar .ai-sidebar-brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    box-shadow: none;
+}
+
+#offcanvasAiSidebar .ai-sidebar-subtitle {
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar .ai-sidebar-reset,
+#offcanvasAiSidebar .ai-sidebar-header-actions .ai-sidebar-close {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--tutor-border);
+    border-radius: 10px !important;
+    background: var(--tutor-surface);
+    box-shadow: none;
+}
+
+#offcanvasAiSidebar .ai-sidebar-close {
+    color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar .ai-sidebar-reset:hover,
+#offcanvasAiSidebar .ai-sidebar-header-actions .ai-sidebar-close:hover {
+    background: var(--tutor-surface-soft);
+}
+
+#offcanvasAiSidebar .ai-sidebar-brand-mark .oi {
+    font-size: 17px;
+}
+
 #offcanvasAiSidebar .offcanvas-body {
     padding: 16px 14px 16px 18px;
     min-height: 0;
@@ -146,6 +210,10 @@
 @keyframes tutor-spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(359deg); }
+}
+
+.tutor-oi-spinner {
+    animation: tutor-spin 1s infinite linear;
 }
 
 @keyframes tutor-icon-spin {
@@ -388,6 +456,7 @@
 }
 
 #offcanvasAiSidebar.is-dark-theme {
+    color-scheme: dark;
     --tutor-surface: #151a23;
     --tutor-surface-soft: #1b2230;
     --tutor-surface-subtle: #202938;
@@ -1213,7 +1282,8 @@
 #offcanvasAiSidebar .ai-buttons-container {
     position: absolute;
     right: 28px;
-    display: none !important;
+    display: flex;
+    align-items: center;
     gap: 10px;
     z-index: 1000;
     transform: translateY(14px);
@@ -1244,6 +1314,33 @@
     justify-content: center;
     position: relative;
     overflow: hidden;
+}
+
+#offcanvasAiSidebar .dk-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 12px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
+}
+
+#offcanvasAiSidebar .dk-btn-secondary {
+    color: var(--tutor-text-muted);
+    background: var(--tutor-surface);
+    border: 1px solid var(--tutor-border);
+}
+
+#offcanvasAiSidebar .dk-btn-secondary:hover {
+    color: var(--tutor-text);
+    background: var(--tutor-surface-soft);
+}
+
+#offcanvasAiSidebar .dk-btn i {
+    margin: 0 !important;
+}
+
+#offcanvasAiSidebar .dk-btn .oi {
+    font-size: 18px;
 }
 
 #offcanvasAiSidebar .dk-btn:hover {

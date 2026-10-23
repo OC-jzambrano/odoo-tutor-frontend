@@ -135,11 +135,6 @@ function normalizeTutorTimestamp(ts) {
 }
 
 function getCurrentColorScheme() {
-    const scheme = cookie.get("color_scheme");
-    if (scheme === "dark" || scheme === "light") {
-        return scheme;
-    }
-
     const doc = document.documentElement;
     const body = document.body;
     const dataScheme = doc?.dataset?.colorScheme || body?.dataset?.colorScheme;
@@ -149,6 +144,32 @@ function getCurrentColorScheme() {
 
     if (doc?.classList?.contains("o_dark") || body?.classList?.contains("o_dark")) {
         return "dark";
+    }
+
+    // Odoo can leave the color_scheme cookie set to "dark" even while the
+    // active client view is light. Use the rendered Odoo surfaces before that
+    // fallback so the tutor follows what the user is actually seeing.
+    for (const element of [
+        document.querySelector(".o_action_manager"),
+        document.querySelector(".o_web_client"),
+        body,
+        doc,
+    ]) {
+        if (!element) continue;
+        const background = getComputedStyle(element).backgroundColor;
+        const channels = background.match(/[\d.]+/g)?.map(Number);
+        if (!channels || channels.length < 3 || (channels[3] !== undefined && channels[3] === 0)) {
+            continue;
+        }
+        const [red, green, blue] = channels;
+        const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+        if (luminance > 0.72) return "light";
+        if (luminance < 0.35) return "dark";
+    }
+
+    const scheme = cookie.get("color_scheme");
+    if (scheme === "dark" || scheme === "light") {
+        return scheme;
     }
 
     return "light";
