@@ -1692,11 +1692,21 @@ export class AiSidebar extends Component {
         actions.dataset.exerciseId = normalizedExerciseId;
         actions.innerHTML = `
             <div class="ai-exercise-actions-buttons">
-                <button type="button" class="ai-exercise-choice ai-exercise-choice-yes" data-action="start">
+                <button
+                    type="button"
+                    class="ai-exercise-choice ai-exercise-choice-yes"
+                    data-action="start"
+                    aria-label="${this._escapeHtml(_t("Start this exercise"))}"
+                >
                     ${this._escapeHtml(_t("Yes"))}
                 </button>
-                <button type="button" class="ai-exercise-choice ai-exercise-choice-cancel" data-action="cancel">
-                    ${this._escapeHtml(_t("Cancel"))}
+                <button
+                    type="button"
+                    class="ai-exercise-choice ai-exercise-choice-cancel"
+                    data-action="cancel"
+                    aria-label="${this._escapeHtml(_t("No, not now"))}"
+                >
+                    ${this._escapeHtml(_t("No"))}
                 </button>
             </div>
         `;
@@ -2895,23 +2905,13 @@ export class AiSidebar extends Component {
             model: currentContext.model || this._getCurrentBreadcrumbPath() || "base",
         };
 
-        const sessionId = this.aiWs?.wsSessionId || window.__AI_TUTOR_WS_SESSION_ID || null;
-
         try {
-            data = await this.rpc("/odoo_tutor/chat", {
-                message: message,
-                context: safeContext,
-                session_id: sessionId,
-            });
-            if (data?.session_id) {
-                window.__AI_TUTOR_WS_SESSION_ID = data.session_id;
+            if (!this.aiWs?.chat) {
+                throw new Error("El chat seguro no está conectado. Recarga Odoo AI Tutor e inténtalo de nuevo.");
             }
+            data = await this.aiWs.chat({ message, context: safeContext });
         } catch (error) {
-            try {
-                data = await this.aiWs.chat({ message, context: safeContext, session_id: sessionId });
-            } catch (wsErr) {
-                data = { error: true, response: error?.message || String(error) };
-            }
+            data = { error: true, response: error?.message || String(error) };
         }
         const text = this._prepareAssistantDisplayText(
             this._extractResponseText(data),

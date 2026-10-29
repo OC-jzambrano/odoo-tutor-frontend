@@ -30,7 +30,7 @@ test("context hint overlays the chat without shifting the message layout", async
     });
   });
 
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/settings?debug=assets#odoo_tutor");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
   await page.locator("[data-ai-sidebar-toggle]").click();
   await expect(page.locator("#offcanvasAiSidebar")).toHaveClass(/show/);
@@ -41,6 +41,11 @@ test("context hint overlays the chat without shifting the message layout", async
   await composer.fill("dependency-control-project");
   await composer.press("Enter");
   await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
+  await expect(page.locator(".ai-exercise-choice-cancel")).toHaveText("No");
+  await expect(page.locator(".ai-exercise-choice-cancel")).toHaveAttribute(
+    "aria-label",
+    "No, not now",
+  );
   await page.locator(".ai-exercise-choice-yes").click();
 
   await expect(
