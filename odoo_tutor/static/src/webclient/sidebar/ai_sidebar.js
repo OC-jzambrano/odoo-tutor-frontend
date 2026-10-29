@@ -1645,7 +1645,7 @@ export class AiSidebar extends Component {
 
     _scheduleExerciseActionsForLastMessage(
         exerciseId,
-        attempts = 24,
+        attempts = 80,
         minReceivedCount = 0,
         scheduleVersion = null,
         options = {}
@@ -1659,19 +1659,30 @@ export class AiSidebar extends Component {
             if (version !== this._exerciseActionsScheduleVersion) return;
             if (this.state.processActive && !options.allowWhileActive) return;
 
-            const item = this._getLatestReceivedMessageItem();
-            const receivedCount = this._getReceivedMessageCount();
-            if (item && receivedCount >= minReceivedCount && !item.querySelector(".ai-exercise-actions")) {
-                this._attachExerciseActions(item, normalizedExerciseId, options);
-                return;
-            }
-            this._scheduleExerciseActionsForLastMessage(
-                normalizedExerciseId,
-                attempts - 1,
-                minReceivedCount,
-                version,
-                options
+            const receivedItems = Array.from(
+                this.chatUiRef?.el?.querySelectorAll(
+                    ".nlux-comp-chatItem.nlux-comp-chatItem--received"
+                ) || []
             );
+            const receivedCount = receivedItems.length;
+            const targetIndex = minReceivedCount > 0 ? minReceivedCount - 1 : receivedCount - 1;
+            const item = targetIndex >= 0 ? receivedItems[targetIndex] : null;
+            if (item) {
+                if (item.querySelector(".ai-exercise-actions")) return;
+                if (this._attachExerciseActions(item, normalizedExerciseId, options)) return;
+            }
+            if (attempts > 1) {
+                window.setTimeout(
+                    () => this._scheduleExerciseActionsForLastMessage(
+                        normalizedExerciseId,
+                        attempts - 1,
+                        minReceivedCount,
+                        version,
+                        options
+                    ),
+                    40
+                );
+            }
         });
     }
 
@@ -2469,7 +2480,7 @@ export class AiSidebar extends Component {
                 if (item.exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         item.exerciseId,
-                        24,
+                        80,
                         0,
                         null,
                         { allowWhileActive: !!item.allowExercisePromptWhileActive }
@@ -2658,7 +2669,7 @@ export class AiSidebar extends Component {
                 if (exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         exerciseId,
-                        24,
+                        80,
                         0,
                         null,
                         { allowWhileActive: allowExercisePromptWhileActive }
@@ -2745,7 +2756,7 @@ export class AiSidebar extends Component {
                     if (exerciseId) {
                         this._scheduleExerciseActionsForLastMessage(
                             exerciseId,
-                            24,
+                            80,
                             receivedCountBefore + 1,
                             null,
                             { allowWhileActive: allowExercisePromptWhileActive }
@@ -2777,7 +2788,7 @@ export class AiSidebar extends Component {
                     if (exerciseId) {
                         this._scheduleExerciseActionsForLastMessage(
                             exerciseId,
-                            24,
+                            80,
                             receivedCountBefore + 1,
                             null,
                             { allowWhileActive: allowExercisePromptWhileActive }
@@ -3048,7 +3059,7 @@ export class AiSidebar extends Component {
                     this._pauseExerciseTimer({ reason: "welcome" });
                 }
                 setTimeout(
-                    () => this._scheduleExerciseActionsForLastMessage(exercise_id, 24, receivedCountBefore + 1),
+                    () => this._scheduleExerciseActionsForLastMessage(exercise_id, 80, receivedCountBefore + 1),
                     0
                 );
             } else if (!this.state.processActive) {

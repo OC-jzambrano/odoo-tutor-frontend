@@ -30,6 +30,30 @@ test("context hint overlays the chat without shifting the message layout", async
     });
   });
 
+  await page.addInitScript(() => {
+    const originalQuerySelector = Element.prototype.querySelector;
+    const messageHostSelectors = new Set([
+      ".nlux-comp-message",
+      ".nlux-comp-bubble",
+      '[class*="comp-message"]',
+      '[class*="bubble"]',
+    ]);
+    window.__aiTutorDelayedExerciseHostLookups = 0;
+
+    Element.prototype.querySelector = function (selector) {
+      const isTargetPrompt =
+        this.classList?.contains("nlux-comp-chatItem--received") &&
+        this.textContent?.includes("Create the task Design inside the project.");
+      if (isTargetPrompt && messageHostSelectors.has(selector)) {
+        if (selector === ".nlux-comp-message") {
+          window.__aiTutorDelayedExerciseHostLookups += 1;
+        }
+        if (window.__aiTutorDelayedExerciseHostLookups <= 3) return null;
+      }
+      return originalQuerySelector.call(this, selector);
+    };
+  });
+
   await page.goto("/odoo/settings?debug=assets#odoo_tutor");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
   await page.locator("[data-ai-sidebar-toggle]").click();
@@ -41,6 +65,9 @@ test("context hint overlays the chat without shifting the message layout", async
   await composer.fill("dependency-control-project");
   await composer.press("Enter");
   await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__aiTutorDelayedExerciseHostLookups))
+    .toBeGreaterThanOrEqual(3);
   await expect(page.locator(".ai-exercise-choice-cancel")).toHaveText("No");
   await expect(page.locator(".ai-exercise-choice-cancel")).toHaveAttribute(
     "aria-label",
