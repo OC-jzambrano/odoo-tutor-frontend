@@ -278,6 +278,21 @@ msgstr "Sí"
 
 #. module: odoo_tutor
 #: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "No"
+msgstr "No"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Start this exercise"
+msgstr "Empezar este ejercicio"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "No, not now"
+msgstr "No, ahora no"
+
+#. module: odoo_tutor
+#: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.js:1
 #: odoo_tutor/static/src/webclient/sidebar/ai_sidebar.xml:1
 #: odoo_tutor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.xml:1
 msgid "Cancel"
