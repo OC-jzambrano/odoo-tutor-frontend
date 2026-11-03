@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<templates xml:space="preserve">
+    <t t-name="ai_chat.AiFloatingButton">
+        <t t-if="this.state.showButton">
+            <div
+                class="ai-floating-button"
+                t-ref="this.floatingRootRef"
+                t-att-class="{
+                    'is-dragging': this.state.dragging,
+                    'is-open': this.state.chatOpen,
+                    'has-preview': this.state.previewVisible &amp;&amp; this.state.previewMessage &amp;&amp; !this.state.chatOpen &amp;&amp; !this.state.dragging,
+                    'has-exercise-cta': this.launcherExerciseCtaVisible,
+                    'has-attention': this.launcherHasAttention,
+                    'is-fresh': this.isPreviewFresh,
+                }"
+                t-att-style="
+                    'transform: translate3d(' + this.state.dragX + 'px, ' + this.state.dragY + 'px, 0);' +
+                    (this.state.chatOpen ? ' opacity:0; pointer-events:none;' : '')
+                "
+            >
+                <t t-if="this.state.previewVisible and this.state.previewMessage and !this.state.chatOpen and !this.state.dragging">
+                    <div class="ai-owl-preview"
+                         role="button"
+                         tabindex="0"
+                         data-ai-tutor-ignore-event="true"
+                         t-on-click.stop.prevent="this.toggleChat"
+                         t-on-mouseenter="this.pausePreview"
+                         t-on-mouseleave="this.resumePreview">
+                        <button
+                            type="button"
+                            class="ai-owl-preview-close"
+                            t-on-mousedown.stop.prevent="this.noop"
+                            t-on-touchstart.stop.prevent="this.noop"
+                            t-on-click.stop.prevent="this.closePreview"
+                            t-att-aria-label="this.translate('Close preview')"
+                        >×</button>
+                        <div class="ai-owl-preview-time">
+                            <t t-out="this.previewTimeAgo"/>
+                        </div>
+
+                        <div class="ai-owl-preview-text">
+                            <t t-foreach="this.previewSegments" t-as="seg" t-key="seg_index">
+                                <t t-if="seg.isCopy">
+                                    <span
+                                        class="ai-copy-value"
+                                        t-att-class="{ 'is-copied': this.state.previewCopiedText === seg.text }"
+                                        role="button"
+                                        tabindex="0"
+                                        t-att-title="this.state.previewCopiedText === seg.text ? this.translate('Copied!') : seg.copyLabel"
+                                        t-att-aria-label="seg.copyLabel"
+                                        t-on-click="(ev) => this.onCopyPreviewSegment(seg, ev)"
+                                        t-on-mousedown.stop.prevent="this.noop"
+                                        t-on-touchstart.stop.prevent="this.noop"
+                                        t-out="seg.text"
+                                    />
+                                </t>
+                                <t t-else="">
+                                    <t t-out="seg.text"/>
+                                </t>
+                            </t>
+                        </div>
+
+                        <t t-if="this.launcherExerciseCtaVisible">
+                            <div class="ai-owl-exercise-actions"
+                                 role="group"
+                                 t-att-aria-label="this.translate('Exercise invitation actions')">
+                                <button
+                                    type="button"
+                                    class="ai-owl-exercise-choice ai-owl-exercise-choice-yes"
+                                    t-att-disabled="this.exerciseCtaBusy"
+                                    t-on-mousedown.stop.prevent="this.noop"
+                                    t-on-touchstart.stop.prevent="this.noop"
+                                    t-on-click.stop.prevent="this.onExerciseCtaStart"
+                                >
+                                    <t t-if="this.exerciseCtaBusy" t-out="this.translate('Starting...')"/>
+                                    <t t-else="" t-out="this.translate('Yes')"/>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="ai-owl-exercise-choice ai-owl-exercise-choice-cancel"
+                                    t-att-disabled="this.exerciseCtaBusy"
+                                    t-on-mousedown.stop.prevent="this.noop"
+                                    t-on-touchstart.stop.prevent="this.noop"
+                                    t-on-click.stop.prevent="this.onExerciseCtaCancel"
+                                >
+                                    <t t-out="this.translate('Cancel')"/>
+                                </button>
+                            </div>
+                        </t>
+
+                        <div class="ai-owl-preview-tail"/>
+                    </div>
+                </t>
+
+                <button
+                    class="ai-owl-trigger"
+                    type="button"
+                    t-on-mousedown.stop.prevent="this.onIconDragStart"
+                    t-on-touchstart.stop.prevent="this.onIconDragStart"
+                    t-on-click="this.onIconClick"
+                    data-ai-sidebar-toggle="1"
+                    aria-controls="offcanvasAiSidebar"
+                    t-att-aria-label="this.openTutorLabel"
+                    t-att-title="this.openTutorTitle"
+                >
+                    <span class="ai-owl-trigger-halo"/>
+                    <span class="ai-owl-trigger-shell">
+                        <span class="ai-owl-trigger-core">
+                            <img
+                                t-att-src="'/odoo_tutor/static/images/iabotv2.png'"
+                                alt="Asistente IA"
+                                class="ai-owl-trigger-img"
+                            />
+                        </span>
+                    </span>
+
+                    <span class="ai-owl-trigger-badge">AI</span>
+                    <span t-if="!this.state.skipStepVisible and this.state.hintBadgeVisible" class="ai-owl-trigger-hint" title="Nueva pista">
+                        <i class="fa fa-lightbulb-o"/>
+                    </span>
+                </button>
+                <button
+                    t-if="this.state.skipStepVisible"
+                    type="button"
+                    class="ai-owl-trigger-skip"
+                    t-att-disabled="this.state.skipStepLoading"
+                    t-att-title="this.translate('Skip to next step')"
+                    t-att-aria-label="this.translate('Skip to next step')"
+                    t-on-mousedown.stop.prevent="this.noop"
+                    t-on-touchstart.stop.prevent="this.noop"
+                    t-on-click.stop.prevent="this.onSkipStep"
+                >
+                    <i t-att-class="this.state.skipStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
+                </button>
+            </div>
+        </t>
+    </t>
+</templates>

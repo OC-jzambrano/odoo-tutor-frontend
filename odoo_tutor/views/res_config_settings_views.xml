@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="res_config_settings_view_form_odoo_tutor" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.chatbot</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form" />
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="Odoo AI Tutor" name="odoo_tutor">
+                    <block title="Chatbot API" name="odoo_tutor_chatbot_settings">
+                        <setting string="WebSocket URL" help="URL del servidor WebSocket para las sesiones del tutor.">
+                            <field
+                                name="chatbot_ws_base_url"
+                                placeholder="wss://tutor-backend.odooconcept.com/ws"
+                            />
+                        </setting>
+                        <setting string="API Key" help="Clave de autenticación para el servidor WebSocket.">
+                            <field name="chatbot_api_key" password="True" />
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>
