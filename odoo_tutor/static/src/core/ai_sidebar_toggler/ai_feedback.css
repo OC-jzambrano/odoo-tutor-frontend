@@ -89,7 +89,7 @@
   opacity: 0.7;
 }
 
-/* Base popover (si ya lo tienes, solo asegúrate que quede así de suave) */
+/* Base popover styling. */
 .ai_feedback_popover {
   background: #fff;
   border-radius: 14px;
@@ -100,14 +100,14 @@
   max-width: 420px;
 }
 
-/* Título */
+/* Title. */
 .ai_feedback_popover_title {
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 10px;
 }
 
-/* Grid 2x2 */
+/* Two-by-two button grid. */
 .ai_feedback_quick_grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -115,7 +115,7 @@
   margin-bottom: 12px;
 }
 
-/* Botones pill suaves */
+/* Rounded buttons. */
 .ai_feedback_quick_btn {
   display: inline-flex;
   align-items: center;
@@ -146,13 +146,13 @@
   transform: translateY(0px);
 }
 
-/* Ícono un pelín más presente */
+/* Make the icon slightly more visible. */
 .ai_feedback_quick_btn i {
   font-size: 13px;
   opacity: 0.85;
 }
 
-/* Footer actions alineado a la derecha */
+/* Align footer actions to the right. */
 .ai_feedback_actions {
   display: flex;
   justify-content: flex-end;

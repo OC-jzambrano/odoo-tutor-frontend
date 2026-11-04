@@ -1,15 +1,14 @@
 /* eslint-disable */
 /** @odoo-module **/
 
-import { Component, onMounted, onWillUnmount, useOnChange } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, proxy, signal, useLayoutEffect } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { cookie } from "@web/core/browser/cookie";
 import { useService } from "@web/core/utils/hooks";
+import { rpc } from "@web/core/network/rpc";
 import { user } from "@web/core/user";
 import { imageUrl } from "@web/core/utils/urls";
-import { rpc } from "@web/core/network/rpc";
 import { useMouseListeners } from "../../core/utils";
-import { useRef, useState } from "../../core/owl_compat";
 import { _t } from "@web/core/l10n/translation";
 import {
     buildSkipStepRequest,
@@ -32,6 +31,12 @@ const TUTOR_PUSH_TYPES = new Set([
 ]);
 
 const INLINE_HINT_AUTO_HIDE_MS = 15000;
+
+function makeRef() {
+    const ref = signal(null);
+    Object.defineProperty(ref, "el", { get: () => ref() });
+    return ref;
+}
 
 function formatTimeAgo(ts) {
     if (!ts) return "";
@@ -86,15 +91,14 @@ function cleanText(value) {
 }
 
 function translateKnownTutorText(value) {
-    const original = String(value || "").trim();
-    const cleaned = cleanText(original);
+    const cleaned = cleanText(value);
     const normalized = normalizeAssistantTextForCompare(cleaned);
 
     if (normalized === "do you want to continue the exercise?") {
         return _t("Do you want to continue the exercise?");
     }
 
-    return original;
+    return cleaned;
 }
 
 function normalizeTutorTimestamp(ts) {
@@ -133,42 +137,34 @@ function normalizeTutorTimestamp(ts) {
 function getCurrentColorScheme() {
     const doc = document.documentElement;
     const body = document.body;
-    const dataScheme =
-        doc?.dataset?.colorScheme ||
-        body?.dataset?.colorScheme ||
-        doc?.dataset?.bsTheme ||
-        body?.dataset?.bsTheme;
+    const dataScheme = doc?.dataset?.colorScheme || body?.dataset?.colorScheme;
     if (dataScheme === "dark" || dataScheme === "light") {
         return dataScheme;
     }
 
-    if (
-        doc?.classList?.contains("o_dark") ||
-        body?.classList?.contains("o_dark") ||
-        doc?.classList?.contains("o_dark_mode") ||
-        body?.classList?.contains("o_dark_mode")
-    ) {
+    if (doc?.classList?.contains("o_dark") || body?.classList?.contains("o_dark")) {
         return "dark";
     }
 
-    if (
-        doc?.classList?.contains("o_light") ||
-        body?.classList?.contains("o_light") ||
-        doc?.classList?.contains("o_light_mode") ||
-        body?.classList?.contains("o_light_mode")
-    ) {
-        return "light";
-    }
-
-    // Odoo may leave a stale color_scheme cookie after the interface theme changes.
-    // Read the rendered web client surface before using that cookie as a fallback.
-    const webClient = document.querySelector(".o_web_client");
-    const backgroundColor = webClient ? getComputedStyle(webClient).backgroundColor : "";
-    const rgb = backgroundColor.match(/^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-    if (rgb) {
-        const [red, green, blue] = rgb.slice(1).map(Number);
-        const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
-        return brightness >= 160 ? "light" : "dark";
+    // Odoo can leave the color_scheme cookie set to "dark" even while the
+    // active client view is light. Use the rendered Odoo surfaces before that
+    // fallback so the tutor follows what the user is actually seeing.
+    for (const element of [
+        document.querySelector(".o_action_manager"),
+        document.querySelector(".o_web_client"),
+        body,
+        doc,
+    ]) {
+        if (!element) continue;
+        const background = getComputedStyle(element).backgroundColor;
+        const channels = background.match(/[\d.]+/g)?.map(Number);
+        if (!channels || channels.length < 3 || (channels[3] !== undefined && channels[3] === 0)) {
+            continue;
+        }
+        const [red, green, blue] = channels;
+        const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+        if (luminance > 0.72) return "light";
+        if (luminance < 0.35) return "dark";
     }
 
     const scheme = cookie.get("color_scheme");
@@ -203,30 +199,22 @@ export class AiSidebar extends Component {
 
     setup() {
         super.setup();
-
-        // -------------------------
         // Services
-        // -------------------------
         this.contextService = useService("context_service");
         this.notification = useService("notification");
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
         this.aiChatStore = useService("ai_chat_store");
-
-        // -------------------------
+        this.rpc = rpc;
         // Refs
-        // -------------------------
-        this.containerRef = useRef("container");
-        this.chatPanelRef = useRef("chat-panel");
-        this.chatUiRef = useRef("chat-ui");
-        this.handleRef = useRef("handle");
-        this.inlineHintRef = useRef("inline-hint");
+        this.containerRef = makeRef();
+        this.chatPanelRef = makeRef();
+        this.chatUiRef = makeRef();
+        this.handleRef = makeRef();
+        this.inlineHintRef = makeRef();
 
         this._offcanvasQueue = Promise.resolve();
-
-        // -------------------------
         // Internal
-        // -------------------------
         this._activeFeedbackPopover = null;
         this._feedbackObserver = null;
         this._copyButtonsObserver = null;
@@ -236,10 +224,9 @@ export class AiSidebar extends Component {
         this._timerStartedAtMs = null;
         this._chatLayoutSyncRaf = null;
         this._conversationReadSyncTimer = null;
-        this._pendingHistory = null;
-        this._historyRenderedForSessionId = null;
 
-        this._seenTutorPush = new Map(); // key -> timestamp
+        // key -> timestamp
+        this._seenTutorPush = new Map();
         this._tutorPushTtlMs = 8000;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
@@ -264,12 +251,9 @@ export class AiSidebar extends Component {
             "project.task": _t("What do you need to know about this Task?"),
             default: _t("How can I help you today?"),
         };
-
-        // -------------------------
         // State
-        // -------------------------
-        this.state = useState({
-            width: "480px",
+        this.state = proxy({
+            width: "600px",
             isResizing: false,
             isStreamingMode: false,
             isLoading: false,
@@ -302,7 +286,8 @@ export class AiSidebar extends Component {
             finishLoading: false,
             result: "failed",
 
-            recorderStatus: "idle", // idle | recording | paused
+            // idle | recording | paused
+            recorderStatus: "idle",
             recorderSessionId: null,
             recorderFeed: [],
             recorderStepIndex: 0,
@@ -311,7 +296,6 @@ export class AiSidebar extends Component {
             recorderPicking: false,
 
             wsStatus: "unknown",
-            wsReconnectLoading: false,
             showRecorderPanel: false,
             canSeeRecorderToggle: false,
 
@@ -345,12 +329,8 @@ export class AiSidebar extends Component {
                 timestamp,
             });
         };
-
-        // -------------------------
         // React to context changes
-        // -------------------------
-        useOnChange(
-            () => [this.state.currentContext],
+        useLayoutEffect(
             (currentContext) => {
                 if (!currentContext) return;
 
@@ -367,7 +347,8 @@ export class AiSidebar extends Component {
                     this.state.placeholder = newPlaceholder;
                     this.updateChatPlaceholder(newPlaceholder);
                 }
-            }
+            },
+            () => [this.state.currentContext]
         );
 
         this._setInlineHint = (text, timestamp) => {
@@ -401,9 +382,7 @@ export class AiSidebar extends Component {
             this.state.hintCycle += 1;
             this.state.hintVisible = true;
             this._scheduleInlineHintAutoHide();
-            // Double rAF: owl's render/patch for the newly-visible hint node
-            // is scheduled as a microtask off the back of this state change,
-            // so a single rAF can still fire before the DOM node exists.
+            // Use two animation frames so Owl renders the hint before measurement.
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => this._syncHintScrollPadding());
             });
@@ -469,10 +448,7 @@ export class AiSidebar extends Component {
                 }
             }, INLINE_HINT_AUTO_HIDE_MS);
         };
-
-        // -------------------------
         // Lifecycle
-        // -------------------------
         onMounted(() => {
             this._setupHistoryListener();
             this._setupTutorPushListener();
@@ -506,10 +482,7 @@ export class AiSidebar extends Component {
                 }
             }, 250);
 
-            this.observer = new MutationObserver(() => {
-                this._scheduleChatLayoutSync();
-                this._flushPendingHistory();
-            });
+            this.observer = new MutationObserver(() => this._scheduleChatLayoutSync());
 
             if (this.chatUiRef?.el) {
                 this.observer.observe(this.chatUiRef.el, { childList: true, subtree: true });
@@ -696,13 +669,9 @@ export class AiSidebar extends Component {
             onMouseUp: this.onMouseUp,
         });
     }
-
-    // =========================================================
     // COPY BUTTON HELPERS
-    // =========================================================
-
     _getChatContainer() {
-        return this.containerRef?.el?.querySelector?.("#chat-ui-container") || document.querySelector("#chat-ui-container");
+        return this.containerRef.el?.querySelector?.("#chat-ui-container") || document.querySelector("#chat-ui-container");
     }
 
     _getMessageItems() {
@@ -893,11 +862,7 @@ export class AiSidebar extends Component {
 
         this._highlightCopyTargets(items);
     }
-
-    // =========================================================
     // COPY-TARGET HIGHLIGHTING (clickable values inside instructions)
-    // =========================================================
-
     _registerCopyTargets(displayText, copyTargets) {
         if (!Array.isArray(copyTargets) || !copyTargets.length) return;
 
@@ -1323,11 +1288,7 @@ export class AiSidebar extends Component {
             btn.innerHTML = copyIcon;
         }, copied ? 1400 : 1200);
     }
-
-    // =========================================================
     // Helpers for tutor_push
-    // =========================================================
-
     _escapeHtml(s) {
         return String(s)
             .replaceAll("&", "&amp;")
@@ -1410,8 +1371,7 @@ export class AiSidebar extends Component {
     _buildManualReceivedItem(text) {
         const item = document.createElement("div");
         item.className = "nlux-comp-chatItem nlux-comp-chatItem--received nlux-comp-chatItem--bubblesLayout";
-        const safeText = this._escapeHtml(text).replace(/\n/g, "<br/>");
-        item.innerHTML = `<div class="nlux-comp-chatItem-participantInfo"><div class="nlux-comp-avatar"><div class="nlux-comp-avatarContainer"><div class="nlux-comp-avatarPicture" style="background-image: url('${TUTOR_ASSISTANT_AVATAR_URL}')"></div></div></div></div><div class="nlux-comp-message"><div class="nlux-markdown-container"><p>${safeText}</p></div></div>`;
+        item.innerHTML = `<div class="nlux-comp-chatItem-participantInfo"><div class="nlux-comp-avatar"><div class="nlux-comp-avatarContainer"><div class="nlux-comp-avatarPicture" style="background-image: url('${TUTOR_ASSISTANT_AVATAR_URL}')"></div></div></div></div><div class="nlux-comp-message"><div class="nlux-markdown-container">${this._escapeHtml(text).replace(/\n/g, "<br/>")}</div></div>`;
         return item;
     }
 
@@ -1685,7 +1645,7 @@ export class AiSidebar extends Component {
 
     _scheduleExerciseActionsForLastMessage(
         exerciseId,
-        attempts = 24,
+        attempts = 80,
         minReceivedCount = 0,
         scheduleVersion = null,
         options = {}
@@ -1699,19 +1659,30 @@ export class AiSidebar extends Component {
             if (version !== this._exerciseActionsScheduleVersion) return;
             if (this.state.processActive && !options.allowWhileActive) return;
 
-            const item = this._getLatestReceivedMessageItem();
-            const receivedCount = this._getReceivedMessageCount();
-            if (item && receivedCount >= minReceivedCount && !item.querySelector(".ai-exercise-actions")) {
-                this._attachExerciseActions(item, normalizedExerciseId, options);
-                return;
-            }
-            this._scheduleExerciseActionsForLastMessage(
-                normalizedExerciseId,
-                attempts - 1,
-                minReceivedCount,
-                version,
-                options
+            const receivedItems = Array.from(
+                this.chatUiRef?.el?.querySelectorAll(
+                    ".nlux-comp-chatItem.nlux-comp-chatItem--received"
+                ) || []
             );
+            const receivedCount = receivedItems.length;
+            const targetIndex = minReceivedCount > 0 ? minReceivedCount - 1 : receivedCount - 1;
+            const item = targetIndex >= 0 ? receivedItems[targetIndex] : null;
+            if (item) {
+                if (item.querySelector(".ai-exercise-actions")) return;
+                if (this._attachExerciseActions(item, normalizedExerciseId, options)) return;
+            }
+            if (attempts > 1) {
+                window.setTimeout(
+                    () => this._scheduleExerciseActionsForLastMessage(
+                        normalizedExerciseId,
+                        attempts - 1,
+                        minReceivedCount,
+                        version,
+                        options
+                    ),
+                    40
+                );
+            }
         });
     }
 
@@ -1719,12 +1690,6 @@ export class AiSidebar extends Component {
         const normalizedExerciseId = this._getPromptExerciseId(exerciseId, options);
         if (!itemEl || !normalizedExerciseId) return false;
         if (itemEl.querySelector(".ai-exercise-actions")) return true;
-        if (
-            this.state.exerciseChoicePending &&
-            this._normalizeExerciseId(this.state.exerciseId) === normalizedExerciseId
-        ) {
-            return true;
-        }
 
         const messageHost = this._getMessageHost(itemEl);
         const textBlock = this._getMessageTextBlock(messageHost);
@@ -1738,10 +1703,20 @@ export class AiSidebar extends Component {
         actions.dataset.exerciseId = normalizedExerciseId;
         actions.innerHTML = `
             <div class="ai-exercise-actions-buttons">
-                <button type="button" class="ai-exercise-choice ai-exercise-choice-yes" data-action="start">
+                <button
+                    type="button"
+                    class="ai-exercise-choice ai-exercise-choice-yes"
+                    data-action="start"
+                    aria-label="${this._escapeHtml(_t("Start this exercise"))}"
+                >
                     ${this._escapeHtml(_t("Yes"))}
                 </button>
-                <button type="button" class="ai-exercise-choice ai-exercise-choice-cancel" data-action="cancel">
+                <button
+                    type="button"
+                    class="ai-exercise-choice ai-exercise-choice-cancel"
+                    data-action="cancel"
+                    aria-label="${this._escapeHtml(_t("No, not now"))}"
+                >
                     ${this._escapeHtml(_t("No"))}
                 </button>
             </div>
@@ -1901,10 +1876,7 @@ export class AiSidebar extends Component {
             );
 
             if (responseText && !this._isDuplicateAssistantText(responseText)) {
-                // Same ordering guard as onSkipStep/_onTutorPush: if the
-                // sidebar is closed, queue instead of pushing straight to
-                // nlux, or it jumps ahead of anything still queued and
-                // renders out of order once the chat reopens.
+                // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || normalizedExerciseId,
@@ -1924,23 +1896,6 @@ export class AiSidebar extends Component {
             this._setExerciseActionsStateForExercise(normalizedExerciseId, "error", card);
             this.notification.add(_t("Could not send the exercise answer to WebSocket."), { type: "danger" });
         }
-    }
-
-    async onExerciseQuickChoice(answer) {
-        const action = answer === "Yes" ? "start" : "cancel";
-        await this._handleExerciseChoice({
-            exerciseId: this.state.exerciseId,
-            answer,
-            action,
-        });
-    }
-
-    onExerciseConfirmYes() {
-        return this.onExerciseQuickChoice("Yes");
-    }
-
-    onExerciseConfirmNo() {
-        return this.onExerciseQuickChoice("No");
     }
 
     async onTimerCancelExercise() {
@@ -1966,10 +1921,7 @@ export class AiSidebar extends Component {
             this.cancelProcess();
 
             if (responseText && !this._isDuplicateAssistantText(responseText)) {
-                // Same ordering guard as onSkipStep/_onTutorPush: if the
-                // sidebar is closed, queue instead of pushing straight to
-                // nlux, or it jumps ahead of anything still queued and
-                // renders out of order once the chat reopens.
+                // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || normalizedExerciseId,
@@ -2020,12 +1972,7 @@ export class AiSidebar extends Component {
                 (text) => this._isDuplicateAssistantText(text)
             );
             if (responseText) {
-                // While the sidebar is closed (owl bubble mode), other
-                // in-flight tutor_push instructions get queued via
-                // _queueTutorMessage and flushed in order on reopen. If we
-                // pushed this response straight to nlux here, it would jump
-                // ahead of anything still sitting in that queue, showing up
-                // out of order once the chat is reopened.
+                // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || exerciseId,
@@ -2050,11 +1997,7 @@ export class AiSidebar extends Component {
             this.state.skipStepLoading = false;
         }
     }
-
-    // =========================================================
     // Bootstrap Offcanvas helpers
-    // =========================================================
-
     _runOffcanvasOp(fn) {
         this._offcanvasQueue = (this._offcanvasQueue || Promise.resolve())
             .then(() => fn())
@@ -2326,39 +2269,7 @@ export class AiSidebar extends Component {
             detail: { source: "header_close" },
         }));
     }
-
-    async reconnectWebSocket() {
-        if (this.state.wsReconnectLoading) return;
-
-        this.state.wsReconnectLoading = true;
-        this.state.wsStatus = "connecting";
-        try {
-            await this.aiWs.restart({ reason: "manual_reconnect", clearSession: false });
-            this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
-            if (this.state.wsStatus !== "online") {
-                throw new Error("The WebSocket did not reopen.");
-            }
-            if (this.state.currentContext) {
-                try {
-                    await this._sendCurrentLiveContext({ force: true });
-                } catch (contextError) {
-                    console.warn("[ai_sidebar] context refresh after reconnect failed:", contextError);
-                }
-            }
-            this.notification.add(_t("WebSocket reconnected."), { type: "success" });
-        } catch (error) {
-            console.warn("[ai_sidebar] WebSocket reconnect failed:", error);
-            this.state.wsStatus = "offline";
-            this.notification.add(_t("Could not reconnect the WebSocket."), { type: "danger" });
-        } finally {
-            this.state.wsReconnectLoading = false;
-        }
-    }
-
-    // =========================================================
     // Recorder / Pick
-    // =========================================================
-
     async _loadRecorderPermission() {
         try {
             this.state.canSeeRecorderToggle = await user.hasGroup("base.group_system");
@@ -2472,10 +2383,6 @@ export class AiSidebar extends Component {
         this.state.recorderFeed = [item, ...(this.state.recorderFeed || [])].slice(0, 60);
     }
 
-    onRecorderNoteInput(ev) {
-        this.state.recorderNote = ev.target.value;
-    }
-
     async onRecorderSaveStep() {
         if (this.state.recorderStatus === "idle") return;
 
@@ -2573,7 +2480,7 @@ export class AiSidebar extends Component {
                 if (item.exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         item.exerciseId,
-                        24,
+                        80,
                         0,
                         null,
                         { allowWhileActive: !!item.allowExercisePromptWhileActive }
@@ -2612,11 +2519,7 @@ export class AiSidebar extends Component {
         const el = this._getOffcanvasEl();
         return !!el?.classList?.contains("show");
     }
-
-    // =========================================================
     // WS Tutor Push
-    // =========================================================
-
     _setupHistoryListener() {
         if (this._historySubscribed) return;
 
@@ -2637,8 +2540,14 @@ export class AiSidebar extends Component {
             const messages = Array.isArray(payload?.messages) ? payload.messages : [];
 
             if (this._historyRenderedForSessionId === sessionId) return;
-            this._pendingHistory = { sessionId, messages };
-            this._flushPendingHistory();
+            this._historyRenderedForSessionId = sessionId;
+
+            try {
+                this._renderHistory(messages);
+            } finally {
+                this._resolveHistoryReady?.();
+                this._resolveHistoryReady = null;
+            }
         };
 
         this._onHistoryLoadedEvent = (e) => this._onHistoryLoaded({ kind: "history", data: e?.detail });
@@ -2673,19 +2582,18 @@ export class AiSidebar extends Component {
 
     _renderHistory(messages) {
         const root = this.chatUiRef?.el;
-        if (!root || !Array.isArray(messages)) return false;
+        if (!root || !Array.isArray(messages) || messages.length === 0) return;
 
         this._ensureConversationVisible();
 
         const segments = root.querySelector(".nlux-chatSegments-container");
-        if (!segments) return false;
+        if (!segments) {
+            console.warn("[AiSidebar] NLUX segments container not found for history render");
+            return;
+        }
 
         for (const entry of messages) {
-            const rawText = String(entry?.text || "").trim();
-            const text =
-                entry.role === "user"
-                    ? rawText
-                    : stripNewlinesAroundCopyTargets(rawText, []);
+            const text = String(entry?.text || "").trim();
             if (!text) continue;
 
             const item =
@@ -2701,18 +2609,6 @@ export class AiSidebar extends Component {
         } catch (_) {}
 
         requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
-        return true;
-    }
-
-    _flushPendingHistory() {
-        const pending = this._pendingHistory;
-        if (!pending) return;
-        if (!this._renderHistory(pending.messages)) return;
-
-        this._historyRenderedForSessionId = pending.sessionId;
-        this._pendingHistory = null;
-        this._resolveHistoryReady?.();
-        this._resolveHistoryReady = null;
     }
 
     _setupTutorPushListener() {
@@ -2773,7 +2669,7 @@ export class AiSidebar extends Component {
                 if (exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         exerciseId,
-                        24,
+                        80,
                         0,
                         null,
                         { allowWhileActive: allowExercisePromptWhileActive }
@@ -2787,8 +2683,7 @@ export class AiSidebar extends Component {
                 unread: !this._isSidebarOpen() || preserveScroll,
             });
 
-            // Si el chat aún no está listo o el sidebar está cerrado,
-            // se guarda para mostrarlo después.
+            // Queue the message if chat is not ready or the sidebar is closed.
             if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
@@ -2797,7 +2692,7 @@ export class AiSidebar extends Component {
                 return;
             }
 
-            // Si está abierto, intentamos insertarlo.
+                // Insert the message when the sidebar is open.
             const inserted = this._pushAssistantMessageToNlux(displayText, {
                 exerciseId,
                 allowExercisePromptWhileActive,
@@ -2808,7 +2703,7 @@ export class AiSidebar extends Component {
                 this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
             } else {
-                // Si falló, no lo perdemos.
+                // Keep the message if insertion fails.
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
                     allowExercisePromptWhileActive,
@@ -2845,7 +2740,7 @@ export class AiSidebar extends Component {
         this._ensureConversationVisible();
         const receivedCountBefore = this._getReceivedMessageCount();
 
-        // Intento 1: API directa de NLUX
+        // First, try the direct NLUX API.
         if (typeof this.aiChat.addMessage === "function") {
             try {
                 this.aiChat.addMessage({
@@ -2861,7 +2756,7 @@ export class AiSidebar extends Component {
                     if (exerciseId) {
                         this._scheduleExerciseActionsForLastMessage(
                             exerciseId,
-                            24,
+                            80,
                             receivedCountBefore + 1,
                             null,
                             { allowWhileActive: allowExercisePromptWhileActive }
@@ -2877,7 +2772,7 @@ export class AiSidebar extends Component {
             }
         }
 
-        // Intento 2: API alternativa de NLUX
+        // Next, try the alternate NLUX API.
         if (typeof this.aiChat.pushMessage === "function") {
             try {
                 this.aiChat.pushMessage({
@@ -2893,7 +2788,7 @@ export class AiSidebar extends Component {
                     if (exerciseId) {
                         this._scheduleExerciseActionsForLastMessage(
                             exerciseId,
-                            24,
+                            80,
                             receivedCountBefore + 1,
                             null,
                             { allowWhileActive: allowExercisePromptWhileActive }
@@ -2909,7 +2804,7 @@ export class AiSidebar extends Component {
             }
         }
 
-        // Intento 3: fallback DOM usando el último mensaje recibido como plantilla
+        // Fall back to the DOM and use the latest message as a template.
         const root = this.chatUiRef?.el;
         if (!root) return false;
 
@@ -2926,7 +2821,7 @@ export class AiSidebar extends Component {
         if (templateItem) {
             item = templateItem.cloneNode(true);
 
-            // limpiar elementos añadidos por nosotros
+            // Remove elements added by this module.
             item.querySelectorAll(
                 ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover, .ai-exercise-actions"
             ).forEach((el) => el.remove());
@@ -2989,11 +2884,7 @@ export class AiSidebar extends Component {
 
         return true;
     }
-
-    // =========================================================
     // Chat (NLUX)
-    // =========================================================
-
     updateChatPlaceholder(newPlaceholder) {
         if (this.aiChat && this.aiChat.updateComposerOptions) {
             this.aiChat.updateComposerOptions({ placeholder: newPlaceholder });
@@ -3018,7 +2909,21 @@ export class AiSidebar extends Component {
 
     async sendMessage(message) {
         this._expectingAssistant = true;
-        const data = await this.aiWs.chat({ message, context: this.state.currentContext });
+        let data;
+        const currentContext = this.state.currentContext || this.contextService?.getContext?.() || {};
+        const safeContext = {
+            ...currentContext,
+            model: currentContext.model || this._getCurrentBreadcrumbPath() || "base",
+        };
+
+        try {
+            if (!this.aiWs?.chat) {
+                throw new Error("El chat seguro no está conectado. Recarga Odoo AI Tutor e inténtalo de nuevo.");
+            }
+            data = await this.aiWs.chat({ message, context: safeContext });
+        } catch (error) {
+            data = { error: true, response: error?.message || String(error) };
+        }
         const text = this._prepareAssistantDisplayText(
             this._extractResponseText(data),
             this._extractCopyTargets(data)
@@ -3030,6 +2935,7 @@ export class AiSidebar extends Component {
                 copy_targets: this._extractCopyTargets(data),
             },
             raw: data,
+            response: text,
         };
     }
 
@@ -3072,7 +2978,6 @@ export class AiSidebar extends Component {
         this._initFeedbackObserver();
 
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => this._flushPendingHistory());
             this._flushPendingTutorMessages?.();
             this._startCopyButtonsObserver?.();
             this._installManualSelectionGuard?.();
@@ -3154,7 +3059,7 @@ export class AiSidebar extends Component {
                     this._pauseExerciseTimer({ reason: "welcome" });
                 }
                 setTimeout(
-                    () => this._scheduleExerciseActionsForLastMessage(exercise_id, 24, receivedCountBefore + 1),
+                    () => this._scheduleExerciseActionsForLastMessage(exercise_id, 80, receivedCountBefore + 1),
                     0
                 );
             } else if (!this.state.processActive) {
@@ -3405,11 +3310,7 @@ export class AiSidebar extends Component {
         }
         return true;
     }
-
-    // =========================================================
     // Process UI
-    // =========================================================
-
     startProcess(exerciseId = null, options = {}) {
         const normalizedExerciseId = this._normalizeExerciseId(exerciseId) || this._normalizeExerciseId(this.state.exerciseId);
         const startedAt = Number(options.startedAt) || Date.now();
@@ -3470,10 +3371,14 @@ export class AiSidebar extends Component {
         this.state.finishLoading = true;
 
         try {
-            const response = await rpc("/ai_chat/validate_exercise", {
-                exercise_id: this.state.exerciseId,
+            const response = await fetch("/ai_chat/validate_exercise", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({ exercise_id: this.state.exerciseId }),
             });
-            const actualResult = JSON.parse(response?.result || "{}");
+
+            const jsonRpcResponse = JSON.parse(await response.text());
+            const actualResult = JSON.parse(jsonRpcResponse?.result?.result || "{}");
 
             const results = actualResult?.details?.results || [];
             const firstFailure = results.find((r) => r.status === "failed");
@@ -3505,11 +3410,7 @@ export class AiSidebar extends Component {
         this.state.result = null;
         this.state.firstFailedStep = null;
     }
-
-    // =========================================================
     // Anti auto-scroll
-    // =========================================================
-
     _waitAndInitAntiAutoScroll() {
         const root = this.chatUiRef?.el;
         if (!root) return;
@@ -3536,10 +3437,7 @@ export class AiSidebar extends Component {
         return this._conv || this.chatUiRef?.el?.querySelector(".nlux-conversation-container") || null;
     }
 
-    // The hint is a floating overlay anchored above the composer, like a
-    // popup/mini-modal. It intentionally overlaps whatever message sits
-    // behind it rather than reserving scroll space, so showing/hiding it
-    // must never shift the conversation's own layout or scroll position.
+    // Keep the hint as an overlay so it does not shift chat layout or scroll position.
     _syncHintScrollPadding() {
         const conv = this._getConversationContainer();
         if (!conv) return;
@@ -3770,11 +3668,7 @@ export class AiSidebar extends Component {
         this._lockRaf = null;
         this._anchorEl = null;
     }
-
-    // =========================================================
     // Feedback
-    // =========================================================
-
     _initFeedbackObserver() {
         if (this._feedbackObserver) return;
         const root = this.chatUiRef?.el;
@@ -4259,11 +4153,7 @@ export class AiSidebar extends Component {
                 this.notification.add(_t("Could not send your feedback."), { type: "danger" });
             });
     }
-
-    // =========================================================
     // Resize
-    // =========================================================
-
     onMouseDown(event) {
         event.preventDefault();
         if (!this.containerRef.el || !this.handleRef.el) return;

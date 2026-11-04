@@ -11,17 +11,21 @@
             id="offcanvasAiSidebar"
             aria-labelledby="offcanvasAiSidebarLabel"
             t-attf-style="width: {{ this.state.width }};"
-            t-ref="this.containerRef.signal"
+            t-ref="this.containerRef"
         >
             <div
                 class="handle ai-sidebar-handle"
-                t-ref="this.handleRef.signal"
+                t-ref="this.handleRef"
                 t-on-mousedown="this.onHandleMouseDown"
             />
 
             <div class="offcanvas-header ai-sidebar-header">
                 <div class="ai-sidebar-header-main">
                     <div class="ai-sidebar-brand">
+                        <span class="ai-sidebar-brand-mark">
+                            <i class="oi" t-att-data-icon="this.state.showRecorderPanel ? 'radio_button_checked' : 'chat_bubble'"/>
+                        </span>
+
                         <div class="ai-sidebar-brand-copy">
                             <h5 class="offcanvas-title" id="offcanvasExampleLabel">Odoo Tutor</h5>
                             <div class="ai-sidebar-subtitle">
@@ -36,15 +40,11 @@
                     <button
                         t-if="!this.state.showRecorderPanel"
                         type="button"
-                        class="btn rounded-circle p-1 ai-sidebar-reset"
-                        t-att-aria-label="this.translate('Reset chat')"
-                        t-att-title="this.translate('Reset chat')"
+                        class="btn rounded-circle p-1 btn-refresh ai-sidebar-reset"
+                        t-att-aria-label="this.translate('Reset')"
                         t-on-click.stop.prevent="this.reset"
                     >
-                        <svg class="ai-sidebar-reset-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <path d="M20 7v5h-5M4 17v-5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M5.6 9a7 7 0 0 1 11.8-2L20 12M4 12l2.6 5a7 7 0 0 0 11.8-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
+                        <i class="oi" data-icon="refresh"/>
                     </button>
 
                     <div t-if="this.state.processActive and !this.state.showRecorderPanel" class="d-flex align-items-center">
@@ -58,32 +58,30 @@
                         >
                             <t t-out="this.state.timerValue" t-if="this.state.timerValue"/>
                             <t t-else="">00:00:00</t>
-                            <i t-if="this.state.exerciseCancelLoading" class="fa fa-spinner fa-spin timer-cancel-icon"/>
-                            <i t-else="" class="fa fa-times timer-cancel-icon"/>
+                            <i t-if="this.state.exerciseCancelLoading" class="oi tutor-oi-spinner timer-cancel-icon" data-icon="refresh"/>
+                            <i t-else="" class="oi timer-cancel-icon" data-icon="close"/>
                         </button>
                     </div>
 
                     <button
                         type="button"
-                        class="btn-close text-this.reset"
+                        class="btn ai-sidebar-close text-reset"
                         t-att-aria-label="this.translate('Close')"
                         t-on-click.stop.prevent="this.onCloseSidebar"
-                    />
+                    ><i class="oi" data-icon="close"/></button>
                 </div>
             </div>
 
             <div class="offcanvas-body ai-sidebar-body flex-grow-1 d-flex flex-column">
                 <div class="ai-sidebar-content flex-grow-1 d-flex flex-column h-100">
 
-                    <!-- =========================
-                         RECORDER PANEL (SIEMPRE MONTADO, SOLO SE OCULTA)
-                         ========================= -->
+                    <!-- Keep the recorder panel mounted and hide it when inactive. -->
                     <div t-att-class="this.state.showRecorderPanel ? 'flex-grow-1 d-flex flex-column h-100' : 'd-none'">
                         <div class="o_ai_recorder_panel" t-att-class="this.state.recorderStatus === 'recording' ? 'is-recording' : ''">
                             <div class="o_ai_recorder_header">
                                 <div class="o_ai_recorder_left">
                                     <span t-if="this.state.recorderStatus === 'recording'" class="o_ai_rec_badge">
-                                        <i class="fa fa-circle"/>
+                                        <i class="oi oi-filled" data-icon="circle"/>
                                         <t t-out="this.translate('Recording')"/>
                                     </span>
                                     <span class="o_ai_rec_title" t-out="this.translate('Recorder')"/>
@@ -94,21 +92,21 @@
                                             type="button"
                                             class="btn btn-sm btn-primary"
                                             t-on-click.stop.prevent="this.onRecorderStart">
-                                        <i class="fa fa-play"/> <t t-out="this.translate('Start')"/>
+                                        <i class="oi" data-icon="play_arrow"/> <t t-out="this.translate('Start')"/>
                                     </button>
 
                                     <button t-if="this.state.recorderStatus === 'recording'"
                                             type="button"
                                             class="btn btn-sm btn-secondary"
                                             t-on-click.stop.prevent="this.onRecorderPause">
-                                        <i class="fa fa-pause"/> <t t-out="this.translate('Pause')"/>
+                                        <i class="oi" data-icon="pause"/> <t t-out="this.translate('Pause')"/>
                                     </button>
 
                                     <button t-if="this.state.recorderStatus !== 'idle'"
                                             type="button"
                                             class="btn btn-sm btn-danger"
                                             t-on-click.stop.prevent="this.onRecorderFinish">
-                                        <i class="fa fa-stop"/> <t t-out="this.translate('Finish')"/>
+                                        <i class="oi" data-icon="stop"/> <t t-out="this.translate('Finish')"/>
                                     </button>
                                 </div>
                             </div>
@@ -130,10 +128,10 @@
                                         t-att-disabled="this.state.recorderStatus === 'idle' or this.state.recorderPicking"
                                         t-on-click.stop.prevent="this.onRecorderPick">
                                     <t t-if="this.state.recorderPicking">
-                                        <i class="fa fa-crosshairs fa-spin"/> <t t-out="this.translate('Picking...')"/>
+                                        <i class="oi tutor-oi-spinner" data-icon="my_location"/> <t t-out="this.translate('Picking...')"/>
                                     </t>
                                     <t t-else="">
-                                        <i class="fa fa-crosshairs"/> <t t-out="this.translate('Pick element')"/>
+                                        <i class="oi" data-icon="my_location"/> <t t-out="this.translate('Pick element')"/>
                                     </t>
                                 </button>
 
@@ -141,11 +139,11 @@
                                         type="button"
                                         class="btn btn-sm btn-outline-secondary"
                                         t-on-click.stop.prevent="this.onRecorderClearPick">
-                                    <i class="fa fa-times"/> <t t-out="this.translate('Clear')"/>
+                                    <i class="oi" data-icon="close"/> <t t-out="this.translate('Clear')"/>
                                 </button>
 
                                 <div class="o_ai_recorder_pick" t-if="this.state.recorderPicked">
-                                    <i class="fa fa-bullseye"/>
+                                    <i class="oi" data-icon="adjust"/>
                                     <span t-out="this.state.recorderPicked.target_key"/>
                                 </div>
                             </div>
@@ -153,8 +151,7 @@
                             <div class="o_ai_recorder_step">
                                 <textarea class="form-control"
                                           rows="2"
-                                          t-att-value="this.state.recorderNote"
-                                          t-on-input="this.onRecorderNoteInput"
+                                          t-att-value="this.state.recorderNote" t-on-input="(ev) => this.state.recorderNote = ev.target.value"
                                           t-att-placeholder="this.translate('Step instruction (optional)...')"></textarea>
 
                                 <div class="o_ai_rec_step_actions">
@@ -162,7 +159,7 @@
                                             class="btn btn-sm btn-success"
                                             t-att-disabled="this.state.recorderStatus === 'idle'"
                                             t-on-click.stop.prevent="this.onRecorderSaveStep">
-                                        <i class="fa fa-save"/> <t t-out="this.translate('Save step')"/>
+                                        <i class="oi" data-icon="save"/> <t t-out="this.translate('Save step')"/>
                                     </button>
                                 </div>
                             </div>
@@ -189,46 +186,19 @@
                         </div>
                     </div>
 
-                    <!-- =========================
-                         CHAT PANEL (SIEMPRE MONTADO, SOLO SE OCULTA)
-                         ========================= -->
+                    <!-- Keep the chat panel mounted and hide it when inactive. -->
                     <div t-att-class="this.state.showRecorderPanel ? 'd-none' : {
                         'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative': true,
                         'has-skip-step': this.state.skipStepEnabled and this.state.processActive,
                     }"
-                         t-ref="this.chatPanelRef.signal">
-                        <!-- OJO: no self-closing. Mejor siempre tag normal para mount de librerías -->
-                        <div t-ref="this.chatUiRef.signal"
+                         t-ref="this.chatPanelRef">
+                        <!-- Keep this as a normal element so libraries can mount into it. -->
+                        <div t-ref="this.chatUiRef"
                              id="chat-ui-container"
                              t-att-class="{
                                  'h-100': true,
                              }"
                              t-att-aria-busy="this.state.isLoading ? 'true' : 'false'"></div>
-
-                        <div
-                            t-if="this.state.exerciseChoicePending and this.state.exerciseId"
-                            class="ai-exercise-confirmation-actions"
-                            role="group"
-                            t-att-aria-label="this.translate('Choose whether to start the exercise')"
-                            t-attf-style="bottom: {{ this.state.composerHeight + 18 }}px;"
-                        >
-                            <button
-                                type="button"
-                                class="ai-exercise-confirmation-choice is-yes"
-                                t-att-disabled="this.state.exerciseCtaStatus === 'sending'"
-                                t-on-click.stop.prevent="this.onExerciseConfirmYes"
-                            >
-                                <t t-out="this.translate('Yes')"/>
-                            </button>
-                            <button
-                                type="button"
-                                class="ai-exercise-confirmation-choice is-no"
-                                t-att-disabled="this.state.exerciseCtaStatus === 'sending'"
-                                t-on-click.stop.prevent="this.onExerciseConfirmNo"
-                            >
-                                <t t-out="this.translate('No')"/>
-                            </button>
-                        </div>
 
                         <button
                             t-if="this.state.skipStepEnabled and this.state.processActive"
@@ -240,10 +210,10 @@
                             t-att-aria-label="this.translate('Skip to next step')"
                             t-on-click.stop.prevent="this.onSkipStep"
                         >
-                            <i t-att-class="this.state.skipStepLoading ? 'fa fa-spinner fa-spin' : 'fa fa-step-forward'"/>
+                            <i t-att-class="this.state.skipStepLoading ? 'oi tutor-oi-spinner' : 'oi'" t-att-data-icon="this.state.skipStepLoading ? 'refresh' : 'skip_next'"/>
                         </button>
 
-                        <button t-if="this.showUnreadIndicator"
+                        <button t-if="showUnreadIndicator"
                                 type="button"
                                 class="ai-new-message-indicator"
                                 t-attf-style="bottom: {{ this.state.composerHeight + 16 }}px;"
@@ -259,7 +229,7 @@
                                      'ai-inline-hint-container-raised': this.state.skipStepEnabled and this.state.processActive,
                                  }"
                                  t-attf-style="bottom: {{ this.state.composerTopOffset + ((this.state.skipStepEnabled and this.state.processActive) ? 58 : 8) }}px;"
-                                 t-ref="this.inlineHintRef.signal">
+                                 t-ref="this.inlineHintRef">
                                 <div class="ai-inline-hint"
                                      t-key="this.state.hintCycle"
                                      t-att-class="{
@@ -271,7 +241,7 @@
                                     <div class="ai-inline-hint-header">
                                         <div class="ai-inline-hint-badge">
                                             <span class="ai-inline-hint-badge-icon">
-                                                <span class="ai-inline-hint-notification-dot" aria-hidden="true"/>
+                                                <i class="oi" data-icon="lightbulb"/>
                                             </span>
                                             <span class="ai-inline-hint-badge-text" t-out="this.translate('Context hint')"/>
                                         </div>
@@ -302,17 +272,21 @@
                             <div t-if="this.state.processActive" class="d-flex align-items-center">
                                 <button
                                     class="dk-btn dk-btn-secondary me-2"
+                                    t-att-title="this.translate('Cancel')"
+                                    t-att-aria-label="this.translate('Cancel')"
                                     t-on-click.stop.prevent="this.cancelProcess">
-                                    <t t-out="this.translate('Cancel')"/>
+                                    <i class="oi" data-icon="close"/>
                                 </button>
 
                                 <button class="dk-btn dk-btn-accent"
+                                        t-att-title="this.translate('Finish')"
+                                        t-att-aria-label="this.translate('Finish')"
                                         t-on-click.stop.prevent="this.showResultModal"
                                         t-att-disabled="this.state.finishLoading">
                                     <t t-if="this.state.finishLoading">
-                                        <i class="fa fa-spinner fa-spin mr-2"/>
+                                        <i class="oi tutor-oi-spinner" data-icon="refresh"/>
                                     </t>
-                                    <t t-else="" t-out="this.translate('Finish')"/>
+                                    <i t-else="" class="oi" data-icon="check"/>
                                 </button>
                             </div>
                         </div>
