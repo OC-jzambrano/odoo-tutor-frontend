@@ -33,6 +33,9 @@
     "installable": True,
     "application": True,
     "auto_install": False,
-    'images': ['static/images/iabot.png'],
+    "images": [
+        "static/description/tutor_sidebar_screenshot.png",
+        "static/description/tutor_settings_screenshot.png",
+    ],
     "license": "OPL-1",
 }

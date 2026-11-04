@@ -8,13 +8,13 @@
             <xpath expr="//form" position="inside">
                 <app string="Odoo AI Tutor" name="odoo_tutor">
                     <block title="Chatbot API" name="odoo_tutor_chatbot_settings">
-                        <setting string="WebSocket URL" help="URL del servidor WebSocket para las sesiones del tutor.">
+                        <setting string="WebSocket URL" help="WebSocket address of the tutor service for interactive sessions.">
                             <field
                                 name="chatbot_ws_base_url"
                                 placeholder="wss://tutor-backend.odooconcept.com/ws"
                             />
                         </setting>
-                        <setting string="API Key" help="Clave de autenticación para el servidor WebSocket.">
+                        <setting string="API Key" help="Authentication key used to connect to the tutor service.">
                             <field name="chatbot_api_key" password="True" />
                         </setting>
                     </block>
