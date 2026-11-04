@@ -2,8 +2,9 @@
     "name": "Odoo Tutor",
     "version": "20.0.1.0.1",
     "category": "Extra Tools",
-    "summary": "Módulo integrador para Odoo Tutor",
+    "summary": "Contextual AI tutoring and guided exercises inside Odoo.",
     "author": "Erick Birbe <ebirbe@odooconcept.com>, Odoo Concept",
+    "support": "ebirbe@odooconcept.com",
     "website": "https://odooconcept.com",
     "depends": [
         "sale_management",
