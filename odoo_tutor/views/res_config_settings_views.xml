@@ -6,16 +6,35 @@
         <field name="inherit_id" ref="base.res_config_settings_view_form" />
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
-                <app string="Odoo AI Tutor" name="odoo_tutor">
-                    <block title="Chatbot API" name="odoo_tutor_chatbot_settings">
+                <app string="Odoo Tutor" name="odoo_tutor">
+                    <block title="Tutor Service" name="odoo_tutor_chatbot_settings">
                         <setting string="WebSocket URL" help="WebSocket address of the tutor service for interactive sessions.">
                             <field
                                 name="chatbot_ws_base_url"
                                 placeholder="wss://tutor-backend.odooconcept.com/ws"
                             />
                         </setting>
-                        <setting string="API Key" help="Authentication key used to connect to the tutor service.">
+                        <setting string="Tutor Service API Key" help="Authentication key used to connect to the tutor service.">
                             <field name="chatbot_api_key" password="True" />
+                        </setting>
+                    </block>
+                    <block title="LLM Configuration" name="odoo_tutor_llm_settings">
+                        <setting string="Provider" help="Choose the language model provider.">
+                            <select class="form-select" aria-label="LLM provider">
+                                <option value="openai" selected="selected">OpenAI</option>
+                                <option value="anthropic">Claude (Anthropic)</option>
+                                <option value="google">Gemini (Google)</option>
+                                <option value="other">Other provider</option>
+                            </select>
+                        </setting>
+                        <setting string="LLM API Key" help="Enter the API key for your selected language model provider.">
+                            <input
+                                type="password"
+                                class="form-control"
+                                autocomplete="off"
+                                placeholder="Enter your provider API key"
+                                aria-label="LLM API key"
+                            />
                         </setting>
                     </block>
                 </app>
