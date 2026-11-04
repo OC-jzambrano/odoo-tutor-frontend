@@ -1,6 +1,12 @@
-/* ===== FOUNDATION ===== */
+/* Foundation styles. */
+
+/* Remove the destructive Delete action from Odoo's record action menu. */
+.o_cp_action_menus .o_menu_item.text-danger {
+    display: none !important;
+}
 
 #offcanvasAiSidebar {
+    color-scheme: light;
     --tutor-accent: #875a7b;
     --tutor-accent-strong: #714b67;
     --tutor-accent-soft: #f3edf1;
@@ -41,10 +47,6 @@
     box-shadow: var(--tutor-shadow-lg);
 }
 
-#offcanvasAiSidebar.is-light-theme {
-    color-scheme: light;
-}
-
 #offcanvasAiSidebar .offcanvas-header {
     position: relative;
     padding: 18px 20px 16px;
@@ -72,6 +74,23 @@
     align-items: flex-start;
     gap: 12px;
     min-width: 0;
+}
+
+#offcanvasAiSidebar .ai-sidebar-brand-mark {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    background:
+        linear-gradient(135deg, rgba(135, 90, 123, 0.16) 0%, rgba(67, 183, 164, 0.16) 100%);
+    color: var(--tutor-accent-strong);
+    box-shadow:
+        inset 0 0 0 1px rgba(113, 75, 103, 0.08),
+        0 8px 20px rgba(15, 23, 42, 0.08);
+    font-size: 17px;
 }
 
 #offcanvasAiSidebar .ai-sidebar-brand-copy {
@@ -104,6 +123,64 @@
     flex: 0 0 auto;
 }
 
+#offcanvasAiSidebar .ai-sidebar-header {
+    align-items: center;
+    padding: 14px 16px 14px 20px;
+    background: var(--tutor-surface);
+    border-bottom-color: var(--tutor-border);
+}
+
+#offcanvasAiSidebar .ai-sidebar-header-actions {
+    flex-wrap: nowrap;
+    gap: 6px;
+}
+
+#offcanvasAiSidebar .ai-sidebar-brand {
+    align-items: center;
+    gap: 10px;
+}
+
+#offcanvasAiSidebar .ai-sidebar-brand-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    box-shadow: none;
+}
+
+#offcanvasAiSidebar .ai-sidebar-subtitle {
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar .ai-sidebar-reset,
+#offcanvasAiSidebar .ai-sidebar-header-actions .ai-sidebar-close {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--tutor-border);
+    border-radius: 10px !important;
+    background: var(--tutor-surface);
+    box-shadow: none;
+}
+
+#offcanvasAiSidebar .ai-sidebar-close {
+    color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar .ai-sidebar-reset:hover,
+#offcanvasAiSidebar .ai-sidebar-header-actions .ai-sidebar-close:hover {
+    background: var(--tutor-surface-soft);
+}
+
+#offcanvasAiSidebar .ai-sidebar-brand-mark .oi {
+    font-size: 17px;
+}
+
 #offcanvasAiSidebar .offcanvas-body {
     padding: 16px 14px 16px 18px;
     min-height: 0;
@@ -133,6 +210,10 @@
 @keyframes tutor-spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(359deg); }
+}
+
+.tutor-oi-spinner {
+    animation: tutor-spin 1s infinite linear;
 }
 
 @keyframes tutor-icon-spin {
@@ -170,10 +251,8 @@
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
 }
 
-#offcanvasAiSidebar .ai-sidebar-reset-icon {
-    display: block;
-    width: 16px;
-    height: 16px;
+#offcanvasAiSidebar .ai-sidebar-reset:active i {
+    animation: tutor-icon-spin 0.6s linear;
 }
 
 #offcanvasAiSidebar .timer-display {
@@ -223,9 +302,9 @@
     transform: scale(1.08);
 }
 
-/* ===== HINT ===== */
+/* Hint styles. */
 
-/* ===== INLINE HINT ===== */
+/* Inline hint styles. */
 
 #offcanvasAiSidebar .ai-inline-hint-container {
     position: absolute;
@@ -238,9 +317,7 @@
     transition: bottom var(--tutor-motion-base);
 }
 
-/* When the optional-step skip button is also shown, the hint's `bottom`
-   (set inline from JS) is raised above it so the two never share the
-   same vertical band, regardless of composer height. */
+/* Raise the hint above the optional-step button without depending on composer height. */
 #offcanvasAiSidebar .ai-inline-hint-container.ai-inline-hint-container-raised {
     z-index: 1000;
 }
@@ -291,22 +368,16 @@
 }
 
 #offcanvasAiSidebar .ai-inline-hint-badge-icon {
-    width: 14px;
-    height: 14px;
+    width: 26px;
+    height: 26px;
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-}
-
-#offcanvasAiSidebar .ai-inline-hint-notification-dot {
-    width: 10px;
-    height: 10px;
-    display: block;
-    border-radius: 50%;
-    background: #f2c94c;
-    box-shadow: 0 0 0 3px rgba(242, 201, 76, 0.2);
+    background: linear-gradient(135deg, rgba(135, 90, 123, 0.16) 0%, rgba(67, 183, 164, 0.12) 100%);
+    color: var(--tutor-accent-strong);
+    box-shadow: inset 0 0 0 1px rgba(113, 75, 103, 0.08);
 }
 
 #offcanvasAiSidebar .ai-inline-hint-badge-text {
@@ -407,6 +478,14 @@
     border-bottom-color: rgba(248, 250, 252, 0.06);
 }
 
+#offcanvasAiSidebar.is-dark-theme .ai-sidebar-brand-mark {
+    background: linear-gradient(135deg, rgba(135, 90, 123, 0.22) 0%, rgba(67, 183, 164, 0.2) 100%);
+    color: #f3d7eb;
+    box-shadow:
+        inset 0 0 0 1px rgba(248, 250, 252, 0.06),
+        0 10px 22px rgba(0, 0, 0, 0.24);
+}
+
 #offcanvasAiSidebar.is-dark-theme .ai-sidebar-meta-chip {
     background: rgba(27, 34, 48, 0.9);
     border-color: rgba(248, 250, 252, 0.08);
@@ -425,49 +504,11 @@
     color: #dcb7d1;
 }
 
+#offcanvasAiSidebar.is-dark-theme .btn-recorder-toggle,
 #offcanvasAiSidebar.is-dark-theme .btn-close {
     background-color: rgba(27, 34, 48, 0.9);
     border-color: rgba(248, 250, 252, 0.08);
     color: var(--tutor-text);
-}
-
-#offcanvasAiSidebar .ai-exercise-confirmation-actions {
-    position: absolute;
-    z-index: 30;
-    left: 20px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-#offcanvasAiSidebar .ai-exercise-confirmation-choice {
-    min-width: 68px;
-    min-height: 34px;
-    padding: 0 14px;
-    border: 1px solid var(--tutor-border);
-    border-radius: var(--tutor-radius-pill);
-    background: var(--tutor-surface);
-    color: var(--tutor-text);
-    font-size: 13px;
-    font-weight: 800;
-    cursor: pointer;
-    transition: background var(--tutor-motion-fast), border-color var(--tutor-motion-fast), transform var(--tutor-motion-fast), opacity var(--tutor-motion-fast);
-}
-
-#offcanvasAiSidebar .ai-exercise-confirmation-choice:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: var(--tutor-shadow-sm);
-}
-
-#offcanvasAiSidebar .ai-exercise-confirmation-choice.is-yes {
-    border-color: transparent;
-    background: linear-gradient(135deg, var(--tutor-accent), var(--tutor-accent-strong));
-    color: #fff;
-}
-
-#offcanvasAiSidebar .ai-exercise-confirmation-choice:disabled {
-    cursor: wait;
-    opacity: 0.62;
 }
 
 #offcanvasAiSidebar.is-dark-theme .ai-inline-hint {
@@ -478,8 +519,9 @@
 }
 
 #offcanvasAiSidebar.is-dark-theme .ai-inline-hint-badge-icon {
-    background: transparent;
-    box-shadow: none;
+    background: linear-gradient(135deg, rgba(135, 90, 123, 0.26) 0%, rgba(67, 183, 164, 0.18) 100%);
+    color: #ecd8e6;
+    box-shadow: inset 0 0 0 1px rgba(248, 250, 252, 0.06);
 }
 
 #offcanvasAiSidebar.is-dark-theme .ai-inline-hint-badge-text {
@@ -544,7 +586,7 @@
     }
 }
 
-/* ===== RECORDER TOGGLE ===== */
+/* Recorder toggle styles. */
 
 #offcanvasAiSidebar .btn-recorder-toggle {
     min-height: 34px;
@@ -590,7 +632,7 @@
     transform: scale(0.96);
 }
 
-/* ===== RESULT MODAL ===== */
+/* Result modal styles. */
 
 #offcanvasAiSidebar .result-modal-overlay {
     position: fixed;
@@ -643,7 +685,7 @@
     text-align: right;
 }
 
-/* ===== NEW MESSAGE INDICATOR ===== */
+/* New message indicator styles. */
 
 #offcanvasAiSidebar .ai-new-message-indicator {
     position: absolute;
@@ -691,7 +733,7 @@
     white-space: nowrap;
 }
 
-/* ===== CHAT SHELL ===== */
+/* Chat shell styles. */
 
 #offcanvasAiSidebar .ai-chat-panel {
     min-height: 0;
@@ -1019,6 +1061,24 @@
     line-height: 1;
     text-align: left !important;
     text-indent: 0 !important;
+    animation: tutor-exercise-choices-in 180ms ease-out both;
+}
+
+@keyframes tutor-exercise-choices-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #chat-ui-container .ai-exercise-actions {
+        animation: none;
+    }
 }
 
 #chat-ui-container .ai-exercise-actions-buttons {
@@ -1235,12 +1295,13 @@
     color: #d8b4d0;
 }
 
-/* ===== CHAT ACTION BUTTONS ===== */
+/* Chat action button styles. */
 
 #offcanvasAiSidebar .ai-buttons-container {
     position: absolute;
     right: 28px;
-    display: none !important;
+    display: flex;
+    align-items: center;
     gap: 10px;
     z-index: 1000;
     transform: translateY(14px);
@@ -1271,6 +1332,33 @@
     justify-content: center;
     position: relative;
     overflow: hidden;
+}
+
+#offcanvasAiSidebar .dk-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 12px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
+}
+
+#offcanvasAiSidebar .dk-btn-secondary {
+    color: var(--tutor-text-muted);
+    background: var(--tutor-surface);
+    border: 1px solid var(--tutor-border);
+}
+
+#offcanvasAiSidebar .dk-btn-secondary:hover {
+    color: var(--tutor-text);
+    background: var(--tutor-surface-soft);
+}
+
+#offcanvasAiSidebar .dk-btn i {
+    margin: 0 !important;
+}
+
+#offcanvasAiSidebar .dk-btn .oi {
+    font-size: 18px;
 }
 
 #offcanvasAiSidebar .dk-btn:hover {
@@ -1318,7 +1406,7 @@
     animation: tutor-ripple 1s ease-out;
 }
 
-/* ===== RECORDER PANEL ===== */
+/* Recorder panel styles. */
 
 #offcanvasAiSidebar .o_ai_recorder_panel {
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(252, 252, 254, 1) 100%);
@@ -1576,9 +1664,9 @@
     color: var(--tutor-text-muted);
 }
 
-/* ===== COPY + FOOTER ACTIONS ===== */
+/* Copy and footer action styles. */
 
-/* Fila de acciones debajo del mensaje */
+/* Action row below each message. */
 #chat-ui-container .nlux-comp-messageFeedback,
 #chat-ui-container .nlux-comp-chatItem-actions,
 #chat-ui-container .nlux-comp-message-actions,
@@ -1612,7 +1700,7 @@
     width: fit-content !important;
 }
 
-/* ===== PERMITIR COPIA MANUAL SOLO EN EL TEXTO ===== */
+/* Allow manual copying only from message text. */
 
 #chat-ui-container .nlux-markdown-container,
 #chat-ui-container .nlux-markdown-container *,
@@ -1633,7 +1721,7 @@
     cursor: text !important;
 }
 
-/* ===== NO convertir botones/acciones en texto seleccionable ===== */
+/* Prevent text selection on buttons and actions. */
 
 #chat-ui-container button,
 #chat-ui-container button *,
@@ -1672,7 +1760,7 @@
     cursor: not-allowed !important;
 }
 
-/* ===== botón copiar ===== */
+/* Copy button. */
 
 #chat-ui-container .ai-msg-action,
 #chat-ui-container .ai-copy-btn,
@@ -1750,9 +1838,7 @@
     cursor: pointer !important;
 }
 
-/* =========================
-   Colores base del chat
-   ========================= */
+/* Base chat colors. */
 
 #chat-ui-container {
     --ai-user-bubble-bg: var(--tutor-accent-strong);
@@ -1764,9 +1850,7 @@
     --ai-assistant-action-color: var(--tutor-text);
 }
 
-/* =========================
-   Mensajes enviados por el usuario
-   ========================= */
+/* User messages. */
 
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-markdown-container,
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-bubble {
@@ -1775,13 +1859,13 @@
     border-color: transparent !important;
 }
 
-/* texto dentro del mensaje enviado */
+/* Text inside sent messages. */
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-markdown-container *,
 #chat-ui-container .nlux-comp-chatItem--sent .nlux-comp-bubble * {
     color: var(--ai-user-bubble-text) !important;
 }
 
-/* botón copiar + feedback en mensajes enviados */
+/* Copy button and feedback for sent messages. */
 #chat-ui-container .nlux-comp-chatItem--sent .ai-copy-btn,
 #chat-ui-container .nlux-comp-chatItem--sent .ai-msg-action,
 #chat-ui-container .nlux-comp-chatItem--sent .ai_feedback_btn,
@@ -1789,9 +1873,7 @@
     color: var(--ai-user-action-color) !important;
 }
 
-/* =========================
-   Mensajes recibidos del asistente
-   ========================= */
+/* Assistant messages. */
 
 #chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container,
 #chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble {
@@ -1824,9 +1906,7 @@
     color: var(--ai-assistant-action-color) !important;
 }
 
-/* =========================
-   Hover / estados
-   ========================= */
+/* Hover states. */
 
 #chat-ui-container .ai-copy-btn:hover,
 #chat-ui-container .ai_feedback_btn:hover,
@@ -1842,9 +1922,7 @@
     color: #ef4444 !important;
 }
 
-/* =========================
-   Dark mode
-   ========================= */
+/* Dark mode. */
 
 #offcanvasAiSidebar.is-dark-theme #chat-ui-container {
     --ai-user-bubble-bg: #8a617d;

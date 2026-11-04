@@ -1,13 +1,12 @@
-/* =========================
-   AI Recorder Panel (Sidebar)
-   ========================= */
+/* Recorder panel styles. */
 
 .o_ai_recorder_panel {
     background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(0,0,0,0.08);
     border-radius: 12px;
     padding: 12px 12px 10px 12px;
-    margin: 8px 8px 10px 0; /* leave space from left handle */
+    /* Leave space from the left handle. */
+    margin: 8px 8px 10px 0;
     box-shadow: 0 4px 12px rgba(0,0,0,0.06);
     backdrop-filter: blur(6px);
 }
@@ -82,7 +81,7 @@
     line-height: 1.1;
 }
 
-/* Meta row */
+/* Metadata row. */
 .o_ai_recorder_meta {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -118,7 +117,7 @@
     max-width: 60%;
 }
 
-/* Controls */
+/* Controls. */
 .o_ai_recorder_controls {
     display: flex;
     align-items: center;
@@ -153,7 +152,7 @@
     max-width: 280px;
 }
 
-/* Step section */
+/* Step section. */
 .o_ai_recorder_step {
     display: grid;
     grid-template-columns: 1fr;
@@ -179,7 +178,7 @@
     font-weight: 700;
 }
 
-/* Feed */
+/* Event feed. */
 .o_ai_recorder_feed {
     border-top: 1px dashed rgba(0,0,0,0.10);
     padding-top: 10px;
@@ -200,7 +199,7 @@
     padding-right: 4px;
 }
 
-/* scrollbar (optional, safe) */
+/* Optional scrollbar styling. */
 .o_ai_rec_feed_list::-webkit-scrollbar { width: 8px; }
 .o_ai_rec_feed_list::-webkit-scrollbar-thumb {
     background: rgba(0,0,0,0.15);
@@ -265,7 +264,7 @@
     text-align: right;
 }
 
-/* Mobile-ish */
+/* Mobile layout. */
 @media (max-width: 520px) {
     .o_ai_recorder_meta {
         grid-template-columns: 1fr;
@@ -278,7 +277,7 @@
     }
 }
 
-/* Modo selección: esconder offcanvas + backdrop y permitir click detrás */
+/* Hide the sidebar and backdrop while allowing clicks behind the picker. */
 body.o_ai_pick_mode #offcanvasAiSidebar {
     transform: translateX(110%) !important;
     visibility: hidden !important;
@@ -292,7 +291,7 @@ body.o_ai_pick_mode .modal-backdrop {
     pointer-events: none !important;
 }
 
-/* Evita que body quede bloqueado al entrar en pick mode */
+/* Prevent the body from remaining locked after entering picker mode. */
 body.o_ai_pick_mode {
     overflow: auto !important;
 }

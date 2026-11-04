@@ -1,21 +1,15 @@
 /* eslint-disable */
 /** @odoo-module **/
 
-import { Component, onMounted, onWillUnmount, signal } from "@odoo/owl";
+import { Component, onMounted, onWillUnmount, proxy, signal } from "@odoo/owl";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
 import { rpc } from "@web/core/network/rpc";
 import { _t } from "@web/core/l10n/translation";
-import { useState } from "../owl_compat";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
-import "../action_service_context_hook";
-
-// ---------------------
 // Helpers
-// ---------------------
-
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
     "instruction_push",
@@ -33,6 +27,12 @@ const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
 const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
 const HINT_BADGE_AUTO_HIDE_MS = 15000;
+
+function makeRef() {
+    const ref = signal(null);
+    Object.defineProperty(ref, "el", { get: () => ref() });
+    return ref;
+}
 function normalizePreviewTimestamp(ts) {
     const now = Date.now();
 
@@ -405,15 +405,11 @@ function buildTargetElement(el, uiType, uniqueKey, labelKey) {
 
     return uniqueKey || `${tag}.unknown`;
 }
-
-// ---------------------
 // Component
-// ---------------------
 class AiFloatingButton extends Component {
     static template = "ai_chat.AiFloatingButton";
 
     setup() {
-        this.floatingRootRef = signal.ref();
         this.actionService = useService("action");
         this.contextService = useService("context_service");
         this._lastActiveListField = null;
@@ -430,8 +426,9 @@ class AiFloatingButton extends Component {
         this._suppressNextClick = false;
         this._rafDrag = null;
         this._showButtonGraceUntil = 0;
+        this.floatingRoot = makeRef();
 
-        this.state = useState({
+        this.state = proxy({
             showButton: false,
             chatOpen: false,
             dragging: false,
@@ -450,9 +447,9 @@ class AiFloatingButton extends Component {
             exerciseCtaId: null,
             exerciseCtaStatus: "",
             hintBadgeVisible: false,
-            skipStepVisible: false,
-            skipStepLoading: false,
-            skipStepExerciseId: null,
+            optionalStepVisible: false,
+            optionalStepLoading: false,
+            optionalStepExerciseId: null,
         });
 
         const previewState = getOwlPreviewState();
@@ -539,15 +536,15 @@ class AiFloatingButton extends Component {
                 msg.type === "chat_response_complete" ||
                 ev?.kind === "chat_final"
             ) {
-                this.state.skipStepVisible =
+                this.state.optionalStepVisible =
                     this.aiWs?.enableSkipStep === true &&
                     msg.is_optional === true &&
                     !!msg.exercise_id;
-                this.state.skipStepExerciseId = this.state.skipStepVisible
+                this.state.optionalStepExerciseId = this.state.optionalStepVisible
                     ? msg.exercise_id
                     : null;
-                this.state.skipStepLoading = false;
-                if (this.state.skipStepVisible) {
+                this.state.optionalStepLoading = false;
+                if (this.state.optionalStepVisible) {
                     this._hideHintBadge?.();
                 }
             }
@@ -579,7 +576,7 @@ class AiFloatingButton extends Component {
         };
 
         this._showHintBadge = () => {
-            if (this.state.skipStepVisible) return;
+            if (this.state.optionalStepVisible) return;
             this.state.hintBadgeVisible = true;
             this._clearHintBadgeAutoHideTimer();
             this._hintBadgeAutoHideTimer = setTimeout(() => {
@@ -591,23 +588,11 @@ class AiFloatingButton extends Component {
         this._onTutorHintForBadge = (ev) => {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
-            if (msg.type !== "tutor_hint" && msg.type !== "tutor_stuck") return;
+            if (msg.type !== "tutor_hint") return;
 
             const offcanvasEl = document.getElementById("offcanvasAiSidebar");
             const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
             if (isChatOpen) return;
-
-            const exerciseId = msg.exercise_id || this.state.skipStepExerciseId;
-            this.state.skipStepVisible =
-                this.aiWs?.enableSkipStep === true && !!exerciseId;
-            this.state.skipStepExerciseId = this.state.skipStepVisible
-                ? exerciseId
-                : null;
-            this.state.skipStepLoading = false;
-            if (this.state.skipStepVisible || msg.type === "tutor_stuck") {
-                this._hideHintBadge();
-                return;
-            }
 
             this._showHintBadge();
         };
@@ -618,36 +603,19 @@ class AiFloatingButton extends Component {
             this._onTutorHintForBadge({ kind: "tutor_hint", data });
         };
 
-        // Skipping a step must go through the same code path as the in-chat
-        // skip button (ai_sidebar.js#onSkipStep), otherwise the two surfaces
-        // drift apart: whichever one makes the aiWs.chat() call is the only
-        // one that gets to push the resulting instruction into the visible
-        // nlux conversation. We only dispatch the request here (mirroring
-        // the EXERCISE_CHOICE_EVENT start/cancel pattern below) and let
-        // ai_sidebar.js perform the actual call + history update; this
-        // component's own preview/bubble state is kept in sync afterwards
-        // via the normal chat_final broadcast in _onPreviewMessage.
-        // Skipping a step must go through the same code path as the in-chat
-        // skip button (ai_sidebar.js#onSkipStep), otherwise the two surfaces
-        // drift apart: whichever one makes the aiWs.chat() call is the only
-        // one that gets to push the resulting instruction into the visible
-        // nlux conversation. We only dispatch the request here (mirroring
-        // the EXERCISE_CHOICE_EVENT start/cancel pattern below) and let
-        // ai_sidebar.js perform the actual call + history update; this
-        // component's own preview/bubble state is kept in sync afterwards
-        // via the normal chat_final broadcast in _onPreviewMessage.
-        this.onSkipStep = () => {
+        // Delegate skip requests to the sidebar so chat history and preview state stay synchronized.
+        this.onSkipOptionalStep = () => {
             if (
-                !this.state.skipStepVisible ||
-                this.state.skipStepLoading ||
-                !this.state.skipStepExerciseId
+                !this.state.optionalStepVisible ||
+                this.state.optionalStepLoading ||
+                !this.state.optionalStepExerciseId
             ) {
                 return;
             }
 
-            this.state.skipStepLoading = true;
+            this.state.optionalStepLoading = true;
             window.dispatchEvent(new CustomEvent(EXERCISE_SKIP_STEP_EVENT, {
-                detail: { exerciseId: this.state.skipStepExerciseId },
+                detail: { exerciseId: this.state.optionalStepExerciseId },
             }));
         };
 
@@ -723,7 +691,6 @@ class AiFloatingButton extends Component {
             this.aiWs?.subscribe?.(this._onPreviewMessage);
             this.aiWs?.subscribe?.(this._onTutorHintForBadge);
             window.addEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
-            window.addEventListener("ai:tutor_stuck", this._onTutorHintEventForBadge);
 
             this._restoreWidgetPosition();
             this._syncChatOpenStateFromDom();
@@ -1223,7 +1190,7 @@ class AiFloatingButton extends Component {
     }
 
     _getWidgetRect() {
-        const root = this.floatingRootRef()?.querySelector?.(".ai-floating-button");
+        const root = this.floatingRoot.el;
         if (!root) return { width: 90, height: 90 };
 
         const rect = root.getBoundingClientRect();
@@ -1996,7 +1963,6 @@ class AiFloatingButton extends Component {
 
         if (this._onTutorHintEventForBadge) {
             window.removeEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
-            window.removeEventListener("ai:tutor_stuck", this._onTutorHintEventForBadge);
             this._onTutorHintEventForBadge = null;
         }
 

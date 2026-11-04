@@ -5,7 +5,7 @@ const { test, expect } = require("@playwright/test");
 test.setTimeout(90_000);
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/crm?debug=assets");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
 });
 
@@ -31,7 +31,7 @@ test("hovering the in-chat hint pauses the countdown, leaving resumes it", async
   await page.evaluate(() => window.aiTutorDebug.showHint("Playwright hover check"));
 
   const hint = page.locator(".ai-inline-hint");
-  await expect(hint).toHaveCount(0);
+  await expect(hint).toBeVisible();
 
   await hint.hover();
   await page.waitForTimeout(16_000);
@@ -40,7 +40,7 @@ test("hovering the in-chat hint pauses the countdown, leaving resumes it", async
   // Move the mouse elsewhere to trigger mouseleave and resume the timer.
   await page.mouse.move(5, 5);
   await page.waitForTimeout(16_000);
-  await expect(hint).toBeVisible();
+  await expect(hint).toHaveCount(0);
 });
 
 test("closing the in-chat hint with the x button works immediately", async ({ page }) => {
