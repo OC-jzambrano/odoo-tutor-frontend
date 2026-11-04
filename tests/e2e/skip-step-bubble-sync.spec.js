@@ -75,7 +75,10 @@ test("skipping a step from the owl bubble is reflected in the chat once reopened
   await composer.fill("crm-create-opportunity-manual");
   await composer.press("Enter");
 
-  await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
+  const startExerciseButton = page
+    .getByRole("group", { name: "Choose whether to start the exercise" })
+    .getByRole("button", { name: "Yes", exact: true });
+  await expect(startExerciseButton).toBeVisible();
 
   // Close the sidebar so the exchange continues through the floating
   // "owl bubble" surface instead of the in-chat panel.
