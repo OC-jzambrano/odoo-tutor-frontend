@@ -71,9 +71,7 @@ test("keeps a newline-wrapped copy target and trailing punctuation inline", asyn
   await expect(copyValue).toBeVisible();
 
   const message = copyValue.locator("xpath=ancestor::*[contains(@class, 'nlux-comp-message')][1]");
-  await expect(message).toContainText(
-    "Create item Product Z ."
-  );
+  await expect(message).toContainText("Create item Product Z.");
 
   const layout = await copyValue.evaluate((chip) => {
     const messageEl = chip.closest(".nlux-comp-message");

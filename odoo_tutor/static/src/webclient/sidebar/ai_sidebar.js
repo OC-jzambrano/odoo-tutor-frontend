@@ -86,14 +86,15 @@ function cleanText(value) {
 }
 
 function translateKnownTutorText(value) {
-    const cleaned = cleanText(value);
+    const original = String(value || "").trim();
+    const cleaned = cleanText(original);
     const normalized = normalizeAssistantTextForCompare(cleaned);
 
     if (normalized === "do you want to continue the exercise?") {
         return _t("Do you want to continue the exercise?");
     }
 
-    return cleaned;
+    return original;
 }
 
 function normalizeTutorTimestamp(ts) {
@@ -268,7 +269,7 @@ export class AiSidebar extends Component {
         // State
         // -------------------------
         this.state = useState({
-            width: "600px",
+            width: "480px",
             isResizing: false,
             isStreamingMode: false,
             isLoading: false,

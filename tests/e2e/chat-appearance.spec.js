@@ -23,6 +23,9 @@ test("chat fills the sidebar and centers the tutor logo on desktop and mobile", 
       const bodyBox = body.getBoundingClientRect();
       const chatBox = chat.getBoundingClientRect();
       const roomBox = room.getBoundingClientRect();
+      const sidebarWidth = document
+        .querySelector("#offcanvasAiSidebar")
+        .getBoundingClientRect().width;
 
       return {
         bodyPadding: getComputedStyle(body).padding,
@@ -33,6 +36,7 @@ test("chat fills the sidebar and centers the tutor logo on desktop and mobile", 
         roomRadius: getComputedStyle(room).borderTopLeftRadius,
         roomShadow: getComputedStyle(room).boxShadow,
         avatarPosition: getComputedStyle(avatar).backgroundPosition,
+        sidebarWidth,
         aligned:
           Math.abs(bodyBox.left - chatBox.left) < 1 &&
           Math.abs(bodyBox.right - chatBox.right) < 1 &&
@@ -47,6 +51,7 @@ test("chat fills the sidebar and centers the tutor logo on desktop and mobile", 
     expect(styles.roomRadius).toBe("0px");
     expect(styles.roomShadow).toBe("none");
     expect(styles.avatarPosition).toContain("50%");
+    expect(styles.sidebarWidth).toBeLessThanOrEqual(500);
     expect(styles.aligned).toBe(true);
   }
 });
