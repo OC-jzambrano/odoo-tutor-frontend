@@ -74,7 +74,7 @@ test("skip response from the bubble does not jump ahead of later tutor_push mess
     });
   });
 
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/crm?debug=assets");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
   await page.locator("[data-ai-sidebar-toggle]").click();
   await expect(page.locator("#offcanvasAiSidebar")).toHaveClass(/show/);
@@ -84,8 +84,8 @@ test("skip response from the bubble does not jump ahead of later tutor_push mess
   );
   await composer.fill("crm-create-opportunity-manual");
   await composer.press("Enter");
-  await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
-  await page.locator(".ai-exercise-choice-yes").click();
+  await expect(page.locator(".ai-exercise-confirmation-choice.is-yes")).toBeVisible();
+  await page.locator(".ai-exercise-confirmation-choice.is-yes").click();
   await expect(
     page.getByText("Please open the main Sales app.", { exact: true }),
   ).toBeVisible();

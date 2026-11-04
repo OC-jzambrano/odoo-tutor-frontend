@@ -60,7 +60,7 @@ test("skip button sends a hidden forced-next action and renders the next instruc
     });
   });
 
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/crm?debug=assets");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
   await page.locator("[data-ai-sidebar-toggle]").click();
   await expect(page.locator("#offcanvasAiSidebar")).toHaveClass(/show/);
@@ -71,16 +71,34 @@ test("skip button sends a hidden forced-next action and renders the next instruc
   await composer.fill("crm-create-opportunity-manual");
   await composer.press("Enter");
 
-  await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
+  await expect(page.locator(".ai-exercise-confirmation-choice.is-yes")).toBeVisible();
   await page.locator("#offcanvasAiSidebar .btn-close").click();
   await expect(page.locator(".ai-owl-exercise-choice-yes")).toBeVisible();
   await page.locator(".ai-owl-exercise-choice-yes").click();
   await page.locator("[data-ai-sidebar-toggle]").click();
-  await expect(page.locator(".ai-exercise-choice-yes")).toBeDisabled();
+  await expect(page.locator(".ai-exercise-confirmation-choice.is-yes")).toHaveCount(0);
   await expect(page.getByText("Click New.", { exact: true })).toBeVisible();
 
   const skipButton = page.locator(".ai-skip-step-button");
   await expect(skipButton).toBeVisible();
+  const skipStyles = await skipButton.evaluate((button) => {
+    const style = getComputedStyle(button);
+    const icon = getComputedStyle(button.querySelector("i"));
+    return {
+      padding: style.padding,
+      margin: style.margin,
+      alignItems: style.alignItems,
+      justifyContent: style.justifyContent,
+      iconSize: icon.fontSize,
+    };
+  });
+  expect(skipStyles).toEqual({
+    padding: "0px",
+    margin: "0px",
+    alignItems: "center",
+    justifyContent: "center",
+    iconSize: "12px",
+  });
   const [composerBox, skipBox] = await Promise.all([
     composer.boundingBox(),
     skipButton.boundingBox(),
@@ -174,7 +192,7 @@ test("skip button disappears when skipping completes the exercise", async ({
     });
   });
 
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/crm?debug=assets");
   await page.locator("[data-ai-sidebar-toggle]").click();
 
   const composer = page.locator(
@@ -182,7 +200,7 @@ test("skip button disappears when skipping completes the exercise", async ({
   );
   await composer.fill("crm-create-opportunity-manual");
   await composer.press("Enter");
-  await page.locator(".ai-exercise-choice-yes").click();
+  await page.locator(".ai-exercise-confirmation-choice.is-yes").click();
 
   const skipButton = page.locator(".ai-skip-step-button");
   await expect(skipButton).toBeVisible();
@@ -223,7 +241,7 @@ test("skip button still shows on a non-optional step (always visible during an a
     });
   });
 
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/crm?debug=assets");
   await page.locator("[data-ai-sidebar-toggle]").click();
 
   const composer = page.locator(
@@ -231,7 +249,7 @@ test("skip button still shows on a non-optional step (always visible during an a
   );
   await composer.fill("crm-create-opportunity-manual");
   await composer.press("Enter");
-  await page.locator(".ai-exercise-choice-yes").click();
+  await page.locator(".ai-exercise-confirmation-choice.is-yes").click();
 
   await expect(page.getByText("Click New.", { exact: true })).toBeVisible();
   await expect(page.locator(".ai-skip-step-button")).toBeVisible();
@@ -268,7 +286,7 @@ test("skip button and context hint never overlap when both are visible", async (
     });
   });
 
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/crm?debug=assets");
   await page.locator("[data-ai-sidebar-toggle]").click();
 
   const composer = page.locator(
@@ -276,7 +294,7 @@ test("skip button and context hint never overlap when both are visible", async (
   );
   await composer.fill("crm-create-opportunity-manual");
   await composer.press("Enter");
-  await page.locator(".ai-exercise-choice-yes").click();
+  await page.locator(".ai-exercise-confirmation-choice.is-yes").click();
 
   const skipButton = page.locator(".ai-skip-step-button");
   await expect(skipButton).toBeVisible();

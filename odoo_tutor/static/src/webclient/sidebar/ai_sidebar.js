@@ -1409,7 +1409,8 @@ export class AiSidebar extends Component {
     _buildManualReceivedItem(text) {
         const item = document.createElement("div");
         item.className = "nlux-comp-chatItem nlux-comp-chatItem--received nlux-comp-chatItem--bubblesLayout";
-        item.innerHTML = `<div class="nlux-comp-chatItem-participantInfo"><div class="nlux-comp-avatar"><div class="nlux-comp-avatarContainer"><div class="nlux-comp-avatarPicture" style="background-image: url('${TUTOR_ASSISTANT_AVATAR_URL}')"></div></div></div></div><div class="nlux-comp-message"><div class="nlux-markdown-container">${this._escapeHtml(text).replace(/\n/g, "<br/>")}</div></div>`;
+        const safeText = this._escapeHtml(text).replace(/\n/g, "<br/>");
+        item.innerHTML = `<div class="nlux-comp-chatItem-participantInfo"><div class="nlux-comp-avatar"><div class="nlux-comp-avatarContainer"><div class="nlux-comp-avatarPicture" style="background-image: url('${TUTOR_ASSISTANT_AVATAR_URL}')"></div></div></div></div><div class="nlux-comp-message"><div class="nlux-markdown-container"><p>${safeText}</p></div></div>`;
         return item;
     }
 

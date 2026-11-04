@@ -35,6 +35,11 @@
     pointer-events: none !important;
 }
 
+.ai-floating-button.is-open .ai-owl-trigger,
+.ai-floating-button.is-open .ai-owl-trigger-skip {
+    pointer-events: none !important;
+}
+
 .ai-floating-button .btn {
     box-shadow: none !important;
 }

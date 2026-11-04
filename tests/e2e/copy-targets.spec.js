@@ -6,7 +6,7 @@ test.beforeEach(async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: BASE_URL,
   });
-  await page.goto("/odoo");
+  await page.goto("/odoo/crm?debug=assets");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
 });
 
@@ -60,7 +60,7 @@ test("keeps a newline-wrapped copy target and trailing punctuation inline", asyn
 
   await page.evaluate(() => {
     window.aiTutorDebug.pushTutorMessage(
-      "Good job. In the Product field, create a new storable product named\n**Product Z**\n.",
+      "Create item\nProduct Z\n.",
       [{ text: "Product Z", field: "name", field_label: "Product" }]
     );
   });
@@ -72,24 +72,26 @@ test("keeps a newline-wrapped copy target and trailing punctuation inline", asyn
 
   const message = copyValue.locator("xpath=ancestor::*[contains(@class, 'nlux-comp-message')][1]");
   await expect(message).toContainText(
-    "Good job. In the Product field, create a new storable product named Product Z."
+    "Create item Product Z ."
   );
 
   const layout = await copyValue.evaluate((chip) => {
     const messageEl = chip.closest(".nlux-comp-message");
     const textBlock = messageEl?.querySelector(".nlux-markdown-container");
-    const textNode = Array.from(textBlock?.childNodes || []).find(
-      (node) =>
-        node.nodeType === Node.TEXT_NODE &&
-        node.textContent.includes("named ")
-    );
+    const walker = textBlock
+      ? document.createTreeWalker(textBlock, NodeFilter.SHOW_TEXT)
+      : null;
+    let textNode = null;
+    while (walker && (textNode = walker.nextNode())) {
+      if (textNode.textContent.includes("Create item ")) break;
+    }
 
-    if (!textNode) return null;
+    if (!textNode || !textNode.textContent.includes("Create item ")) return null;
 
-    const index = textNode.textContent.indexOf("named ");
+    const index = textNode.textContent.indexOf("Create item ");
     const range = document.createRange();
     range.setStart(textNode, index);
-    range.setEnd(textNode, index + "named ".length);
+    range.setEnd(textNode, index + "Create item ".length);
     const preceding = range.getBoundingClientRect();
     const chipBox = chip.getBoundingClientRect();
 

@@ -105,7 +105,7 @@
 }
 
 #offcanvasAiSidebar .offcanvas-body {
-    padding: 16px 14px 16px 18px;
+    padding: 0;
     min-height: 0;
     overflow: hidden;
 }
@@ -732,7 +732,7 @@
 
 #chat-ui-container .nlux-AiChat-root {
     --nlux-send-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M2.01 21 23 12 2.01 3 2 10l15 2-15 2z'/%3E%3C/svg%3E");
-    --nlux-ChatRoom--Padding: 18px;
+    --nlux-ChatRoom--Padding: 0px;
     --nlux-ChatRoom--BorderRadius: 26px;
     --nlux-ChatRoom-Divider--Color: rgba(113, 75, 103, 0.12);
     --nlux-ChatItem-ParticipantName--Color: var(--tutor-text-muted);
@@ -778,11 +778,9 @@
     background:
         radial-gradient(circle at top right, rgba(135, 90, 123, 0.08) 0%, transparent 26%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 247, 251, 0.98) 100%);
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    border-radius: 26px;
-    box-shadow:
-        0 20px 40px rgba(15, 23, 42, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
     overflow: hidden;
 }
 
@@ -1193,6 +1191,7 @@
     width: 28px;
     height: 28px;
     padding: 0;
+    margin: 0;
     border: 1px solid var(--tutor-border);
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.96);
@@ -1206,7 +1205,11 @@
 }
 
 .ai-chat-panel .ai-skip-step-button i {
-    font-size: 8px;
+    display: block;
+    margin: 0;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
 }
 
 .ai-chat-panel.has-skip-step #chat-ui-container .nlux-comp-composer > textarea {
@@ -1951,17 +1954,17 @@
     }
 
     #offcanvasAiSidebar .offcanvas-body {
-        padding: 12px;
+        padding: 0;
     }
 
     #chat-ui-container .nlux-AiChat-root {
-        --nlux-ChatRoom--Padding: 14px;
+        --nlux-ChatRoom--Padding: 0px;
         --nlux-ChatItem-Message-BubbleLayout--PaddingTopBottom: 13px;
         --nlux-ChatItem-Message-BubbleLayout--PaddingLeftRight: 14px;
     }
 
     #chat-ui-container .nlux-chatRoom-container {
-        border-radius: 22px;
+        border-radius: 0;
     }
 
     #chat-ui-container .nlux-comp-chatItem > .nlux-comp-message {

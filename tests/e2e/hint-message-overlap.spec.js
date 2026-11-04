@@ -35,7 +35,7 @@ test("context hint overlays the chat without shifting the message layout", async
     });
   });
 
-  await page.goto("/odoo?debug=assets");
+  await page.goto("/odoo/crm?debug=assets");
   await expect(page.locator(".ai-owl-trigger")).toBeVisible();
   await page.locator("[data-ai-sidebar-toggle]").click();
   await expect(page.locator("#offcanvasAiSidebar")).toHaveClass(/show/);
@@ -45,8 +45,8 @@ test("context hint overlays the chat without shifting the message layout", async
   );
   await composer.fill("dependency-control-project");
   await composer.press("Enter");
-  await expect(page.locator(".ai-exercise-choice-yes")).toBeVisible();
-  await page.locator(".ai-exercise-choice-yes").click();
+  await expect(page.locator(".ai-exercise-confirmation-choice.is-yes")).toBeVisible();
+  await page.locator(".ai-exercise-confirmation-choice.is-yes").click();
 
   await expect(
     page.getByText("Create the task Design inside the project.", { exact: true }).first(),

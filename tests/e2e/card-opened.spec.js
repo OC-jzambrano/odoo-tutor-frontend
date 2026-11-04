@@ -1,20 +1,25 @@
 const { test, expect } = require("@playwright/test");
 
-function parseEventFrame(payload) {
-  if (typeof payload !== "string") return null;
-  try {
-    const message = JSON.parse(payload);
-    return message?.type === "ui_event" ? message : null;
-  } catch {
-    return null;
-  }
-}
-
 test("opening a CRM kanban card emits card_clicked and record_opened", async ({
   page,
 }) => {
-  const sentEvents = [];
+  const receivedEvents = [];
   const leadName = `Playwright card event ${Date.now()}`;
+
+  await page.routeWebSocket(/\/ws(?:\?|$)/, (ws) => {
+    ws.send(
+      JSON.stringify({
+        type: "connection_established",
+        session_id: "playwright-card-open-session",
+      }),
+    );
+    ws.onMessage((rawMessage) => {
+      try {
+        const message = JSON.parse(String(rawMessage));
+        if (message?.type === "ui_event") receivedEvents.push(message);
+      } catch {}
+    });
+  });
 
   const createResponse = await page.request.post(
     "/web/dataset/call_kw/crm.lead/create",
@@ -34,14 +39,7 @@ test("opening a CRM kanban card emits card_clicked and record_opened", async ({
   const createPayload = await createResponse.json();
   expect(createPayload.error, "Could not create the CRM test record").toBeUndefined();
 
-  page.on("websocket", (webSocket) => {
-    webSocket.on("framesent", ({ payload }) => {
-      const event = parseEventFrame(payload);
-      if (event) sentEvents.push(event);
-    });
-  });
-
-  await page.goto("/odoo/crm");
+  await page.goto("/odoo/crm?debug=assets");
   await expect(
     page.locator(".o_web_client"),
     "Odoo did not load an authenticated web client. Run `npm run test:e2e:auth` to refresh the saved login.",
@@ -61,14 +59,14 @@ test("opening a CRM kanban card emits card_clicked and record_opened", async ({
 
   await expect
     .poll(
-      () => sentEvents.find((event) => event.event_name === "card_clicked"),
+      () => receivedEvents.find((event) => event.event_name === "card_clicked"),
       { message: "No card_clicked ui_event was sent after clicking the kanban card." },
     )
     .toBeTruthy();
 
   await expect
     .poll(
-      () => sentEvents.find((event) => event.event_name === "record_opened"),
+      () => receivedEvents.find((event) => event.event_name === "record_opened"),
       {
         message:
           "No record_opened ui_event was sent after the kanban card opened.",
