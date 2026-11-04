@@ -3,12 +3,8 @@
         <h2 class="oe_slogan">Odoo Tutor</h2>
         <p class="oe_mt32">
             Odoo Tutor adds an in-context tutoring sidebar to the Odoo backend.
-            Users can ask questions while working and receive guidance from a
-            separately deployed Odoo Tutor service.
-        </p>
-        <p>
-            Developed by Juan Zambrano, AI Engineer.
-            For support, contact <a href="mailto:juanzamdev@gmail.com">juanzamdev@gmail.com</a>.
+            Ask questions while working and receive step-by-step guidance from
+            your configured Odoo Tutor service.
         </p>
     </div>
 </section>
@@ -19,7 +15,7 @@
         <ul>
             <li>Open the tutor chat from the Odoo backend.</li>
             <li>Receive contextual hints and guidance during supported exercises.</li>
-            <li>Continue or skip an exercise step when the administrator enables that option.</li>
+            <li>Skip an exercise step when you are stuck, if the administrator enables the option.</li>
             <li>Send feedback on tutor responses.</li>
         </ul>
     </div>
@@ -30,9 +26,9 @@
         <h3>Configuration and requirements</h3>
         <p>
             Configure the tutor service WebSocket URL and API key in Odoo
-            Settings. This add-on requires a separately deployed, compatible
-            Odoo Tutor backend and the Odoo apps listed as its dependencies.
-            The backend service is not included in this add-on.
+            Settings. The skip option is controlled by the ODOO_TUTOR_ENABLE_SKIP_STEP
+            environment variable. This add-on requires a compatible Odoo Tutor
+            backend and the Odoo apps listed as dependencies.
         </p>
     </div>
 </section>

@@ -591,7 +591,7 @@ class AiFloatingButton extends Component {
         this._onTutorHintForBadge = (ev) => {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
-            if (msg.type !== "tutor_hint") return;
+            if (msg.type !== "tutor_hint" && msg.type !== "tutor_stuck") return;
 
             const offcanvasEl = document.getElementById("offcanvasAiSidebar");
             const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
@@ -604,7 +604,7 @@ class AiFloatingButton extends Component {
                 ? exerciseId
                 : null;
             this.state.skipStepLoading = false;
-            if (this.state.skipStepVisible) {
+            if (this.state.skipStepVisible || msg.type === "tutor_stuck") {
                 this._hideHintBadge();
                 return;
             }
@@ -723,6 +723,7 @@ class AiFloatingButton extends Component {
             this.aiWs?.subscribe?.(this._onPreviewMessage);
             this.aiWs?.subscribe?.(this._onTutorHintForBadge);
             window.addEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
+            window.addEventListener("ai:tutor_stuck", this._onTutorHintEventForBadge);
 
             this._restoreWidgetPosition();
             this._syncChatOpenStateFromDom();
@@ -1995,6 +1996,7 @@ class AiFloatingButton extends Component {
 
         if (this._onTutorHintEventForBadge) {
             window.removeEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
+            window.removeEventListener("ai:tutor_stuck", this._onTutorHintEventForBadge);
             this._onTutorHintEventForBadge = null;
         }
 
