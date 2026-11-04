@@ -1,6 +1,6 @@
 {
     "name": "Odoo Tutor",
-    "version": "1.0.1",
+    "version": "20.0.1.0.1",
     "category": "Extra Tools",
     "summary": "Módulo integrador para Odoo Tutor",
     "author": "Erick Birbe <ebirbe@odooconcept.com>, Odoo Concept",
