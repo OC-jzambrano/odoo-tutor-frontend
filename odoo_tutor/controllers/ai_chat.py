@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 import requests
 from urllib.parse import urlsplit, urlunsplit
 from odoo import http
@@ -7,6 +8,7 @@ from odoo.http import request
 
 from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
 from .ai.ai_bot import AiBot
+from .ticket_signing import build_ws_ticket_claims, sign_ws_ticket
 
 
 class AiChatController(http.Controller):
@@ -30,6 +32,36 @@ class AiChatController(http.Controller):
         return {
             "ws_base_url": self._get_ws_base_url(),
             "enable_skip_step": self._env_flag("ODOO_TUTOR_ENABLE_SKIP_STEP"),
+        }
+
+    @http.route("/ai_chat/ws_ticket", type="jsonrpc", auth="user", methods=["POST"])
+    def ws_ticket(self, **kwargs):
+        """Issue a short-lived identity ticket for the configured WebSocket service."""
+        params = request.env["ir.config_parameter"].sudo()
+        installation_id = params.get_str("odoo_tutor.installation_id", "")
+        if not installation_id:
+            installation_id = str(uuid.uuid4())
+            params.set_str("odoo_tutor.installation_id", installation_id)
+        try:
+            installation_id = str(uuid.UUID(installation_id))
+        except (ValueError, TypeError, AttributeError):
+            return {"error": "A valid WebSocket installation UUID is required"}
+        signing_secret = os.getenv("ODOO_TUTOR_WS_TICKET_SECRET", "")
+        if len(signing_secret.encode("utf-8")) < 32:
+            return {"error": "WebSocket ticket signing is not configured"}
+
+        claims = build_ws_ticket_claims(
+            request.env.user.id,
+            request.env.user.login,
+            request.env.cr.dbname,
+            installation_id,
+        )
+        ticket = sign_ws_ticket(claims, signing_secret)
+        return {
+            "ticket": ticket,
+            "expires_at": claims["exp"],
+            "user_id": request.env.user.id,
+            "database_id": installation_id,
         }
 
     @http.route("/ai_chat/session/<string:session_id>/messages", type="jsonrpc", auth="user")

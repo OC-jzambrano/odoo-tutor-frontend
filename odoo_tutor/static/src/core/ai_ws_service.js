@@ -12,6 +12,12 @@ import {
 import { buildOutcomeState } from "./outcome_state";
 import { normalizePersistentRecordId } from "./record_id";
 import { buildRecordOpenedTransitionFromLiveContext } from "./state_transition";
+import {
+  createAuthTicketFrame,
+  isAuthenticatedAck,
+  isAuthenticationFailure,
+  isTicketResponseValid,
+} from "./ws_ticket_protocol";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -128,7 +134,7 @@ function clearStoredWsSession() {
   } catch {}
 }
 
-function readStoredWsSession({ db, userLogin, odooSessionId } = {}) {
+function readStoredWsSession({ db, userId, databaseId, odooSessionId } = {}) {
   const storage = getBrowserStorage();
   if (!storage) return null;
 
@@ -144,7 +150,8 @@ function readStoredWsSession({ db, userLogin, odooSessionId } = {}) {
 
     if (
       data.db !== (db || null) ||
-      data.userLogin !== (userLogin || null) ||
+      data.userId !== (userId || null) ||
+      data.databaseId !== (databaseId || null) ||
       data.odooSessionId !== (odooSessionId || null) ||
       !data.wsSessionId
     ) {
@@ -159,7 +166,7 @@ function readStoredWsSession({ db, userLogin, odooSessionId } = {}) {
   }
 }
 
-function persistWsSession({ db, userLogin, odooSessionId, wsSessionId }) {
+function persistWsSession({ db, userId, databaseId, odooSessionId, wsSessionId }) {
   if (!wsSessionId) return;
 
   const storage = getBrowserStorage();
@@ -170,7 +177,8 @@ function persistWsSession({ db, userLogin, odooSessionId, wsSessionId }) {
       WS_SESSION_STORAGE_KEY,
       JSON.stringify({
         db: db || null,
-        userLogin: userLogin || null,
+        userId: userId || null,
+        databaseId: databaseId || null,
         odooSessionId: odooSessionId || null,
         wsSessionId,
       })
@@ -183,6 +191,7 @@ function getState() {
   window.__AI_TUTOR_WS_STATE = window.__AI_TUTOR_WS_STATE || {
     ws: null,
     isConnected: false,
+    authenticated: false,
     connectPromise: null,
 
     // session_id del backend (sale en "connection_established")
@@ -245,7 +254,7 @@ export const aiWsService = {
     st.recentEventFingerprints ||= new Map();
 
     function isOpen() {
-      return st.ws && st.ws.readyState === WS_OPEN;
+      return st.ws && st.ws.readyState === WS_OPEN && st.authenticated;
     }
 
     function safeSend(payload) {
@@ -313,9 +322,22 @@ export const aiWsService = {
       return ok;
     };
 
-    async function connect() {
-      // ✅ Si ya hay promesa en progreso, reúsala
+    function connect() {
       if (st.connectPromise) return st.connectPromise;
+      const currentAttempt = connectInternal();
+      st.connectPromise = currentAttempt;
+      currentAttempt.then(
+        () => {
+          if (st.connectPromise === currentAttempt) st.connectPromise = null;
+        },
+        () => {
+          if (st.connectPromise === currentAttempt) st.connectPromise = null;
+        }
+      );
+      return currentAttempt;
+    }
+
+    async function connectInternal() {
 
       // ✅ Si ya hay socket open o connecting, no crees otro
       if (
@@ -326,6 +348,19 @@ export const aiWsService = {
       }
 
       setStatus(st, "connecting");
+
+      // A ticket is single-use and must be fetched for every socket attempt.
+      let ticketResponse;
+      try {
+        ticketResponse = await rpc("/ai_chat/ws_ticket", {});
+      } catch (error) {
+        setStatus(st, "error");
+        throw error;
+      }
+      if (!isTicketResponseValid(ticketResponse)) {
+        setStatus(st, "error");
+        throw new Error(ticketResponse?.error || "Unable to obtain a valid WebSocket ticket");
+      }
 
       const sess = (window.odoo && odoo.session_info) || {};
       const params = new URLSearchParams();
@@ -338,12 +373,14 @@ export const aiWsService = {
       }
       const sessionScope = {
         db: sess.db || null,
-        userLogin: login || "user_not_found",
+        userId: ticketResponse.user_id,
+        databaseId: ticketResponse.database_id,
         odooSessionId: sess.session_id || null,
       };
 
+      // Legacy identity query parameters are retained for backend compatibility only.
       if (sessionScope.db) params.set("db", sessionScope.db);
-      params.set("user_login", sessionScope.userLogin);
+      if (login) params.set("user_login", login);
 
       const restoredSessionId = readStoredWsSession(sessionScope);
       if (restoredSessionId) {
@@ -351,33 +388,46 @@ export const aiWsService = {
       }
 
       const fullUrl = `${baseUrl}?${params.toString()}`;
-      console.log("[ai_ws] connecting:", fullUrl);
+      console.log("[ai_ws] connecting");
 
       // ⚠️ IMPORTANTE: reset wsSessionId por conexión nueva
       st.wsSessionId = null;
+      st.authenticated = false;
 
-      const ws = new WebSocket(fullUrl);
+      let ws;
+      try {
+        ws = new WebSocket(fullUrl);
+      } catch (error) {
+        setStatus(st, "error");
+        throw error;
+      }
       st.ws = ws;
 
       st.connectPromise = new Promise((resolve, reject) => {
+        let settled = false;
+        let connectionFailed = false;
+        const authTimer = setTimeout(() => {
+          if (settled || st.ws !== ws) return;
+          settled = true;
+          connectionFailed = true;
+          st.authenticated = false;
+          setStatus(st, "error");
+          ws.close(4001, "authentication_timeout");
+          reject(new Error("WebSocket authentication acknowledgement timed out"));
+          st.connectPromise = null;
+        }, 10000);
+
         ws.onopen = () => {
           if (st.ws !== ws) {
             return;
           }
-          st.isConnected = true;
-          setStatus(st, "open");
-          console.log("[ai_ws] connected");
-          flushQueue();
-          resolve(true);
-          st.connectPromise = null;
+          ws.send(createAuthTicketFrame(ticketResponse.ticket));
         };
 
         ws.onmessage = (ev) => {
           if (st.ws !== ws) {
             return;
           }
-          console.log("[ai_ws] << raw:", ev.data);
-
           let data = null;
           try {
             data = JSON.parse(ev.data);
@@ -385,7 +435,30 @@ export const aiWsService = {
             data = ev.data;
           }
 
-          console.log("[ai_ws] <<", data);
+          if (!st.authenticated) {
+            if (isAuthenticatedAck(data)) {
+              clearTimeout(authTimer);
+              settled = true;
+              st.authenticated = true;
+              st.isConnected = true;
+              setStatus(st, "open");
+              flushQueue();
+              resolve(true);
+              st.connectPromise = null;
+              return;
+            }
+            if (isAuthenticationFailure(data)) {
+              clearTimeout(authTimer);
+              settled = true;
+              connectionFailed = true;
+              setStatus(st, "error");
+              ws.close(4003, "authentication_failed");
+              reject(new Error(data.message || "WebSocket authentication failed"));
+              st.connectPromise = null;
+              return;
+            }
+            return;
+          }
 
           if (data && typeof data === "object" && data.request_id) {
             const pendingEvent = st.pendingEvents.get(data.request_id);
@@ -517,6 +590,7 @@ export const aiWsService = {
             return;
           }
           console.error("[ai_ws] error:", err);
+          connectionFailed = true;
           setStatus(st, "error");
         };
 
@@ -525,7 +599,10 @@ export const aiWsService = {
             return;
           }
           st.isConnected = false;
-          setStatus(st, "closed");
+          st.authenticated = false;
+          clearTimeout(authTimer);
+          connectionFailed = connectionFailed || !settled;
+          setStatus(st, connectionFailed ? "error" : "closed");
           console.warn("[ai_ws] closed:", ev.code, ev.reason);
 
           // 🔥 resetea el session_id del backend al cerrar
@@ -545,7 +622,10 @@ export const aiWsService = {
           st.pendingEvents.clear();
 
           st.connectPromise = null;
-          reject(new Error(`WS closed (${ev.code}) ${ev.reason || ""}`));
+          if (!settled) {
+            settled = true;
+            reject(new Error(`WS closed (${ev.code}) ${ev.reason || ""}`));
+          }
         };
       });
 
@@ -786,6 +866,7 @@ export const aiWsService = {
       const sock = st.ws;
       st.ws = null;
       st.isConnected = false;
+      st.authenticated = false;
       st.wsSessionId = null;
       if (clearSession) {
         clearPersistedSession();

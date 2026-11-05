@@ -8,6 +8,9 @@
             <xpath expr="//form" position="inside">
                 <app string="Odoo Tutor" name="odoo_tutor">
                     <block title="Tutor Service" name="odoo_tutor_chatbot_settings">
+                        <setting string="Installation ID" help="Stable tenant identity. Register this ID with the tutor backend and configure the same unique per-installation HMAC ticket secret in both services. Assign a new UUID to cloned installations.">
+                            <field name="chatbot_installation_id" />
+                        </setting>
                         <setting string="WebSocket URL" help="WebSocket address of the tutor service for interactive sessions.">
                             <field
                                 name="chatbot_ws_base_url"
