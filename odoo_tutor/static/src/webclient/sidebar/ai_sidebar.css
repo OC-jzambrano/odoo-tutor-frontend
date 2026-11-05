@@ -1245,7 +1245,7 @@
 .ai-chat-panel .ai-skip-step-button {
     position: absolute;
     right: 86px;
-    bottom: calc(25px + env(safe-area-inset-bottom, 0px));
+    bottom: var(--tutor-skip-bottom, calc(31px + env(safe-area-inset-bottom, 0px)));
     z-index: 1002;
     display: inline-flex;
     align-items: center;
@@ -1259,14 +1259,17 @@
     color: var(--tutor-accent-strong);
     box-shadow: var(--tutor-shadow-sm);
     transition:
-        bottom var(--tutor-motion-base),
         transform var(--tutor-motion-fast),
         border-color var(--tutor-motion-fast),
         box-shadow var(--tutor-motion-fast);
 }
 
 .ai-chat-panel .ai-skip-step-button i {
-    font-size: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    line-height: 1;
 }
 
 .ai-chat-panel.has-skip-step #chat-ui-container .nlux-comp-composer > textarea {
