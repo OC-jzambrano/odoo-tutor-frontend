@@ -365,22 +365,12 @@ export const aiWsService = {
       const sess = (window.odoo && odoo.session_info) || {};
       const params = new URLSearchParams();
 
-      let login = null;
-      try {
-        login = await getUserLoginSafe();
-      } catch (e) {
-        console.warn("[ai_ws] getUserLoginSafe failed:", e);
-      }
       const sessionScope = {
         db: sess.db || null,
-        userId: ticketResponse.user_id,
-        databaseId: ticketResponse.database_id,
+        userId: sess.uid || null,
+        databaseId: null,
         odooSessionId: sess.session_id || null,
       };
-
-      // Legacy identity query parameters are retained for backend compatibility only.
-      if (sessionScope.db) params.set("db", sessionScope.db);
-      if (login) params.set("user_login", login);
 
       const restoredSessionId = readStoredWsSession(sessionScope);
       if (restoredSessionId) {

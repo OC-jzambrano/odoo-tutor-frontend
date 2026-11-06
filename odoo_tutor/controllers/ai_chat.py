@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import uuid
 import requests
 from urllib.parse import urlsplit, urlunsplit
@@ -7,8 +8,12 @@ from odoo import http
 from odoo.http import request
 
 from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
+from ..services.tutor_service_config import (
+    backend_api_base_from_ws_url,
+    canonical_https_origin,
+    parse_ticket_response,
+)
 from .ai.ai_bot import AiBot
-from .ticket_signing import build_ws_ticket_claims, sign_ws_ticket
 
 
 class AiChatController(http.Controller):
@@ -36,33 +41,62 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/ws_ticket", type="jsonrpc", auth="user", methods=["POST"])
     def ws_ticket(self, **kwargs):
-        """Issue a short-lived identity ticket for the configured WebSocket service."""
+        """Request a short-lived ticket from the backend for the logged-in Odoo user."""
         params = request.env["ir.config_parameter"].sudo()
         installation_id = params.get_str("odoo_tutor.installation_id", "")
-        if not installation_id:
-            installation_id = str(uuid.uuid4())
-            params.set_str("odoo_tutor.installation_id", installation_id)
+        credential = params.get_str("odoo_tutor.installation_credential", "")
+        if params.get_str("odoo_tutor.activation_status", "inactive") != "active" or not credential:
+            return {"error": "Tutor service installation is not active"}
         try:
             installation_id = str(uuid.UUID(installation_id))
-        except (ValueError, TypeError, AttributeError):
-            return {"error": "A valid WebSocket installation UUID is required"}
-        signing_secret = os.getenv("ODOO_TUTOR_WS_TICKET_SECRET", "")
-        if len(signing_secret.encode("utf-8")) < 32:
-            return {"error": "WebSocket ticket signing is not configured"}
-
-        claims = build_ws_ticket_claims(
-            request.env.user.id,
-            request.env.user.login,
-            request.env.cr.dbname,
-            installation_id,
-        )
-        ticket = sign_ws_ticket(claims, signing_secret)
-        return {
-            "ticket": ticket,
-            "expires_at": claims["exp"],
-            "user_id": request.env.user.id,
-            "database_id": installation_id,
-        }
+            origin = canonical_https_origin(params.get_str("web.base.url", ""))
+            api_base = backend_api_base_from_ws_url(self._get_ws_base_url())
+        except (TypeError, ValueError, UnicodeError):
+            return {"error": "Odoo public HTTPS URL is not configured"}
+        if (
+            not isinstance(credential, str)
+            or not 32 <= len(credential) <= 4096
+            or any(ord(char) < 32 for char in credential)
+        ):
+            return {"error": "Tutor service installation is not active"}
+        try:
+            ticket_payload = {
+                "installation_id": installation_id,
+                "user_id": request.env.user.id,
+                "login": request.env.user.login,
+                "database": request.env.cr.dbname,
+                "origin": origin,
+                "protocol_version": 1,
+            }
+            provider_key = params.get_str("odoo_tutor.llm_api_key", "").strip()
+            if provider_key:
+                provider = params.get_str("odoo_tutor.llm_provider", "openai")
+                if provider not in {"openai", "anthropic", "google"}:
+                    return {"error": "Configured AI provider is invalid"}
+                ticket_payload["provider_config"] = {
+                    "provider": provider,
+                    "api_key": provider_key,
+                }
+            response = requests.post(
+                api_base + "/odoo/ws-ticket",
+                json=ticket_payload,
+                headers={"Authorization": "Bearer " + credential},
+                timeout=(3, 8),
+                allow_redirects=False,
+            )
+            if response.status_code != 200:
+                if response.status_code in (401, 403):
+                    params.set_str("odoo_tutor.activation_status", "revoked")
+                    params.set_str("odoo_tutor.installation_credential", "")
+                    return {"error": "Tutor service installation was revoked; activate it again"}
+                return {"error": "Tutor ticket service rejected the request"}
+            try:
+                ticket, expires_at = parse_ticket_response(response.json(), time.time())
+            except (TypeError, ValueError):
+                return {"error": "Tutor ticket service returned an invalid response"}
+            return {"ticket": ticket, "expires_at": expires_at}
+        except (requests.RequestException, ValueError, TypeError, UnicodeError):
+            return {"error": "Tutor ticket service is unavailable"}
 
     @http.route("/ai_chat/session/<string:session_id>/messages", type="jsonrpc", auth="user")
     def session_messages(self, session_id, **kwargs):

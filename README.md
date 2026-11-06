@@ -5,48 +5,45 @@ Odoo Tutor add-on source for Odoo 20. The installable module is in `odoo_tutor/`
 ## Optional exercise skip button
 
 Set `ODOO_TUTOR_ENABLE_SKIP_STEP=true` in the Odoo server environment to enable
-the exercise skip button. It is disabled by default. Accepted enabled values
-are `1`, `true`, `yes`, and `on` (case-insensitive). Restart Odoo after changing
-the setting. The floating tutor button also offers skip when the tutor reports
-that the learner is stuck on an exercise step.
-# WebSocket ticket provisioning
+the exercise skip button. It is disabled by default.
 
-Each Odoo database receives a stable installation ID the first time the Odoo
-Tutor settings are opened or a ticket is requested. For each installation,
-generate a unique high-entropy secret outside the browser:
+## WebSocket activation and tickets
 
-```sh
-openssl rand -base64 48
-```
+Configure a public `wss://` WebSocket URL and set Odoo's canonical public URL
+to `https://...` in General Settings. For deployments behind a reverse proxy,
+enable Odoo `proxy_mode` and forward the original HTTPS host and scheme so
+`web.base.url` represents the browser-visible origin.
 
-Set `ODOO_TUTOR_WS_TICKET_SECRET` as a secret in the Odoo server environment.
-Register the displayed installation ID and the same per-installation secret in
-the WebSocket backend's tenant registry. Use a distinct secret for each
-installation; do not reuse the backend API key. The signing secret stays
-server-side and is never returned through Odoo settings or browser code.
-The backend registry entry uses this shape (add it to the existing tenant
-registry without replacing other installations):
+Activation requires an activation code or license supplied by the tutor
+service. The addon does not contain a master secret. In Settings → Odoo Tutor,
+enter that code and activate. Odoo persists a UUID installation identity and
+the installation-only credential returned by the service in server
+configuration. Credentials are not returned to the browser. Revocation is
+enforced by the backend when ticket requests are made.
 
-```json
-{
-  "<installation-uuid>": {
-    "secret": "<same per-installation secret>",
-    "origins": ["https://odoo.example.com"],
-    "enabled": true
-  }
-}
-```
+The frontend requests a fresh ticket from Odoo for every WebSocket connection,
+sends it as the first frame, and waits for the backend authentication
+acknowledgement before flushing queued messages. No legacy handshake is used.
 
-The backend reads this registry from `WEBSOCKET_TICKET_TENANTS_JSON`.
+### Backend HTTP contract
 
-For key rotation, update the secret in both Odoo's server environment and the
-backend tenant registry, then restart/redeploy both services. This invalidates
-outstanding tickets immediately. To revoke an installation, disable or remove
-its backend tenant registration and clear its Odoo secret. If a database is
-cloned, assign the clone a new UUID in **Settings → Odoo Tutor**, create a new
-secret, and register the clone separately.
+The current addon contract uses `POST https://<backend>/odoo/activate` with
+`{installation_id, origin, addon_version}` and an Authorization bearer
+activation code. A successful response is
+`{installation_id, installation_credential}`. Ticket requests go to
+`POST /odoo/ws-ticket` with installation ID, authenticated Odoo user ID/login,
+database, canonical origin, and protocol version; the installation credential
+is sent as a bearer token. The backend returns `{ticket, expires_at}`. The
+backend must validate the credential and origin, and issue brief, single-use
+tickets with WebSocket audience and claims bound to installation, user,
+database, origin, `iat`, `exp`, and `jti`.
 
-The frontend now sends an `auth_ticket` first frame and waits for an
-`authenticated` acknowledgement. The backend's configured tenant secret and
-allowed Origins must match the Odoo installation. The backend consumes each
-`jti` atomically and emits its acknowledgement before handling events.
+This HTTP contract must be implemented by the backend before deployment. No
+backend repository was changed as part of this addon task.
+
+### AI provider selection
+
+OpenAI is selected by default and uses the backend's configured AWS key when
+the administrator leaves the provider key empty. If a key is entered, Odoo
+sends `provider_config` (`provider` and `api_key`) only in its server-side
+ticket request. Supported providers are OpenAI, Anthropic, and Google Gemini.
