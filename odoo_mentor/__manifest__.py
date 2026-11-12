@@ -30,6 +30,9 @@
     "i18n": [
         "i18n/es.po",
     ],
+    "images": [
+        "static/description/banner.png",
+    ],
     "installable": True,
     "application": True,
     "auto_install": False,
