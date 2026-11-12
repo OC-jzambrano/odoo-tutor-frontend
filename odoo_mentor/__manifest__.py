@@ -3,8 +3,8 @@
     "version": "20.0.1.0.2",
     "category": "Extra Tools",
     "summary": "Learn Odoo 20 with contextual AI guidance and hands-on exercises.",
-    "author": "Erick Birbe <ebirbe@odooconcept.com>, Odoo Concept",
-    "support": "ebirbe@odooconcept.com",
+    "author": "Juan Zambrano <juanzamdev@gmail.com>, Odoo Concept",
+    "support": "juanzamdev@gmail.com",
     "website": "https://odooconcept.com",
     "depends": [
         "sale_management",
@@ -22,9 +22,9 @@
     ],
     "assets": {
         "web.assets_backend": [
-            "odoo_tutor/static/lib/nlux/theme/nova.css",
-            "odoo_tutor/static/lib/nlux/umd/nlux-core.js",
-            "odoo_tutor/static/src/**/*",
+            "odoo_mentor/static/lib/nlux/theme/nova.css",
+            "odoo_mentor/static/lib/nlux/umd/nlux-core.js",
+            "odoo_mentor/static/src/**/*",
         ],
     },
     "i18n": [

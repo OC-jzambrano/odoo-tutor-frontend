@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildClientValidationEvent } from "../../../odoo_tutor/static/src/core/client_validation_event.js";
+import { buildClientValidationEvent } from "../../../odoo_mentor/static/src/core/client_validation_event.js";
 
 function element(name, validationMessage = "") {
   return {

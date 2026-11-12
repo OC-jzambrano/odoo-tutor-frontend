@@ -4,8 +4,8 @@ import {
   canonicalEventFingerprint,
   canonicalEventType,
   canonicalizeEvent,
-} from "../../../odoo_tutor/static/src/core/event_types.js";
-import { normalizeDomEvent } from "../../../odoo_tutor/static/src/core/normalize_event.js";
+} from "../../../odoo_mentor/static/src/core/event_types.js";
+import { normalizeDomEvent } from "../../../odoo_mentor/static/src/core/normalize_event.js";
 
 function installBrowserStubs() {
   globalThis.CSS = {

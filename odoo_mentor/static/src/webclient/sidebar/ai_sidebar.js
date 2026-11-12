@@ -175,7 +175,7 @@ function getCurrentColorScheme() {
     return "light";
 }
 
-const TUTOR_ASSISTANT_AVATAR_URL = "/odoo_tutor/static/images/iabotv2.png";
+const TUTOR_ASSISTANT_AVATAR_URL = "/odoo_mentor/static/images/iabotv2.png";
 const ACTIVE_EXERCISE_STORAGE_KEY = "odoo_tutor.active_exercise_session";
 const ACTIVE_EXERCISE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 const EXERCISE_CTA_STATE_KEY = "__AI_TUTOR_EXERCISE_CTA__";
@@ -2969,7 +2969,7 @@ export class AiSidebar extends Component {
             .withConversationOptions({ historyPayloadSize: "max", conversationStarters: [] })
             .withComposerOptions({ placeholder: this.state.placeholder, autoFocus: true })
             .withPersonaOptions({
-                assistant: { name: "IAbot", avatar: "/odoo_tutor/static/images/iabotv2.png", tagline: "Your helpful AI assistant!" },
+                assistant: { name: "IAbot", avatar: "/odoo_mentor/static/images/iabotv2.png", tagline: "Your helpful AI assistant!" },
                 user: { name: user.name, avatar: userAvatar },
             })
             .withMessageOptions({ waitTimeBeforeStreamCompletion: "never" });

@@ -34,7 +34,7 @@ services:
       - --addons-path=/usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
     volumes:
       - odoo20_data:/var/lib/odoo
-      - ./odoo_tutor:/mnt/extra-addons/odoo_tutor:ro
+      - ./odoo_mentor:/mnt/extra-addons/odoo_mentor:ro
 
 volumes:
   odoo20_db_data:

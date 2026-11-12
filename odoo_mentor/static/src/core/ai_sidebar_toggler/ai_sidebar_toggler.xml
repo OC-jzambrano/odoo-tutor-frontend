@@ -111,7 +111,7 @@
                     <span class="ai-owl-trigger-shell">
                         <span class="ai-owl-trigger-core">
                             <img
-                                t-att-src="'/odoo_tutor/static/images/iabotv2.png'"
+                                t-att-src="'/odoo_mentor/static/images/iabotv2.png'"
                                 alt="Asistente IA"
                                 class="ai-owl-trigger-img"
                             />

@@ -1,6 +1,6 @@
 # Odoo Tutor
 
-Odoo Tutor add-on source for Odoo 20. The installable module is in `odoo_tutor/`.
+Odoo Tutor add-on source for Odoo 20. The installable module is in `odoo_mentor/`.
 
 ## Optional exercise skip button
 
@@ -49,7 +49,7 @@ ticket request. Supported providers are OpenAI, Anthropic, and Google Gemini.
 
 ## Odoo Apps listing and demonstration
 
-The customer-facing listing in `odoo_tutor/static/description/index.html`
+The customer-facing listing in `odoo_mentor/static/description/index.html`
 presents Odoo Tutor for Odoo 20, with local HTTPS setup, service requirements,
 and exact exercise requests from the connected catalog. Historical catalog
 names or version labels may refer to Odoo 19; those exercises are compatible

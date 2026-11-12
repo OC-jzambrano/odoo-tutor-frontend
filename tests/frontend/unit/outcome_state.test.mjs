@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOutcomeState,
   buildOutcomeStateEvent,
-} from "../../../odoo_tutor/static/src/core/outcome_state.js";
+} from "../../../odoo_mentor/static/src/core/outcome_state.js";
 
 function makeRoot(matches = {}) {
   return {

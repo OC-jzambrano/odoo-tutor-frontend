@@ -7,8 +7,8 @@ ROOT = Path(__file__).parents[1]
 
 
 def test_settings_keep_public_configuration_but_remove_shared_service_key():
-    view = (ROOT / "odoo_tutor/views/res_config_settings_views.xml").read_text()
-    model = (ROOT / "odoo_tutor/models/res_config_settings.py").read_text()
+    view = (ROOT / "odoo_mentor/views/res_config_settings_views.xml").read_text()
+    model = (ROOT / "odoo_mentor/models/res_config_settings.py").read_text()
 
     assert 'string="Installation ID"' in view
     assert 'string="Service status"' in view
@@ -21,7 +21,7 @@ def test_settings_keep_public_configuration_but_remove_shared_service_key():
 
 
 def test_browser_configuration_and_ticket_responses_do_not_return_install_credential():
-    controller = (ROOT / "odoo_tutor/controllers/ai_chat.py").read_text()
+    controller = (ROOT / "odoo_mentor/controllers/ai_chat.py").read_text()
     config_route = controller.split("def ws_config", 1)[1].split("@http.route", 1)[0]
     ticket_route = controller.split("def ws_ticket", 1)[1].split("@http.route", 1)[0]
 
@@ -32,8 +32,8 @@ def test_browser_configuration_and_ticket_responses_do_not_return_install_creden
 
 
 def test_shared_service_key_is_not_used_by_server_endpoints():
-    controller = (ROOT / "odoo_tutor/controllers/ai_chat.py").read_text()
-    ai_bot = (ROOT / "odoo_tutor/controllers/ai/ai_bot.py").read_text()
+    controller = (ROOT / "odoo_mentor/controllers/ai_chat.py").read_text()
+    ai_bot = (ROOT / "odoo_mentor/controllers/ai/ai_bot.py").read_text()
 
     assert 'get_str("odoo_tutor.chatbot_api_key"' not in controller
     assert "X-API-Key" not in controller

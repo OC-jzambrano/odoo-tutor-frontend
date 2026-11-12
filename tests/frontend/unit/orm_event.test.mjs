@@ -3,7 +3,7 @@ import {
   buildSuccessfulOrmEvent,
   buildValidationErrorEvent,
   isValidationError,
-} from "../../../odoo_tutor/static/src/core/orm_event.js";
+} from "../../../odoo_mentor/static/src/core/orm_event.js";
 
 describe("ORM event contract", () => {
   it("emits record_created after create", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldQueueTutorMessage } from "../../../odoo_tutor/static/src/core/tutor_message_delivery.js";
+import { shouldQueueTutorMessage } from "../../../odoo_mentor/static/src/core/tutor_message_delivery.js";
 
 describe("tutor message delivery ordering", () => {
   it("queues when the chat has not been created yet", () => {

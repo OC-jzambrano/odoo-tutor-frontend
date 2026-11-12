@@ -6,7 +6,7 @@ import {
   buildRouteChangedTransition,
   buildViewChangedTransition,
   recordNameFromRoute,
-} from "../../../odoo_tutor/static/src/core/state_transition.js";
+} from "../../../odoo_mentor/static/src/core/state_transition.js";
 
 describe("state transition contract", () => {
   it("builds record_opened when navigation lands on a form record", () => {

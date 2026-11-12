@@ -3,7 +3,7 @@ import {
   buildCopySegments,
   normalizeForCopyTargetLookup,
   stripNewlinesAroundCopyTargets,
-} from "../../../odoo_tutor/static/src/core/copy_targets.js";
+} from "../../../odoo_mentor/static/src/core/copy_targets.js";
 
 describe("buildCopySegments", () => {
   it("returns the whole text as non-copy when there are no targets", () => {

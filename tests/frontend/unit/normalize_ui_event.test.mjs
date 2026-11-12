@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeDomEvent } from "../../../odoo_tutor/static/src/core/normalize_ui_event.js";
+import { normalizeDomEvent } from "../../../odoo_mentor/static/src/core/normalize_ui_event.js";
 
 function makeElement({
   tagName = "DIV",

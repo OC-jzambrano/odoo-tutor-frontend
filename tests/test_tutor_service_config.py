@@ -8,7 +8,7 @@ import pytest
 
 MODULE_PATH = (
     Path(__file__).parents[1]
-    / "odoo_tutor"
+    / "odoo_mentor"
     / "services"
     / "tutor_service_config.py"
 )

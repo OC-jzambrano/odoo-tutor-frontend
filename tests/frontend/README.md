@@ -42,7 +42,7 @@ the backend validator. It intentionally runs without Odoo so regressions like
 
 New frontend events should be added in three small layers:
 
-1. Pure contract builder in `odoo_tutor/static/src/core/`.
+1. Pure contract builder in `odoo_mentor/static/src/core/`.
 2. Unit test in `tests/frontend/unit/` proving the payload shape and fallback behavior.
 3. Thin Odoo wiring that calls the builder from DOM, action service, or live context data.
 

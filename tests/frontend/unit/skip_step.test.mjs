@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSkipStepRequest,
   getVisibleSkipResponse,
-} from "../../../odoo_tutor/static/src/core/skip_step.js";
+} from "../../../odoo_mentor/static/src/core/skip_step.js";
 
 describe("skip step contract", () => {
   it("builds an explicit hidden next action", () => {

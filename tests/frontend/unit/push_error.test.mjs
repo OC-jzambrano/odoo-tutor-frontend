@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { isBrowserPushRegistrationError } from "../../../odoo_tutor/static/src/core/push_error";
+import { isBrowserPushRegistrationError } from "../../../odoo_mentor/static/src/core/push_error";
 
 describe("isBrowserPushRegistrationError", () => {
   test("matches the AbortError raised by browser push service registration", () => {

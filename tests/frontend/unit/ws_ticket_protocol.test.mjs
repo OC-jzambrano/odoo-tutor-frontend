@@ -4,7 +4,7 @@ import {
   isAuthenticatedAck,
   isAuthenticationFailure,
   isTicketResponseValid,
-} from "../../../odoo_tutor/static/src/core/ws_ticket_protocol.js";
+} from "../../../odoo_mentor/static/src/core/ws_ticket_protocol.js";
 
 describe("WebSocket ticket protocol", () => {
   it("accepts a ticket only while its server expiry is in the future", () => {

@@ -3,7 +3,7 @@
     <menuitem
         id="menu_odoo_tutor_root"
         name="Odoo Tutor"
-        web_icon="odoo_tutor,static/description/icon.png"
+        web_icon="odoo_mentor,static/description/icon.png"
         sequence="10"
     />
 </odoo>

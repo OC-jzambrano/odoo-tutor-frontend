@@ -4,7 +4,7 @@ import {
   buildNotificationShownEvent,
   buildSearchChangedEvent,
   buildX2ManyRowEvent,
-} from "../../../odoo_tutor/static/src/core/interaction_events.js";
+} from "../../../odoo_mentor/static/src/core/interaction_events.js";
 
 describe("additional interaction event contracts", () => {
   const context = { model: "crm.lead", resId: 31 };
