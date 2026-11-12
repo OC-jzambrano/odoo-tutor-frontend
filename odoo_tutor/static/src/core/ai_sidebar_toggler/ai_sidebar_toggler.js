@@ -9,6 +9,7 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
+import { openTutorSettings } from "../settings_navigation";
 // Helpers
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
@@ -541,13 +542,12 @@ class AiFloatingButton extends Component {
                         buttons: [
                             {
                                 name: _t("Open Settings"),
-                                onClick: () =>
-                                    this.actionService.doAction("base.action_res_config_settings"),
+                                onClick: () => openTutorSettings(this.actionService),
                             },
                         ],
                     }
                 );
-                this.actionService.doAction("base.action_res_config_settings");
+                openTutorSettings(this.actionService);
                 return;
             }
 
