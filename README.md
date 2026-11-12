@@ -46,3 +46,26 @@ OpenAI is selected by default and uses the backend's configured AWS key when
 the administrator leaves the provider key empty. If a key is entered, Odoo
 sends `provider_config` (`provider` and `api_key`) only in its server-side
 ticket request. Supported providers are OpenAI, Anthropic, and Google Gemini.
+
+## Odoo Apps listing and demonstration
+
+The customer-facing listing in `odoo_tutor/static/description/index.html`
+presents Odoo Tutor for Odoo 20, with local HTTPS setup, service requirements,
+and exact exercise requests from the connected catalog. Historical catalog
+labels do not change the add-on's Odoo 20 compatibility or customer-facing
+branding.
+
+Featured exercise identifiers:
+
+- `create-opportunity-manual`
+- `create-b2b-sales-quotation`
+- `create-storable-product`
+- `activities-management`
+- `define-pipeline-stages`
+- `create-internal-transfer`
+
+The listing documents a CRM exercise completed in a live Odoo 20 demo. The old
+screenshots showed a retired shared-key setting and are not included in the
+listing. Add a current screenshot before publishing visual assets. No exercise
+GIF is included yet; record one using a demo database, sample records and no
+credentials or personal information.
