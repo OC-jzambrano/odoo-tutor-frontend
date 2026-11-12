@@ -65,7 +65,7 @@ Featured exercise identifiers:
 - `create-internal-transfer`
 
 The listing documents a CRM exercise completed in a live Odoo 20 demo. The old
-screenshots showed a retired shared-key setting and are not included in the
-listing. Add a current screenshot before publishing visual assets. No exercise
-GIF is included yet; record one using a demo database, sample records and no
-credentials or personal information.
+screenshots showed a retired shared-key setting and must not be used in the
+customer listing. Capture fresh screenshots and an exercise GIF from the
+current Odoo 20 interface before publishing visual assets; use a demo database,
+sample records, and no credentials or personal information.
