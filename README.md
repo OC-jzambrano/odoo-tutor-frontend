@@ -52,8 +52,9 @@ ticket request. Supported providers are OpenAI, Anthropic, and Google Gemini.
 The customer-facing listing in `odoo_tutor/static/description/index.html`
 presents Odoo Tutor for Odoo 20, with local HTTPS setup, service requirements,
 and exact exercise requests from the connected catalog. Historical catalog
-labels do not change the add-on's Odoo 20 compatibility or customer-facing
-branding.
+names or version labels may refer to Odoo 19; those exercises are compatible
+with Odoo 20. The add-on, listing, supported version and all customer-facing
+branding remain Odoo 20.
 
 Featured exercise identifiers:
 
