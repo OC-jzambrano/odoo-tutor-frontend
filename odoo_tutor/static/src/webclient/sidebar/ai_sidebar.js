@@ -2093,6 +2093,10 @@ export class AiSidebar extends Component {
                 const panel = this.chatPanelRef?.el || root.closest(".ai-chat-panel");
                 const panelRect = panel?.getBoundingClientRect();
                 const composerRect = composer.getBoundingClientRect();
+                const inputRect = composer.querySelector('textarea')?.getBoundingClientRect();
+                if (panelRect && inputRect) {
+                    panel.style.setProperty('--tutor-skip-bottom', `${panelRect.bottom - inputRect.top - inputRect.height / 2 - 14}px`);
+                }
                 const nextTopOffset = panelRect
                     ? Math.max(0, Math.round(panelRect.bottom - composerRect.top))
                     : nextHeight;

@@ -9,6 +9,7 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
+import { openTutorSettings } from "../settings_navigation";
 // Helpers
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
@@ -411,6 +412,7 @@ class AiFloatingButton extends Component {
 
     setup() {
         this.actionService = useService("action");
+        this.notificationService = useService("notification");
         this.contextService = useService("context_service");
         this._lastActiveListField = null;
         this._dragJustEndedAt = 0;
@@ -530,6 +532,24 @@ class AiFloatingButton extends Component {
         this._onPreviewMessage = (ev) => {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
+
+            if (msg.code === "TRIAL_QUOTA_EXHAUSTED") {
+                this.notificationService.add(
+                    _t("The quota has finished. Please bring your own key."),
+                    {
+                        type: "warning",
+                        sticky: true,
+                        buttons: [
+                            {
+                                name: _t("Open Settings"),
+                                onClick: () => openTutorSettings(this.actionService),
+                            },
+                        ],
+                    }
+                );
+                openTutorSettings(this.actionService);
+                return;
+            }
 
             if (
                 TUTOR_PUSH_TYPES.has(msg.type) ||
@@ -768,7 +788,9 @@ class AiFloatingButton extends Component {
             this._syncChatOpenStateFromDom();
 
             let currentModel = null;
-            let showButton = false;
+            // Tutor remains available across the authenticated web client,
+            // including settings and screens without a supported model action.
+            let showButton = true;
             let hasResolvedUnsupportedModel = false;
 
             const currentAction = this.actionService.currentController?.props;

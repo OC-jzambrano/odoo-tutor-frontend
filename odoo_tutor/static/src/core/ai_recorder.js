@@ -98,7 +98,7 @@ function describeTarget(el) {
     };
 }
 
-/** Create the picker overlay used to select interface elements. */
+/** ✅ ESTA FUNCIÓN FALTABA / quedaba fuera de scope */
 function createPickerOverlay() {
     const overlay = document.createElement("div");
     overlay.className = "o_ai_picker_overlay";
@@ -162,8 +162,7 @@ export const aiRecorderService = {
         const aiWs = env.services.ai_ws;
         const contextService = env.services.context_service;
 
-        // Valid states are idle, recording, and paused.
-        let status = "idle";
+        let status = "idle"; // idle | recording | paused
         let sessionId = null;
         let exerciseId = null;
 
@@ -398,7 +397,7 @@ export const aiRecorderService = {
             lastSeen.clear();
         }
 
-        // Use the native picker implementation without relying on the broken dependency.
+        // ✅ Picker robusto (sin dependencia rota)
         async function pickTarget({ timeoutMs = 30000 } = {}) {
             if (pickerActive) return null;
             pickerActive = true;

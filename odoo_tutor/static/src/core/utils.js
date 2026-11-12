@@ -1,6 +1,6 @@
 /* eslint-disable */
 /** @odoo-module **/
-import {debounce} from "@web/core/utils/timing";
+import {useDebounced} from "@web/core/utils/timing";
 import {onWillUnmount, useComponent} from "@odoo/owl";
 
 export function useMouseListeners(options) {
@@ -9,7 +9,7 @@ export function useMouseListeners(options) {
     options.onMouseUp = (options.onMouseUp || (() => {})).bind(component);
     options.onMouseDown = (options.onMouseDown || (() => {})).bind(component);
 
-    const onMouseMove = debounce(
+    const onMouseMove = useDebounced(
         options.onMouseMove || (() => {}),
         "animationFrame"
     );

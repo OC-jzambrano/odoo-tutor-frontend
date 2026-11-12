@@ -12,6 +12,12 @@ import {
 import { buildOutcomeState } from "./outcome_state";
 import { normalizePersistentRecordId } from "./record_id";
 import { buildRecordOpenedTransitionFromLiveContext } from "./state_transition";
+import {
+  createAuthTicketFrame,
+  isAuthenticatedAck,
+  isAuthenticationFailure,
+  isTicketResponseValid,
+} from "./ws_ticket_protocol";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -77,17 +83,35 @@ const TUTOR_PUSH_TYPES = new Set([
   "drift_checkin_push",
 ]);
 
-/** Detect tutor_push messages without changing FIFO delivery. */
+/** ✅ NUEVO (mínimo): detectar tutor_push sin tocar tu flujo FIFO */
 function isTutorPush(data) {
   return !!(data && typeof data === "object" && TUTOR_PUSH_TYPES.has(data.type));
 }
 
-async function fetchSessionHistory(sessionId) {
-  if (!sessionId) return [];
+function getHttpBaseUrl(wsBaseUrl) {
   try {
-    const data = await rpc("/ai_chat/session_history", { session_id: sessionId });
+    const u = new URL(wsBaseUrl);
+    u.protocol = u.protocol === "wss:" ? "https:" : "http:";
+    u.pathname = u.pathname.replace(/\/ws\/?$/, "");
+    u.search = "";
+    u.hash = "";
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+}
+
+async function fetchSessionHistory(httpBaseUrl, sessionId) {
+  if (!httpBaseUrl || !sessionId) return [];
+  try {
+    const data = await rpc(`/ai_chat/session/${encodeURIComponent(sessionId)}/messages`, {});
+    if (data?.error) {
+      console.warn("[ai_ws] fetchSessionHistory failed:", data.error);
+      return [];
+    }
     return Array.isArray(data?.messages) ? data.messages : [];
   } catch (e) {
+    console.warn("[ai_ws] fetchSessionHistory failed:", e);
     return [];
   }
 }
@@ -110,7 +134,7 @@ function clearStoredWsSession() {
   } catch {}
 }
 
-function readStoredWsSession({ db, userLogin, odooSessionId } = {}) {
+function readStoredWsSession({ db, userId, databaseId, odooSessionId } = {}) {
   const storage = getBrowserStorage();
   if (!storage) return null;
 
@@ -126,7 +150,8 @@ function readStoredWsSession({ db, userLogin, odooSessionId } = {}) {
 
     if (
       data.db !== (db || null) ||
-      data.userLogin !== (userLogin || null) ||
+      data.userId !== (userId || null) ||
+      data.databaseId !== (databaseId || null) ||
       data.odooSessionId !== (odooSessionId || null) ||
       !data.wsSessionId
     ) {
@@ -141,7 +166,7 @@ function readStoredWsSession({ db, userLogin, odooSessionId } = {}) {
   }
 }
 
-function persistWsSession({ db, userLogin, odooSessionId, wsSessionId }) {
+function persistWsSession({ db, userId, databaseId, odooSessionId, wsSessionId }) {
   if (!wsSessionId) return;
 
   const storage = getBrowserStorage();
@@ -152,7 +177,8 @@ function persistWsSession({ db, userLogin, odooSessionId, wsSessionId }) {
       WS_SESSION_STORAGE_KEY,
       JSON.stringify({
         db: db || null,
-        userLogin: userLogin || null,
+        userId: userId || null,
+        databaseId: databaseId || null,
         odooSessionId: odooSessionId || null,
         wsSessionId,
       })
@@ -160,33 +186,34 @@ function persistWsSession({ db, userLogin, odooSessionId, wsSessionId }) {
   } catch {}
 }
 
-// Keep one shared WebSocket state even if this file is loaded more than once.
+// ✅ Estado GLOBAL: aunque el archivo se ejecute 2 veces, SOLO hay 1 WS real.
 function getState() {
   window.__AI_TUTOR_WS_STATE = window.__AI_TUTOR_WS_STATE || {
     ws: null,
     isConnected: false,
+    authenticated: false,
     connectPromise: null,
 
-    // Backend session ID received in the connection_established event.
+    // session_id del backend (sale en "connection_established")
     wsSessionId: null,
     wsSessionWaiters: [],
 
-    // Shared message queue.
+    // cola global
     queue: window.__AI_TUTOR_WS_QUEUE || (window.__AI_TUTOR_WS_QUEUE = []),
 
-    // Shared connection status.
+    // status global
     status:
       window.__AI_TUTOR_WS_STATUS ||
       (window.__AI_TUTOR_WS_STATUS = { status: "init", at: Date.now() }),
 
-    // FIFO chat requests.
+    // FIFO chats
     pendingChats: [],
     pendingEvents: new Map(),
 
-    // Event listeners.
+    // listeners
     listeners: new Set(),
 
-    // Keep only the latest context to avoid sending stale data.
+    // contexto: solo guardamos el ÚLTIMO (evita enviar "desfasado")
     pendingContextModel: null,
     pendingRecordOpen: null,
     pendingRecordResolutionTimer: null,
@@ -203,40 +230,36 @@ function setStatus(st, status) {
   window.__AI_TUTOR_WS_STATUS = st.status;
 }
 
-async function getWsConfig(sessionId) {
-  const config = await rpc("/ai_chat/ws_config", { session_id: sessionId || null });
-  if (config?.error) throw new Error(config.message || "Could not prepare an AI chat session");
+async function getWsConfig() {
+  const config = await rpc("/ai_chat/ws_config", {});
   const wsBaseUrl = String(config?.ws_base_url || "").trim();
-  const ticket = String(config?.ticket || "").trim();
-  if (!wsBaseUrl || !ticket) {
-    throw new Error("Missing WebSocket URL or single-use connection ticket");
+  if (!wsBaseUrl) {
+    throw new Error("Missing WebSocket URL configuration");
   }
   return {
     wsBaseUrl,
-    ticket,
     enableSkipStep: config?.enable_skip_step === true,
   };
 }
 
 export const aiWsService = {
   async start(env) {
-    // Reuse the existing API to avoid duplicate connections.
+    // ✅ Singleton real: si ya existe API, reúsala (no más conexiones duplicadas)
     if (window.__AI_TUTOR_WS_API_SINGLETON) {
       return window.__AI_TUTOR_WS_API_SINGLETON;
     }
 
-    let baseUrl = "";
-    let enableSkipStep = false;
+    const { wsBaseUrl: baseUrl, enableSkipStep } = await getWsConfig();
     const st = getState();
     st.recentEventFingerprints ||= new Map();
 
     function isOpen() {
-      return st.ws && st.ws.readyState === WS_OPEN;
+      return st.ws && st.ws.readyState === WS_OPEN && st.authenticated;
     }
 
     function safeSend(payload) {
       if (isOpen()) {
-        console.log("[ai_ws] >>", payload?.type || "message");
+        console.log("[ai_ws] >>", payload);
         st.ws.send(JSON.stringify(payload));
         return true;
       } else {
@@ -249,12 +272,12 @@ export const aiWsService = {
       if (!isOpen()) return;
       while (st.queue.length) {
         const payload = st.queue.shift();
-        console.log("[ai_ws] >> (flush)", payload?.type || "message");
+        console.log("[ai_ws] >> (flush)", payload);
         st.ws.send(JSON.stringify(payload));
       }
     }
 
-    // Wait for the wsSessionId from connection_established.
+    // ✅ espera el wsSessionId (connection_established)
     function waitWsSessionId(timeoutMs = 2500) {
       if (st.wsSessionId) return Promise.resolve(st.wsSessionId);
 
@@ -272,7 +295,7 @@ export const aiWsService = {
           if (done) return;
           done = true;
 
-          // Remove this waiter to prevent a leak.
+          // 🔥 evita leak: quita este waiter
           const idx = st.wsSessionWaiters.indexOf(waiter);
           if (idx >= 0) st.wsSessionWaiters.splice(idx, 1);
 
@@ -288,7 +311,7 @@ export const aiWsService = {
       window.__AI_TUTOR_WS_SESSION_ID = null;
     }
 
-    // Expose a shared bridge for the rest of the frontend.
+    // ✅ Bridge global para el resto del front
     window.aiTutorSend = (payload) => {
       const ok = safeSend(payload);
       if (!ok) {
@@ -299,11 +322,24 @@ export const aiWsService = {
       return ok;
     };
 
-    async function connect() {
-      // Reuse the in-progress connection promise.
+    function connect() {
       if (st.connectPromise) return st.connectPromise;
+      const currentAttempt = connectInternal();
+      st.connectPromise = currentAttempt;
+      currentAttempt.then(
+        () => {
+          if (st.connectPromise === currentAttempt) st.connectPromise = null;
+        },
+        () => {
+          if (st.connectPromise === currentAttempt) st.connectPromise = null;
+        }
+      );
+      return currentAttempt;
+    }
 
-      // Reuse the socket if it is open or connecting.
+    async function connectInternal() {
+
+      // ✅ Si ya hay socket open o connecting, no crees otro
       if (
         st.ws &&
         (st.ws.readyState === WS_OPEN || st.ws.readyState === WS_CONNECTING)
@@ -313,66 +349,75 @@ export const aiWsService = {
 
       setStatus(st, "connecting");
 
+      // A ticket is single-use and must be fetched for every socket attempt.
+      let ticketResponse;
+      try {
+        ticketResponse = await rpc("/ai_chat/ws_ticket", {});
+      } catch (error) {
+        setStatus(st, "error");
+        throw error;
+      }
+      if (!isTicketResponseValid(ticketResponse)) {
+        setStatus(st, "error");
+        throw new Error(ticketResponse?.error || "Unable to obtain a valid WebSocket ticket");
+      }
+
       const sess = (window.odoo && odoo.session_info) || {};
       const params = new URLSearchParams();
 
-      let login = null;
-      try {
-        login = await getUserLoginSafe();
-      } catch (e) {
-        console.warn("[ai_ws] getUserLoginSafe failed:", e);
-      }
       const sessionScope = {
         db: sess.db || null,
-        userLogin: login || "user_not_found",
+        userId: sess.uid || null,
+        databaseId: null,
         odooSessionId: sess.session_id || null,
       };
 
       const restoredSessionId = readStoredWsSession(sessionScope);
-      let ticket;
-      try {
-        const wsConfig = await getWsConfig(restoredSessionId);
-        baseUrl = wsConfig.wsBaseUrl;
-        ticket = wsConfig.ticket;
-        enableSkipStep = wsConfig.enableSkipStep;
-      } catch (e) {
-        setStatus(st, "error");
-        throw e;
-      }
-
-      params.set("ticket", ticket);
       if (restoredSessionId) {
         params.set("session_id", restoredSessionId);
       }
 
       const fullUrl = `${baseUrl}?${params.toString()}`;
-      console.log("[ai_ws] connecting to tutor WebSocket");
+      console.log("[ai_ws] connecting");
 
-      // Reset wsSessionId for each new connection.
+      // ⚠️ IMPORTANTE: reset wsSessionId por conexión nueva
       st.wsSessionId = null;
+      st.authenticated = false;
 
-      const ws = new WebSocket(fullUrl);
+      let ws;
+      try {
+        ws = new WebSocket(fullUrl);
+      } catch (error) {
+        setStatus(st, "error");
+        throw error;
+      }
       st.ws = ws;
 
       st.connectPromise = new Promise((resolve, reject) => {
+        let settled = false;
+        let connectionFailed = false;
+        const authTimer = setTimeout(() => {
+          if (settled || st.ws !== ws) return;
+          settled = true;
+          connectionFailed = true;
+          st.authenticated = false;
+          setStatus(st, "error");
+          ws.close(4001, "authentication_timeout");
+          reject(new Error("WebSocket authentication acknowledgement timed out"));
+          st.connectPromise = null;
+        }, 10000);
+
         ws.onopen = () => {
           if (st.ws !== ws) {
             return;
           }
-          st.isConnected = true;
-          setStatus(st, "open");
-          console.log("[ai_ws] connected");
-          flushQueue();
-          resolve(true);
-          st.connectPromise = null;
+          ws.send(createAuthTicketFrame(ticketResponse.ticket));
         };
 
         ws.onmessage = (ev) => {
           if (st.ws !== ws) {
             return;
           }
-          console.log("[ai_ws] << raw:", ev.data);
-
           let data = null;
           try {
             data = JSON.parse(ev.data);
@@ -380,7 +425,30 @@ export const aiWsService = {
             data = ev.data;
           }
 
-          console.log("[ai_ws] <<", data);
+          if (!st.authenticated) {
+            if (isAuthenticatedAck(data)) {
+              clearTimeout(authTimer);
+              settled = true;
+              st.authenticated = true;
+              st.isConnected = true;
+              setStatus(st, "open");
+              flushQueue();
+              resolve(true);
+              st.connectPromise = null;
+              return;
+            }
+            if (isAuthenticationFailure(data)) {
+              clearTimeout(authTimer);
+              settled = true;
+              connectionFailed = true;
+              setStatus(st, "error");
+              ws.close(4003, "authentication_failed");
+              reject(new Error(data.message || "WebSocket authentication failed"));
+              st.connectPromise = null;
+              return;
+            }
+            return;
+          }
 
           if (data && typeof data === "object" && data.request_id) {
             const pendingEvent = st.pendingEvents.get(data.request_id);
@@ -396,7 +464,17 @@ export const aiWsService = {
             }
           }
 
-          // Capture the backend session ID.
+          if (
+            data?.type === "error" &&
+            data?.code === "TRIAL_QUOTA_EXHAUSTED" &&
+            st.pendingChats.length
+          ) {
+            const entry = st.pendingChats.shift();
+            clearTimeout(entry.timer);
+            entry.reject(new Error(data.message));
+          }
+
+          // ✅ Capturar session_id del backend
           if (
             data &&
             typeof data === "object" &&
@@ -406,13 +484,12 @@ export const aiWsService = {
             st.wsSessionId = data.session_id;
             window.__AI_TUTOR_WS_SESSION_ID = data.session_id;
             persistWsSession({ ...sessionScope, wsSessionId: data.session_id });
-            console.log("[ai_ws] WS session_id captured:", data.session_id);
+            console.log("[ai_ws] ✅ WS session_id captured:", data.session_id);
 
-            // Load persisted history from Redis after a page reload.
+            // ✅ Cargar historial persistido (Redis) para repintar el chat tras un reload.
             const historySessionId = data.session_id;
-            fetchSessionHistory(historySessionId).then((messages) => {
-              // A newer connection replaced this one.
-              if (st.wsSessionId !== historySessionId) return;
+            fetchSessionHistory(getHttpBaseUrl(baseUrl), historySessionId).then((messages) => {
+              if (st.wsSessionId !== historySessionId) return; // conexión superada mientras tanto
               for (const fn of st.listeners) {
                 try {
                   fn({ kind: "history", data: { session_id: historySessionId, messages } });
@@ -429,7 +506,7 @@ export const aiWsService = {
               } catch {}
             });
 
-            // Resolve waiting callers.
+            // resolver waiters
             const waiters = st.wsSessionWaiters.splice(0);
             for (const fn of waiters) {
               try {
@@ -437,12 +514,12 @@ export const aiWsService = {
               } catch {}
             }
 
-            // Flush the latest pending context.
+            // ✅ flush del contexto pendiente (solo el ÚLTIMO)
             if (st.pendingContextModel) {
               const m = st.pendingContextModel;
               st.pendingContextModel = null;
 
-              // Force delivery even if deduplication reports it was already sent.
+              // 🔥 fuerza envío aunque el dedupe crea que ya lo mandó
               if (typeof m === "object") {
                 sendLiveContext({ ...m, force: true }).catch(() => {});
               } else {
@@ -451,7 +528,11 @@ export const aiWsService = {
             }
           }
 
-          /** Notify subscribers of each tutor_push through the shared bridge and a CustomEvent. */
+          /**
+           * ✅ NUEVO (mínimo): si llega tutor_push, notifícalo SIEMPRE
+           * - Lo mandamos como {kind:"tutor_push", data} para que tu AiSidebar lo consuma fácil
+           * - También disparo un CustomEvent por si quieres escucharlo sin subscribe()
+           */
           if (isTutorPush(data)) {
             for (const fn of st.listeners) {
               try {
@@ -466,7 +547,7 @@ export const aiWsService = {
             return;
           }
 
-          // Resolve the next FIFO chat request.
+          // 1) Resolver chat FIFO
           if (st.pendingChats.length) {
             const entry = st.pendingChats[0];
 
@@ -494,7 +575,7 @@ export const aiWsService = {
             }
           }
 
-          // Notify general event subscribers.
+          // 2) Evento general
           for (const fn of st.listeners) {
             try {
               fn(data);
@@ -509,6 +590,7 @@ export const aiWsService = {
             return;
           }
           console.error("[ai_ws] error:", err);
+          connectionFailed = true;
           setStatus(st, "error");
         };
 
@@ -517,10 +599,13 @@ export const aiWsService = {
             return;
           }
           st.isConnected = false;
-          setStatus(st, "closed");
+          st.authenticated = false;
+          clearTimeout(authTimer);
+          connectionFailed = connectionFailed || !settled;
+          setStatus(st, connectionFailed ? "error" : "closed");
           console.warn("[ai_ws] closed:", ev.code, ev.reason);
 
-          // Reset the backend session ID when the connection closes.
+          // 🔥 resetea el session_id del backend al cerrar
           st.wsSessionId = null;
 
           st.ws = null;
@@ -537,7 +622,10 @@ export const aiWsService = {
           st.pendingEvents.clear();
 
           st.connectPromise = null;
-          reject(new Error(`WS closed (${ev.code}) ${ev.reason || ""}`));
+          if (!settled) {
+            settled = true;
+            reject(new Error(`WS closed (${ev.code}) ${ev.reason || ""}`));
+          }
         };
       });
 
@@ -560,7 +648,7 @@ export const aiWsService = {
       });
     }
 
-    // Preserve support for existing events such as step_saved and feedback_event.
+    // ✅ Para tus eventos existentes (step_saved, feedback_event, etc.)
     async function sendEvent({ type, event_name, event_data, awaitAck = false, timeoutMs = 10000 }) {
       await connect();
       const canonicalData = canonicalizeEvent(event_data);
@@ -637,14 +725,14 @@ export const aiWsService = {
       return true;
     }
 
-    // Send context with the expected format and backend session ID.
+    // ✅ CONTEXTO (formato correcto + session_id del backend)
     async function sendLiveContext({ context_model, route = null, force = false } = {}) {
       if (!context_model) return false;
 
       const now = Date.now();
       const contextRoute = cleanText(route) || getCurrentRouteFromDom();
 
-      // Skip deduplication when force is true.
+      // ✅ dedupe rápido (pero si force=true, saltamos dedupe)
       if (!force) {
         if (
           context_model === st.lastSentContextModel &&
@@ -658,20 +746,20 @@ export const aiWsService = {
         st.lastSentContextAt = 0;
       }
 
-      // Keep only the latest context and connect when no socket is open.
+      // ✅ si no hay WS abierto, guardo SOLO el último contexto y conecto
       if (!isOpen()) {
         st.pendingContextModel = { context_model, route: contextRoute };
         connect().catch(() => {});
         return false;
       }
 
-      // Keep the latest context until connection_established arrives.
+      // ✅ si está abierto pero aún no llegó connection_established, guardo el último
       if (!st.wsSessionId) {
         st.pendingContextModel = { context_model, route: contextRoute };
         return false;
       }
 
-      // Wait for wsSessionId if it is not available yet.
+      // ✅ (extra seguro) esperar wsSessionId si por timing todavía no está
       let sid = null;
       try {
         sid = st.wsSessionId || (await waitWsSessionId(2500));
@@ -778,6 +866,7 @@ export const aiWsService = {
       const sock = st.ws;
       st.ws = null;
       st.isConnected = false;
+      st.authenticated = false;
       st.wsSessionId = null;
       if (clearSession) {
         clearPersistedSession();
@@ -820,8 +909,7 @@ export const aiWsService = {
       restart,
       chat,
       sendEvent,
-      // Send live Odoo context to the backend.
-      sendLiveContext,
+      sendLiveContext, // ✅ NUEVO
       subscribe: (fn) => st.listeners.add(fn),
       unsubscribe: (fn) => st.listeners.delete(fn),
       get connected() {
@@ -840,11 +928,16 @@ export const aiWsService = {
 
     window.aiWs = api;
     window.__AI_TUTOR_WS_API_SINGLETON = api;
+    // Start after login without requiring a model route or a first chat message.
+    // Do not block Odoo startup if activation or the network is unavailable.
+    connect().catch((error) => {
+      console.warn("[ai_ws] Automatic connection failed:", error.message);
+    });
     return api;
   },
 };
 
-// Register the service only once if the file is loaded more than once.
+// ✅ Evita registrar el servicio 2 veces si el archivo se ejecuta duplicado
 if (!window.__AI_TUTOR_WS_SERVICE_REGISTERED) {
   window.__AI_TUTOR_WS_SERVICE_REGISTERED = true;
   registry.category("services").add("ai_ws", aiWsService);

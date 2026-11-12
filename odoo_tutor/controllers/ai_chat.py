@@ -1,21 +1,23 @@
 import json
 import os
-from urllib.parse import urlsplit
-
+import time
+import uuid
 import requests
-
+from urllib.parse import urlsplit, urlunsplit
 from odoo import http
 from odoo.http import request
 
 from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
+from ..services.tutor_service_config import (
+    backend_api_base_from_ws_url,
+    canonical_https_origin,
+    parse_ticket_response,
+    parse_activation_response,
+)
+from .ai.ai_bot import AiBot
 
 
 class AiChatController(http.Controller):
-    @staticmethod
-    def _get_param(params, key, default=""):
-        record = params.search([("key", "=", key)], limit=1)
-        return (record.value if record else None) or default
-
     @staticmethod
     def _env_flag(name, default=False):
         value = os.getenv(name)
@@ -24,182 +26,190 @@ class AiChatController(http.Controller):
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
     def _get_ws_base_url(self):
-        params = request.env["ir.config_parameter"].sudo()
-        ws_base_url = self._get_param(
-            params, "odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL
+        ws_base_url = (
+            request.env["ir.config_parameter"]
+            .sudo()
+            .get_str("odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL)
         )
         return (ws_base_url or "").strip() or DEFAULT_CHATBOT_WS_BASE_URL
 
     @http.route("/ai_chat/ws_config", type="jsonrpc", auth="user")
-    def ws_config(self, session_id=None, **kwargs):
-        params = request.env["ir.config_parameter"].sudo()
-        uid = request.env.user.id
-        provider_config = {
-            "provider": self._get_param(params, f"odoo_tutor.user.{uid}.provider", "bedrock"),
-            "model": self._get_param(params, f"odoo_tutor.user.{uid}.model"),
-            "region": self._get_param(params, f"odoo_tutor.user.{uid}.region", "eu-north-1"),
-            "api_key": self._get_param(params, f"odoo_tutor.user.{uid}.api_key"),
-            "api_secret": self._get_param(params, f"odoo_tutor.user.{uid}.api_secret"),
-        }
-        if provider_config["provider"] != "bedrock" and not provider_config["api_key"].strip():
-            return {
-                "error": True,
-                "message": "Introduce la API key del proveedor seleccionado en los ajustes de Odoo AI Tutor.",
-            }
-        if provider_config["provider"] == "bedrock" and bool(
-            provider_config["api_key"].strip()
-        ) != bool(provider_config["api_secret"].strip()):
-            return {
-                "error": True,
-                "message": "Para usar credenciales AWS personales de Bedrock, introduce tanto el access key como el secret key; o deja ambos vacíos para usar las credenciales del servidor.",
-            }
-        backend_url = (
-            self._get_param(params, "odoo_tutor.backend_url")
-            or "http://host.docker.internal:8002"
-        ).strip().rstrip("/")
-        backend_api_key = (self._get_param(params, "odoo_tutor.chatbot_api_key") or "").strip()
-        backend_parts = urlsplit(backend_url)
-        local_hosts = {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
-        if backend_parts.scheme != "https" and not (
-            backend_parts.scheme == "http" and backend_parts.hostname in local_hosts
-        ):
-            return {
-                "error": True,
-                "message": "El backend debe usar HTTPS para enviar credenciales de proveedor.",
-            }
-        ws_url = self._get_ws_base_url()
-        ws_parts = urlsplit(ws_url)
-        if ws_parts.scheme != "wss" and not (
-            ws_parts.scheme == "ws" and ws_parts.hostname in local_hosts
-        ):
-            return {
-                "error": True,
-                "message": "El WebSocket debe usar WSS salvo en el entorno local.",
-            }
-        if not backend_api_key:
-            return {
-                "error": True,
-                "message": "El administrador debe configurar la API key del backend del tutor.",
-            }
-        try:
-            ticket_response = requests.post(
-                f"{backend_url}/ws/tickets",
-                json={
-                    "user_login": request.env.user.login,
-                    "db": request.env.cr.dbname,
-                    "session_id": session_id,
-                    "provider_config": provider_config,
-                },
-                headers={"X-API-Key": backend_api_key},
-                timeout=10,
-            )
-            if ticket_response.status_code != 200:
-                return {
-                    "error": True,
-                    "message": f"El backend rechazó la solicitud de conexión (HTTP {ticket_response.status_code}).",
-                }
-            ticket = ticket_response.json().get("ticket")
-        except requests.RequestException:
-            return {"error": True, "message": "No se pudo conectar con el backend del tutor."}
-
-        if not ticket:
-            return {"error": True, "message": "El backend no devolvió un ticket de conexión."}
+    def ws_config(self, **kwargs):
         return {
-            "ws_base_url": ws_url,
+            "ws_base_url": self._get_ws_base_url(),
             "enable_skip_step": self._env_flag("ODOO_TUTOR_ENABLE_SKIP_STEP"),
-            "ticket": ticket,
         }
 
     @http.route("/ai_chat/ws_ticket", type="jsonrpc", auth="user", methods=["POST"])
-    def ws_ticket(self, session_id=None, **kwargs):
-        """Legacy endpoint; the frontend uses ws_config with the provider agnostic contract."""
-        return {
-            "error": True,
-            "code": "ENDPOINT_DEPRECATED",
-            "message": "Recarga el cliente para negociar una conexión segura de chat.",
-        }
-
-    @http.route("/ai_chat/session_history", type="jsonrpc", auth="user", methods=["POST"])
-    def get_session_history(self, session_id=None, **kwargs):
-        """Retrieve persisted chat history for reconnect replay, protected by user auth and backend key."""
-        if not session_id:
-            return {"messages": []}
-
-        config_params = request.env["ir.config_parameter"].sudo()
-        backend_url = (self._get_param(config_params, "odoo_tutor.backend_url") or "http://localhost:8001").strip().rstrip("/")
-        backend_api_key = (self._get_param(config_params, "odoo_tutor.chatbot_api_key") or "").strip()
-
-        headers = {"X-API-Key": backend_api_key}
-        params = {
-            "db": str(request.env.cr.dbname),
-            "uid": str(request.env.user.id),
-            "user_login": request.env.user.login,
-        }
-
+    def ws_ticket(self, **kwargs):
+        """Request a short-lived ticket from the backend for the logged-in Odoo user."""
+        params = request.env["ir.config_parameter"].sudo()
+        installation_id = params.get_str("odoo_tutor.installation_id", "")
+        credential = params.get_str("odoo_tutor.installation_credential", "")
+        activation_status = params.get_str("odoo_tutor.activation_status", "inactive")
+        if activation_status == "revoked":
+            return {"error": "Tutor service installation was revoked"}
         try:
-            res = requests.get(
-                f"{backend_url}/session/{session_id}/messages",
-                headers=headers,
-                params=params,
+            installation_id = str(uuid.UUID(installation_id))
+            origin = canonical_https_origin(
+                request.httprequest.headers.get("Origin")
+                or request.httprequest.url_root
+                or params.get_str("web.base.url", "")
+            )
+            api_base = backend_api_base_from_ws_url(self._get_ws_base_url())
+        except (TypeError, ValueError, UnicodeError):
+            return {"error": "Odoo public HTTPS URL is not configured"}
+        if not credential:
+            # The hosted trial is bounded per authenticated Odoo user by the backend.
+            # Serialize first use so parallel browser sessions do not rotate credentials.
+            request.env.cr.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                ("odoo_tutor_trial_installation:" + installation_id,),
+            )
+            credential = params.get_str("odoo_tutor.installation_credential", "")
+            if not credential:
+                try:
+                    provisioned = requests.post(
+                        api_base + "/odoo/trial-installation",
+                        json={
+                            "installation_id": installation_id,
+                            "origin": origin,
+                            "addon_version": "20.0.1.0.2",
+                        },
+                        timeout=(3, 10),
+                        allow_redirects=False,
+                    )
+                    if provisioned.status_code != 200:
+                        return {"error": "Tutor trial service is unavailable"}
+                    credential = parse_activation_response(
+                        provisioned.json(), installation_id
+                    )
+                    params.set_str("odoo_tutor.installation_credential", credential)
+                    params.set_str("odoo_tutor.activation_status", "active")
+                except (requests.RequestException, ValueError, TypeError):
+                    return {"error": "Tutor trial service is unavailable"}
+        if (
+            not isinstance(credential, str)
+            or not 32 <= len(credential) <= 4096
+            or any(ord(char) < 32 for char in credential)
+        ):
+            return {"error": "Tutor service installation is not active"}
+        try:
+            ticket_payload = {
+                "installation_id": installation_id,
+                "user_id": request.env.user.id,
+                "login": request.env.user.login,
+                "database": request.env.cr.dbname,
+                "origin": origin,
+                "protocol_version": 1,
+            }
+            provider_key = params.get_str("odoo_tutor.llm_api_key", "").strip()
+            if provider_key:
+                provider = params.get_str("odoo_tutor.llm_provider", "openai")
+                if provider not in {"openai", "anthropic", "google"}:
+                    return {"error": "Configured AI provider is invalid"}
+                ticket_payload["provider_config"] = {
+                    "provider": provider,
+                    "api_key": provider_key,
+                }
+            response = requests.post(
+                api_base + "/odoo/ws-ticket",
+                json=ticket_payload,
+                headers={"Authorization": "Bearer " + credential},
+                timeout=(3, 8),
+                allow_redirects=False,
+            )
+            if response.status_code != 200:
+                if response.status_code in (401, 403):
+                    params.set_str("odoo_tutor.activation_status", "revoked")
+                    params.set_str("odoo_tutor.installation_credential", "")
+                    return {"error": "Tutor service installation was revoked; activate it again"}
+                return {"error": "Tutor ticket service rejected the request"}
+            try:
+                ticket, expires_at = parse_ticket_response(response.json(), time.time())
+            except (TypeError, ValueError):
+                return {"error": "Tutor ticket service returned an invalid response"}
+            return {"ticket": ticket, "expires_at": expires_at}
+        except (requests.RequestException, ValueError, TypeError, UnicodeError):
+            return {"error": "Tutor ticket service is unavailable"}
+
+    @http.route("/ai_chat/session/<string:session_id>/messages", type="jsonrpc", auth="user")
+    def session_messages(self, session_id, **kwargs):
+        """Fetch a transcript for the authenticated Odoo user."""
+        ws_url = self._get_ws_base_url()
+        parsed = urlsplit(ws_url)
+        host = parsed.hostname or "localhost"
+        if host in {"localhost", "127.0.0.1"}:
+            host = "host.docker.internal"
+        scheme = "https" if parsed.scheme == "wss" else "http"
+        port = parsed.port
+        base_url = urlunsplit((scheme, f"{host}:{port}" if port else host, "", "", ""))
+        try:
+            response = requests.get(
+                f"{base_url}/session/{session_id}/messages",
+                params={"user_login": request.env.user.login, "db": request.env.cr.dbname},
                 timeout=10,
             )
-            if res.status_code == 200:
-                data = res.json()
-                return {"messages": data.get("messages", [])}
-        except Exception:
-            pass
-
-        return {"messages": []}
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            return {"error": str(exc), "session_id": session_id, "messages": []}
 
     @http.route("/ai_chat/chat", type="jsonrpc", auth="user", methods=["POST"])
     def get_quickboard_item(self, **kwargs):
-        """Deprecated: Interactive chat must use WebSocket transport exclusively."""
-        return {
-            "error": True,
-            "response": "Deprecated: interactive chat must use WebSocket transport.",
-        }
+        """Endpoint principal para el chatbot AI"""
+        data = json.loads(request.httprequest.data or "{}")
+        ws_session_id = data.get("ws_session_id")
 
-    @http.route("/ai_chat/validate_exercise", type="jsonrpc", auth="user")
+        bot = AiBot(request.env, ws_session_id=ws_session_id)
+
+        try:
+            # Obtener datos del cuerpo de la solicitud
+            if request.httprequest.data:
+                data = json.loads(request.httprequest.data)
+            else:
+                raise ValueError("Body is empty")
+
+            message = data.get("message")
+            context = data.get("context", {})
+            history = data.get("history", [])
+
+            # Validación del mensaje
+            if not message or not isinstance(message, str):
+                raise ValueError("El parámetro 'message' es requerido y debe ser texto")
+
+            return bot._chat(
+                message=message, context=context
+            )
+
+        except Exception as e:
+            return f"Error: {e}"
+
+    @http.route('/ai_chat/validate_exercise', type='jsonrpc', auth='user')
     def validate_exercise(self, exercise_id=None, **kwargs):
-        if not exercise_id:
-            exercise_id = kwargs.get("exercise_id")
-
-        if (
-            not exercise_id
-            and hasattr(http.request, "httprequest")
-            and getattr(http.request.httprequest, "data", None)
-        ):
-            try:
-                raw_data = http.request.httprequest.data
-                if isinstance(raw_data, bytes):
-                    raw_data = raw_data.decode("utf-8")
-                data = json.loads(raw_data or "{}")
-                if isinstance(data, dict):
-                    exercise_id = data.get("params", {}).get("exercise_id") or data.get(
-                        "exercise_id"
-                    )
-            except Exception:
-                pass
 
         if not exercise_id:
             return {"error": "Missing exercise_id"}
 
-        config_params = request.env["ir.config_parameter"].sudo()
+        config_params = request.env['ir.config_parameter'].sudo()
 
-        session_token = self._get_param(config_params, "odoo_tutor.chatbot_session_token", "0")
+        session_token = config_params.get_str(
+            "odoo_tutor.chatbot_session_token",
+            "0"
+        )
 
-        base_url = self._get_param(
-            config_params,
-            "odoo_tutor.chatbot_base_url", "http://0.0.0.0:8001"
+        base_url = config_params.get_str(
+            "odoo_tutor.chatbot_base_url",
+            "http://0.0.0.0:8001"
         )
 
         url = base_url + "/validate_exercise"
 
         params = {
-            "exercise_id": exercise_id,
-            "session_token": session_token,
-            "user_login": "admin",
-            "db": http.request.env.cr.dbname,
+            'exercise_id': exercise_id,
+            'session_token': session_token,
+            'user_login': 'admin',
+            'db': http.request.env.cr.dbname
         }
 
         try:
@@ -209,16 +219,8 @@ class AiChatController(http.Controller):
             return {"error": str(e)}
 
     @http.route("/ai_chat/feedback", type="jsonrpc", auth="user")
-    def ai_chat_feedback(
-        self,
-        message_uid=None,
-        vote=None,
-        comment=None,
-        context=None,
-        message_body_html=None,
-        message_body_text=None,
-        **kw,
-    ):
+    def ai_chat_feedback(self, message_uid, vote=None, comment=None, context=None, message_body_html=None,
+                         message_body_text=None, **kw):
         env = request.env
         vals = {
             "user_id": env.user.id,
