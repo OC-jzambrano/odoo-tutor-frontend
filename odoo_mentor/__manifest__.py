@@ -32,6 +32,8 @@
     ],
     "images": [
         "static/description/banner.png",
+        "static/description/tutor_crm_exercise.png",
+        "static/description/tutor_welcome_preview.png",
     ],
     "installable": True,
     "application": True,
