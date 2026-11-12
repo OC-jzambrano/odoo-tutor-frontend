@@ -33,9 +33,6 @@
     "installable": True,
     "application": True,
     "auto_install": False,
-    "images": [
-        "static/description/tutor_sidebar_screenshot.png",
-    ],
     "license": "OPL-1",
     "price": 9.0,
     "currency": "EUR",
