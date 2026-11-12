@@ -12,6 +12,7 @@ from ..services.tutor_service_config import (
     backend_api_base_from_ws_url,
     canonical_https_origin,
     parse_ticket_response,
+    parse_activation_response,
 )
 from .ai.ai_bot import AiBot
 
@@ -45,14 +46,48 @@ class AiChatController(http.Controller):
         params = request.env["ir.config_parameter"].sudo()
         installation_id = params.get_str("odoo_tutor.installation_id", "")
         credential = params.get_str("odoo_tutor.installation_credential", "")
-        if params.get_str("odoo_tutor.activation_status", "inactive") != "active" or not credential:
-            return {"error": "Tutor service installation is not active"}
+        activation_status = params.get_str("odoo_tutor.activation_status", "inactive")
+        if activation_status == "revoked":
+            return {"error": "Tutor service installation was revoked"}
         try:
             installation_id = str(uuid.UUID(installation_id))
-            origin = canonical_https_origin(params.get_str("web.base.url", ""))
+            origin = canonical_https_origin(
+                request.httprequest.headers.get("Origin")
+                or request.httprequest.url_root
+                or params.get_str("web.base.url", "")
+            )
             api_base = backend_api_base_from_ws_url(self._get_ws_base_url())
         except (TypeError, ValueError, UnicodeError):
             return {"error": "Odoo public HTTPS URL is not configured"}
+        if not credential:
+            # The hosted trial is bounded per authenticated Odoo user by the backend.
+            # Serialize first use so parallel browser sessions do not rotate credentials.
+            request.env.cr.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                ("odoo_tutor_trial_installation:" + installation_id,),
+            )
+            credential = params.get_str("odoo_tutor.installation_credential", "")
+            if not credential:
+                try:
+                    provisioned = requests.post(
+                        api_base + "/odoo/trial-installation",
+                        json={
+                            "installation_id": installation_id,
+                            "origin": origin,
+                            "addon_version": "20.0.1.0.2",
+                        },
+                        timeout=(3, 10),
+                        allow_redirects=False,
+                    )
+                    if provisioned.status_code != 200:
+                        return {"error": "Tutor trial service is unavailable"}
+                    credential = parse_activation_response(
+                        provisioned.json(), installation_id
+                    )
+                    params.set_str("odoo_tutor.installation_credential", credential)
+                    params.set_str("odoo_tutor.activation_status", "active")
+                except (requests.RequestException, ValueError, TypeError):
+                    return {"error": "Tutor trial service is unavailable"}
         if (
             not isinstance(credential, str)
             or not 32 <= len(credential) <= 4096
@@ -100,8 +135,7 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/session/<string:session_id>/messages", type="jsonrpc", auth="user")
     def session_messages(self, session_id, **kwargs):
-        """Proxy a user's transcript request with backend credentials kept server-side."""
-        config_params = request.env["ir.config_parameter"].sudo()
+        """Fetch a transcript for the authenticated Odoo user."""
         ws_url = self._get_ws_base_url()
         parsed = urlsplit(ws_url)
         host = parsed.hostname or "localhost"
@@ -110,12 +144,10 @@ class AiChatController(http.Controller):
         scheme = "https" if parsed.scheme == "wss" else "http"
         port = parsed.port
         base_url = urlunsplit((scheme, f"{host}:{port}" if port else host, "", "", ""))
-        api_key = config_params.get_str("odoo_tutor.chatbot_api_key", "")
         try:
             response = requests.get(
                 f"{base_url}/session/{session_id}/messages",
                 params={"user_login": request.env.user.login, "db": request.env.cr.dbname},
-                headers={"X-API-Key": api_key},
                 timeout=10,
             )
             response.raise_for_status()

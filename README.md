@@ -7,19 +7,19 @@ Odoo Tutor add-on source for Odoo 20. The installable module is in `odoo_tutor/`
 Set `ODOO_TUTOR_ENABLE_SKIP_STEP=true` in the Odoo server environment to enable
 the exercise skip button. It is disabled by default.
 
-## WebSocket activation and tickets
+## WebSocket service and tickets
 
 Configure a public `wss://` WebSocket URL and set Odoo's canonical public URL
 to `https://...` in General Settings. For deployments behind a reverse proxy,
 enable Odoo `proxy_mode` and forward the original HTTPS host and scheme so
 `web.base.url` represents the browser-visible origin.
 
-Activation requires an activation code or license supplied by the tutor
-service. The addon does not contain a master secret. In Settings → Odoo Tutor,
-enter that code and activate. Odoo persists a UUID installation identity and
-the installation-only credential returned by the service in server
-configuration. Credentials are not returned to the browser. Revocation is
-enforced by the backend when ticket requests are made.
+The addon does not ask customers to enter a shared service API key. Odoo
+persists a UUID installation identity and obtains an installation-only
+credential through the backend's hosted trial registration flow on the first
+ticket request. The credential is stored in server configuration and used only
+by Odoo server code for `/odoo/ws-ticket` requests; it is never returned to the browser. Revocation is enforced
+by the backend when ticket requests are made.
 
 The frontend requests a fresh ticket from Odoo for every WebSocket connection,
 sends it as the first frame, and waits for the backend authentication
@@ -27,9 +27,8 @@ acknowledgement before flushing queued messages. No legacy handshake is used.
 
 ### Backend HTTP contract
 
-The current addon contract uses `POST https://<backend>/odoo/activate` with
-`{installation_id, origin, addon_version}` and an Authorization bearer
-activation code. A successful response is
+The current addon contract uses `POST https://<backend>/odoo/trial-installation`
+with `{installation_id, origin, addon_version}`. A successful response is
 `{installation_id, installation_credential}`. Ticket requests go to
 `POST /odoo/ws-ticket` with installation ID, authenticated Odoo user ID/login,
 database, canonical origin, and protocol version; the installation credential

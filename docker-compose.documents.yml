@@ -19,7 +19,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8069:8069"
+      - "127.0.0.1:8069:8069"
     environment:
       HOST: db
       USER: odoo
@@ -27,6 +27,7 @@ services:
       ODOO_TUTOR_ENABLE_SKIP_STEP: "true"
     command:
       - odoo
+      - --proxy-mode
       - --database=odoo20_local
       - --db-filter=^odoo20_local$
       - --dev=assets,qweb

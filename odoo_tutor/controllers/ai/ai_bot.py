@@ -23,9 +23,6 @@ class AiBot:
             .strip()
             or DEFAULT_CHATBOT_WS_BASE_URL
         )
-        self.api_key = self.env["ir.config_parameter"].sudo().get_str(
-            "odoo_tutor.chatbot_api_key", "your_super_secret_key_123"
-        )
 
     def _ws_url(self, *, user_login: str, db: str, session_id: str | None):
         # mismos params que JS
@@ -45,13 +42,9 @@ class AiBot:
 
         url = self._ws_url(user_login=user_login, db=db, session_id=session_id)
 
-        headers = [
-            f"X-API-KEY: {self.api_key}",
-        ]
-
         ws = None
         try:
-            ws = create_connection(url, header=headers, timeout=20)
+            ws = create_connection(url, timeout=20)
 
             payload = {
                 "type": "chat",

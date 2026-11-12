@@ -464,6 +464,16 @@ export const aiWsService = {
             }
           }
 
+          if (
+            data?.type === "error" &&
+            data?.code === "TRIAL_QUOTA_EXHAUSTED" &&
+            st.pendingChats.length
+          ) {
+            const entry = st.pendingChats.shift();
+            clearTimeout(entry.timer);
+            entry.reject(new Error(data.message));
+          }
+
           // ✅ Capturar session_id del backend
           if (
             data &&
@@ -918,6 +928,11 @@ export const aiWsService = {
 
     window.aiWs = api;
     window.__AI_TUTOR_WS_API_SINGLETON = api;
+    // Start after login without requiring a model route or a first chat message.
+    // Do not block Odoo startup if activation or the network is unavailable.
+    connect().catch((error) => {
+      console.warn("[ai_ws] Automatic connection failed:", error.message);
+    });
     return api;
   },
 };
