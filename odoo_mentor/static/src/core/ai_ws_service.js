@@ -253,6 +253,25 @@ export const aiWsService = {
     const st = getState();
     st.recentEventFingerprints ||= new Map();
 
+    let installedModulesPromise = null;
+    async function getInstalledModules() {
+      if (!installedModulesPromise) {
+        installedModulesPromise = env.services.orm
+          .searchRead("ir.module.module", [["state", "=", "installed"]], ["name"])
+          .then((modules) =>
+            Array.isArray(modules)
+              ? modules.map((module) => module.name).filter(Boolean)
+              : []
+          )
+          .catch((error) => {
+            console.warn("[ai_ws] Unable to read installed Odoo modules:", error);
+            installedModulesPromise = null;
+            return [];
+          });
+      }
+      return installedModulesPromise;
+    }
+
     function isOpen() {
       return st.ws && st.ws.readyState === WS_OPEN && st.authenticated;
     }
@@ -634,7 +653,13 @@ export const aiWsService = {
 
     async function chat({ message, context = {}, timeoutMs = 30000, payloadExtra = {} }) {
       await connect();
-      const payload = { ...payloadExtra, type: "chat", message, context };
+      const installed_modules = await getInstalledModules();
+      const payload = {
+        ...payloadExtra,
+        type: "chat",
+        message,
+        context: { ...context, installed_modules },
+      };
 
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -653,6 +678,12 @@ export const aiWsService = {
       await connect();
       const canonicalData = canonicalizeEvent(event_data);
       const canonicalName = canonicalEventType(event_name || canonicalData?.type);
+      if (canonicalName === "context_update") {
+        canonicalData.context = {
+          ...(canonicalData.context || {}),
+          installed_modules: await getInstalledModules(),
+        };
+      }
       const fingerprint = canonicalEventFingerprint({
         type: canonicalName,
         event_data: canonicalData,
@@ -773,6 +804,7 @@ export const aiWsService = {
         session_id: sid,
         context_model,
         route: contextRoute || null,
+        context: { installed_modules: await getInstalledModules() },
         timestamp: new Date().toISOString(),
       };
 

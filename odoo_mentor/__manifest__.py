@@ -6,15 +6,7 @@
     "author": "Juan Zambrano <juanzamdev@gmail.com>, Odoo Concept",
     "support": "juanzamdev@gmail.com",
     "website": "https://odooconcept.com",
-    "depends": [
-        "sale_management",
-        "stock",
-        "crm",
-        "sale",
-        "web",
-        "web_tour",
-        "bus",
-    ],
+    "depends": ["base", "web"],
     "data": [
         "security/ir.access.csv",
         "views/odoo_tutor_menus.xml",
