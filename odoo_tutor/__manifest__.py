@@ -2,7 +2,7 @@
     "name": "Odoo Tutor",
     "version": "20.0.1.0.2",
     "category": "Extra Tools",
-    "summary": "Contextual AI tutoring and guided exercises inside Odoo.",
+    "summary": "Learn Odoo 20 with contextual AI guidance and hands-on exercises.",
     "author": "Erick Birbe <ebirbe@odooconcept.com>, Odoo Concept",
     "support": "ebirbe@odooconcept.com",
     "website": "https://odooconcept.com",
@@ -33,8 +33,7 @@
     "installable": True,
     "application": True,
     "auto_install": False,
-    "images": [
-        "static/description/tutor_sidebar_screenshot.png",
-    ],
     "license": "OPL-1",
+    "price": 9.0,
+    "currency": "EUR",
 }
