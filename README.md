@@ -65,8 +65,9 @@ Featured exercise identifiers:
 - `define-pipeline-stages`
 - `create-internal-transfer`
 
-The listing documents a CRM exercise completed in a live Odoo 20 demo. The old
-screenshots showed a retired shared-key setting and must not be used in the
-customer listing. Capture fresh screenshots and an exercise GIF from the
-current Odoo 20 interface before publishing visual assets; use a demo database,
-sample records, and no credentials or personal information.
+The listing includes an Odoo 20 banner and real CRM exercise screenshots from a
+demo database. The obsolete screenshots showing the retired shared-key setting
+were removed. A GIF is not included because the available evidence is a static
+capture of the completed CRM exercise; add an animation only after recording a
+real exercise run. Use sample records and exclude credentials and personal
+information from any future media.
