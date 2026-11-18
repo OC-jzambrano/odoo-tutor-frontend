@@ -9,7 +9,7 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
-import { openTutorSettings } from "../settings_navigation";
+import { openTutorPlans, openTutorSettings } from "../settings_navigation";
 // Helpers
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
@@ -535,11 +535,15 @@ class AiFloatingButton extends Component {
 
             if (msg.code === "TRIAL_QUOTA_EXHAUSTED") {
                 this.notificationService.add(
-                    _t("The quota has finished. Please bring your own key."),
+                    _t("Your trial quota has finished. Get a subscription to continue on our plans page: https://odooconcept.com/pricing"),
                     {
                         type: "warning",
                         sticky: true,
                         buttons: [
+                            {
+                                name: _t("View Plans"),
+                                onClick: () => openTutorPlans(),
+                            },
                             {
                                 name: _t("Open Settings"),
                                 onClick: () => openTutorSettings(this.actionService),
@@ -547,7 +551,6 @@ class AiFloatingButton extends Component {
                         ],
                     }
                 );
-                openTutorSettings(this.actionService);
                 return;
             }
 

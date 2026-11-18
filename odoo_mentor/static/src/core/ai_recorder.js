@@ -3,6 +3,11 @@
 
 import { registry } from "@web/core/registry";
 import { normalizeDomEvent } from "./normalize_event";
+import {
+    buildDraftStepFromEvent,
+    isRecorderUiElement,
+    isSensitiveInputElement,
+} from "./recording_draft";
 
 const DUP_WINDOW_MS = 800;
 const MAX_LOCAL_LOGS = 250;
@@ -218,6 +223,7 @@ export const aiRecorderService = {
 
         function onDomClick(e) {
           if (status !== "recording" || pickerActive) return;
+          if (isRecorderUiElement(e?.target) || isSensitiveInputElement(e?.target)) return;
 
           const ts = Date.now();
           const normalized = normalizeDomEvent({
@@ -225,7 +231,7 @@ export const aiRecorderService = {
             originalEvent: e,
             contextService,
           });
-
+          if (isSensitiveInputElement(e?.target, normalized)) return;
 
           // dedupe: type + (field/target_name/dom_key) + res_id + value?
           const keyPart =
@@ -237,27 +243,28 @@ export const aiRecorderService = {
 
           if (isDuplicate(dedupeKey, ts)) return;
 
-          // payload “rico”
-          const payload = {
-            _id: uuid(),
-            session_id: sessionId,
-            exercise_id: exerciseId,
-            timestamp: normalized.ts,
-            normalized,
-          };
-
-          pushLog({
-            ...payload,
-            event_type: normalized.type,
-            target: keyPart,
+          const generatedStep = buildDraftStepFromEvent(normalized, {
+            id: uuid(),
+            el: e?.target,
           });
+          if (generatedStep) {
+            pushLog({
+              _id: generatedStep.id,
+              session_id: sessionId,
+              exercise_id: exerciseId,
+              timestamp: normalized.ts,
+              event_type: "STEP_GENERATED",
+              target: generatedStep.target?.target_key || keyPart,
+              step: generatedStep,
+            });
+          }
 
-          // payload “ticket style” (el de la imagen)
+          // payload “ticket style” (el de la imagen) - exclude raw input values
           const ticketPayload = {
             type: normalized.type,
             label: normalized.label,
             field: normalized.field,
-            value: normalized.value,
+            value: null,
             meta: normalized.meta,
             quality: normalized.quality,
             ts: normalized.ts,
@@ -282,6 +289,7 @@ export const aiRecorderService = {
 
           const el = e.target;
           if (!el) return;
+          if (isRecorderUiElement(el) || isSensitiveInputElement(el)) return;
           if (el.type === "checkbox") {
             return;
           }
@@ -295,33 +303,34 @@ export const aiRecorderService = {
             originalEvent: e,
             contextService,
           });
+          if (isSensitiveInputElement(el, normalized)) return;
 
           const keyPart = normalized.field || normalized.dom?.dom_key || "unknown";
-          const val = normalized.value != null ? String(normalized.value) : "";
-          const dedupeKey = `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}|${val}`;
+          const dedupeKey = `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}`;
 
           if (isDuplicate(dedupeKey, ts)) return;
 
-          const payload = {
-            _id: uuid(),
-            session_id: sessionId,
-            exercise_id: exerciseId,
-            timestamp: normalized.ts,
-            normalized,
-          };
-
-          pushLog({
-            ...payload,
-            event_type: normalized.type,
-            target: keyPart,
-            value_preview: cleanText(normalized.value),
+          const generatedStep = buildDraftStepFromEvent(normalized, {
+            id: uuid(),
+            el,
           });
+          if (generatedStep) {
+            pushLog({
+              _id: generatedStep.id,
+              session_id: sessionId,
+              exercise_id: exerciseId,
+              timestamp: normalized.ts,
+              event_type: "STEP_GENERATED",
+              target: generatedStep.target?.target_key || keyPart,
+              step: generatedStep,
+            });
+          }
 
           const ticketPayload = {
             type: normalized.type,
             label: normalized.label,
             field: normalized.field,
-            value: normalized.value,
+            value: null,
             meta: normalized.meta,
             quality: normalized.quality,
             ts: normalized.ts,
@@ -341,6 +350,7 @@ export const aiRecorderService = {
         }
 
         async function startRecording(opts = {}) {
+            const resuming = status === "paused" && !!sessionId;
             if (!sessionId || status === "idle") {
                 sessionId = opts.sessionId || uuid();
             }
@@ -349,17 +359,23 @@ export const aiRecorderService = {
 
             attachDomListeners();
 
+            const eventName = resuming ? "recording_resumed" : "recording_started";
             const payload = {
                 _id: uuid(),
                 session_id: sessionId,
                 exercise_id: exerciseId,
                 timestamp: nowIso(),
-                status: "recording_started",
+                status: eventName,
                 context: getCtxSnapshot(),
             };
             pushLog({ ...payload, event_type: "SESSION", target: "-" });
-            await sendWS("recording_started", payload).catch(() => {});
+            await sendWS(eventName, payload).catch(() => {});
             return sessionId;
+        }
+
+        async function resumeRecording() {
+            if (status !== "paused") return sessionId;
+            return startRecording();
         }
 
         async function pauseRecording() {
@@ -514,6 +530,7 @@ export const aiRecorderService = {
             get logs() { return logs; },
 
             startRecording,
+            resumeRecording,
             pauseRecording,
             finishRecording,
             pickTarget,

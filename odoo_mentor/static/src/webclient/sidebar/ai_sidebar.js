@@ -20,6 +20,11 @@ import {
     stripNewlinesAroundCopyTargets,
 } from "../../core/copy_targets";
 import { shouldQueueTutorMessage } from "../../core/tutor_message_delivery";
+import {
+    buildDraftStepFromEvent,
+    buildRecordingDraftPayload,
+} from "../../core/recording_draft";
+import { TUTOR_PLANS_URL } from "../../core/settings_navigation";
 
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
@@ -289,6 +294,10 @@ export class AiSidebar extends Component {
             // idle | recording | paused
             recorderStatus: "idle",
             recorderSessionId: null,
+            recorderTitle: "",
+            recorderModule: "",
+            recorderSteps: [],
+            recorderSaving: false,
             recorderFeed: [],
             recorderStepIndex: 0,
             recorderNote: "",
@@ -298,6 +307,12 @@ export class AiSidebar extends Component {
             wsStatus: "unknown",
             showRecorderPanel: false,
             canSeeRecorderToggle: false,
+            canReviewRecordings: false,
+            recorderReviewTab: false,
+            reviewQueue: [],
+            reviewLoading: false,
+            reviewDetail: null,
+            reviewComment: "",
 
             hintMessage: "",
             hintTimestamp: null,
@@ -490,7 +505,17 @@ export class AiSidebar extends Component {
 
             this._recListener = (ev) => {
                 this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
-                if (!ev || ev.event_type !== "STEP_SAVED") return;
+                if (!ev) return;
+
+                if (ev.event_type === "STEP_GENERATED" && ev.step) {
+                    const stepId = ev.step.id;
+                    if (!(this.state.recorderSteps || []).some((s) => s?.id === stepId)) {
+                        this.state.recorderSteps = [...(this.state.recorderSteps || []), ev.step];
+                    }
+                    return;
+                }
+
+                if (ev.event_type !== "STEP_SAVED") return;
 
                 const _id = ev._id || ev.step_id || ev.event_id || `${Date.now()}_${Math.random().toString(16).slice(2)}`;
                 if ((this.state.recorderFeed || []).some((x) => x?._id === _id)) return;
@@ -1040,7 +1065,7 @@ export class AiSidebar extends Component {
         return !!target.closest(
             "button, a, input, textarea, select, label, " +
             ".ai-msg-footer, .ai_feedback_bar, .ai_feedback_popover, " +
-            ".ai-copy-btn, .ai_feedback_btn, .ai-exercise-actions, .ai-copy-value"
+            ".ai-copy-btn, .ai_feedback_btn, .ai-exercise-actions, .ai-quota-actions, .ai-copy-value"
         );
     }
 
@@ -1686,6 +1711,57 @@ export class AiSidebar extends Component {
         });
     }
 
+    _scheduleQuotaActionsForLastMessage(minReceivedCount = 0, attempts = 80) {
+        requestAnimationFrame(() => {
+            const receivedItems = Array.from(
+                this.chatUiRef?.el?.querySelectorAll(
+                    ".nlux-comp-chatItem.nlux-comp-chatItem--received"
+                ) || []
+            );
+            const receivedCount = receivedItems.length;
+            const targetIndex = minReceivedCount > 0 ? minReceivedCount - 1 : receivedCount - 1;
+            const item = targetIndex >= 0 ? receivedItems[targetIndex] : null;
+            if (item) {
+                if (item.querySelector(".ai-quota-actions")) return;
+                if (this._attachQuotaActions(item)) return;
+            }
+            if (attempts > 1) {
+                window.setTimeout(
+                    () => this._scheduleQuotaActionsForLastMessage(minReceivedCount, attempts - 1),
+                    40
+                );
+            }
+        });
+    }
+
+    _attachQuotaActions(itemEl) {
+        if (!itemEl) return false;
+        if (itemEl.querySelector(".ai-quota-actions")) return true;
+
+        const messageHost = this._getMessageHost(itemEl);
+        const textBlock = this._getMessageTextBlock(messageHost);
+        if (!messageHost || !textBlock) return false;
+
+        this._trimMessageBlockEnd(textBlock);
+
+        const actions = document.createElement("div");
+        actions.className = "ai-quota-actions";
+        actions.innerHTML = `
+            <a
+                class="ai-quota-plan-btn"
+                href="${this._escapeHtml(TUTOR_PLANS_URL)}"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="${this._escapeHtml(_t("Get a subscription"))}"
+            >
+                ${this._escapeHtml(_t("Get a subscription"))}
+            </a>
+        `;
+
+        textBlock.appendChild(actions);
+        return true;
+    }
+
     _attachExerciseActions(itemEl, exerciseId, options = {}) {
         const normalizedExerciseId = this._getPromptExerciseId(exerciseId, options);
         if (!itemEl || !normalizedExerciseId) return false;
@@ -2276,9 +2352,15 @@ export class AiSidebar extends Component {
     // Recorder / Pick
     async _loadRecorderPermission() {
         try {
-            this.state.canSeeRecorderToggle = await user.hasGroup("base.group_system");
+            const [isExpert, isReviewer] = await Promise.all([
+                user.hasGroup("odoo_mentor.group_odoo_tutor_expert"),
+                user.hasGroup("odoo_mentor.group_odoo_tutor_reviewer"),
+            ]);
+            this.state.canSeeRecorderToggle = !!isExpert;
+            this.state.canReviewRecordings = !!isReviewer;
         } catch (e) {
             this.state.canSeeRecorderToggle = false;
+            this.state.canReviewRecordings = false;
         }
     }
 
@@ -2296,6 +2378,22 @@ export class AiSidebar extends Component {
     }
 
     async onRecorderStart() {
+        if (this.state.recorderStatus === "paused") {
+            const sid = await this.aiRecorder.resumeRecording();
+            this.state.recorderSessionId = sid;
+            this.state.recorderStatus = "recording";
+            this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
+            return;
+        }
+        const title = (this.state.recorderTitle || "").trim();
+        const mod = (this.state.recorderModule || "").trim();
+        if (!title || !mod) {
+            this.notification.add(
+                _t("Enter both an exercise title and an app/module before starting capture."),
+                { type: "warning" }
+            );
+            return;
+        }
         const sid = await this.aiRecorder.startRecording({ exerciseId: this.state.exerciseId || null });
         this.state.recorderSessionId = sid;
         this.state.recorderStatus = "recording";
@@ -2314,6 +2412,9 @@ export class AiSidebar extends Component {
         } finally {
             this.state.recorderStatus = "idle";
             this.state.recorderSessionId = null;
+            this.state.recorderTitle = "";
+            this.state.recorderModule = "";
+            this.state.recorderSteps = [];
             this.state.recorderPicked = null;
             this.state.recorderPicking = false;
             this.state.recorderNote = "";
@@ -2329,6 +2430,152 @@ export class AiSidebar extends Component {
                     event_data: { recorder_session_id: sid, exercise_id: this.state.exerciseId || null },
                 });
             } catch {}
+        }
+    }
+
+    onRecorderUpdateStepInstruction(stepId, value) {
+        this.state.recorderSteps = (this.state.recorderSteps || []).map((step) =>
+            step.id === stepId ? { ...step, instruction: value } : step
+        );
+    }
+
+    onRecorderRemoveStep(stepId) {
+        this.state.recorderSteps = (this.state.recorderSteps || []).filter(
+            (step) => step.id !== stepId
+        );
+    }
+
+    async onRecorderSaveForReview() {
+        if (this.state.recorderSaving) return;
+        let draft;
+        try {
+            draft = buildRecordingDraftPayload({
+                recordingId: this.state.recorderSessionId,
+                title: this.state.recorderTitle,
+                module: this.state.recorderModule,
+                steps: this.state.recorderSteps,
+            });
+        } catch (err) {
+            this.notification.add(err?.message || _t("Complete title, app, and steps first."), {
+                type: "warning",
+            });
+            return;
+        }
+
+        this.state.recorderSaving = true;
+        try {
+            const result = await rpc("/ai_chat/recording_drafts/save", { draft });
+            if (result?.error) {
+                this.notification.add(result.error, { type: "danger" });
+                return;
+            }
+            if (this.state.recorderStatus !== "idle") {
+                await this.aiRecorder.finishRecording();
+            }
+            this.state.recorderStatus = "idle";
+            this.state.recorderSessionId = null;
+            this.state.recorderTitle = "";
+            this.state.recorderModule = "";
+            this.state.recorderSteps = [];
+            this.state.recorderPicked = null;
+            this.state.recorderNote = "";
+            this.state.recorderFeed = [];
+            this.notification.add(_t("Recording saved for later review."), { type: "success" });
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not save recording draft."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.recorderSaving = false;
+        }
+    }
+
+    async toggleRecorderReviewTab(showReview) {
+        if (!this.state.canReviewRecordings) return;
+        this.state.recorderReviewTab = !!showReview;
+        if (this.state.recorderReviewTab) {
+            await this.loadReviewQueue();
+        }
+    }
+
+    async loadReviewQueue() {
+        if (!this.state.canReviewRecordings) return;
+        this.state.reviewLoading = true;
+        try {
+            const result = await rpc("/ai_chat/recording_drafts/review_list", {
+                review_status: "pending_review",
+            });
+            if (result?.error) {
+                this.notification.add(result.error, { type: "danger" });
+                return;
+            }
+            this.state.reviewQueue = Array.isArray(result?.data) ? result.data : [];
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not load review queue."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.reviewLoading = false;
+        }
+    }
+
+    async inspectReviewDraft(recordingId, authorId) {
+        if (!this.state.canReviewRecordings) return;
+        this.state.reviewLoading = true;
+        try {
+            const result = await rpc("/ai_chat/recording_drafts/review_detail", {
+                recording_id: recordingId,
+                author_id: authorId,
+            });
+            if (result?.error) {
+                this.notification.add(result.error, { type: "danger" });
+                return;
+            }
+            this.state.reviewDetail = result?.data || null;
+            this.state.reviewComment = "";
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not load draft details."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.reviewLoading = false;
+        }
+    }
+
+    async submitReviewDecision(decision) {
+        const detail = this.state.reviewDetail;
+        if (!this.state.canReviewRecordings || !detail?.draft?.recording_id) return;
+        this.state.reviewLoading = true;
+        try {
+            const result = await rpc("/ai_chat/recording_drafts/review_decision", {
+                recording_id: detail.draft.recording_id,
+                author_id: detail.author_id,
+                decision,
+                comment: (this.state.reviewComment || "").trim() || null,
+            });
+            if (result?.error) {
+                this.notification.add(result.error, { type: "danger" });
+                return;
+            }
+            this.notification.add(
+                decision === "approved"
+                    ? _t("Exercise approved for same-tenant learners.")
+                    : _t("Exercise rejected."),
+                { type: "success" }
+            );
+            this.state.reviewDetail = null;
+            this.state.reviewComment = "";
+            await this.loadReviewQueue();
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not submit review decision."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.reviewLoading = false;
         }
     }
 
@@ -2427,6 +2674,19 @@ export class AiSidebar extends Component {
             });
 
             this._pushSavedStepToFeed(payload);
+            this.state.recorderSteps = [
+                ...(this.state.recorderSteps || []),
+                {
+                    id: stepId,
+                    instruction: instruction || (picked?.target_key ? `Click ${picked.target_key}` : "Click element"),
+                    target: {
+                        action: "click",
+                        model: this.state.currentContext?.model || null,
+                        field: picked?.name || null,
+                        target_key: picked?.target_key || null,
+                    },
+                },
+            ];
 
             this.state.recorderStepIndex = stepIndex;
             this.state.recorderNote = "";
@@ -2827,7 +3087,7 @@ export class AiSidebar extends Component {
 
             // Remove elements added by this module.
             item.querySelectorAll(
-                ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover, .ai-exercise-actions"
+                ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover, .ai-exercise-actions, .ai-quota-actions"
             ).forEach((el) => el.remove());
 
             const md =
@@ -2926,7 +3186,14 @@ export class AiSidebar extends Component {
             }
             data = await this.aiWs.chat({ message, context: safeContext });
         } catch (error) {
-            data = { error: true, response: error?.message || String(error) };
+            const isQuotaError = error?.code === "TRIAL_QUOTA_EXHAUSTED";
+            data = {
+                error: true,
+                error_code: isQuotaError ? "TRIAL_QUOTA_EXHAUSTED" : null,
+                response: isQuotaError
+                    ? _t("Your trial quota has finished. Get a subscription to continue on our plans page: https://odooconcept.com/pricing")
+                    : error?.message || String(error),
+            };
         }
         const text = this._prepareAssistantDisplayText(
             this._extractResponseText(data),
@@ -3070,6 +3337,13 @@ export class AiSidebar extends Component {
                 this._cancelPendingExerciseActions();
                 this.state.showButtons = false;
                 this.state.exerciseId = null;
+            }
+
+            if (response.raw?.error_code === "TRIAL_QUOTA_EXHAUSTED") {
+                setTimeout(
+                    () => this._scheduleQuotaActionsForLastMessage(receivedCountBefore + 1),
+                    0
+                );
             }
 
             if (isExerciseCompleted) {

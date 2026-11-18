@@ -18,6 +18,7 @@ import {
   isAuthenticationFailure,
   isTicketResponseValid,
 } from "./ws_ticket_protocol";
+import { TRIAL_QUOTA_EXHAUSTED_MESSAGE } from "./settings_navigation";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
@@ -490,7 +491,9 @@ export const aiWsService = {
           ) {
             const entry = st.pendingChats.shift();
             clearTimeout(entry.timer);
-            entry.reject(new Error(data.message));
+            const quotaError = new Error(TRIAL_QUOTA_EXHAUSTED_MESSAGE);
+            quotaError.code = "TRIAL_QUOTA_EXHAUSTED";
+            entry.reject(quotaError);
           }
 
           // ✅ Capturar session_id del backend

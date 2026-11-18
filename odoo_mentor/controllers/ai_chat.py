@@ -235,3 +235,159 @@ class AiChatController(http.Controller):
         }
         rec = env["ai.chat.feedback"].sudo().create(vals)
         return {"id": rec.id}
+
+    def _recording_proxy_context(self, required_group):
+        if not request.env.user.has_group(required_group):
+            return {"error": "You do not have permission for this recording action", "status": 403}, None
+        params = request.env["ir.config_parameter"].sudo()
+        activation_status = params.get_str("odoo_tutor.activation_status", "inactive")
+        if activation_status == "revoked":
+            return {"error": "Tutor service installation was revoked", "status": 403}, None
+        raw_installation_id = params.get_str("odoo_tutor.installation_id", "")
+        credential = params.get_str("odoo_tutor.installation_credential", "")
+        try:
+            installation_id = str(uuid.UUID(raw_installation_id))
+            api_base = backend_api_base_from_ws_url(self._get_ws_base_url())
+        except (TypeError, ValueError, UnicodeError):
+            return {"error": "Tutor installation is not configured", "status": 503}, None
+        if (
+            not isinstance(credential, str)
+            or not 32 <= len(credential) <= 4096
+            or any(ord(char) < 32 for char in credential)
+        ):
+            return {"error": "Tutor service installation is not active", "status": 401}, None
+        headers = {
+            "Authorization": "Bearer " + credential,
+            "X-Odoo-Database": request.env.cr.dbname,
+            "X-Odoo-User-Id": str(request.env.user.id),
+        }
+        base_path = f"{api_base}/odoo/installations/{installation_id}/recording-drafts"
+        return None, (base_path, headers)
+
+    @staticmethod
+    def _proxy_backend_response(response):
+        try:
+            body = response.json() if response.content else {}
+        except ValueError:
+            body = {}
+        if response.status_code >= 400:
+            detail = body.get("detail") if isinstance(body, dict) else None
+            return {
+                "error": detail or f"Recording service returned status {response.status_code}",
+                "status": response.status_code,
+            }
+        return {"ok": True, "data": body}
+
+    @http.route("/ai_chat/recording_drafts/save", type="jsonrpc", auth="user", methods=["POST"])
+    def save_recording_draft_proxy(self, draft=None, **kwargs):
+        err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_expert")
+        if err:
+            return err
+        if not isinstance(draft, dict):
+            return {"error": "Recording draft payload is required", "status": 422}
+        base_path, headers = ctx
+        try:
+            response = requests.put(
+                base_path,
+                json=draft,
+                headers=headers,
+                timeout=(3, 10),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Recording service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/recording_drafts/list", type="jsonrpc", auth="user", methods=["POST"])
+    def list_recording_drafts_proxy(self, offset=0, **kwargs):
+        err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_expert")
+        if err:
+            return err
+        base_path, headers = ctx
+        try:
+            safe_offset = max(0, int(offset or 0))
+            response = requests.get(
+                base_path,
+                params={"offset": safe_offset},
+                headers=headers,
+                timeout=(3, 10),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except (requests.RequestException, TypeError, ValueError):
+            return {"error": "Recording service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/recording_drafts/review_list", type="jsonrpc", auth="user", methods=["POST"])
+    def list_review_drafts_proxy(self, review_status=None, offset=0, **kwargs):
+        err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_reviewer")
+        if err:
+            return err
+        base_path, headers = ctx
+        params = {"offset": max(0, int(offset or 0))}
+        if review_status in {"pending_review", "approved", "rejected"}:
+            params["review_status"] = review_status
+        try:
+            response = requests.get(
+                f"{base_path}/review",
+                params=params,
+                headers=headers,
+                timeout=(3, 10),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Recording service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/recording_drafts/review_detail", type="jsonrpc", auth="user", methods=["POST"])
+    def review_draft_detail_proxy(self, recording_id=None, author_id=None, **kwargs):
+        err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_reviewer")
+        if err:
+            return err
+        try:
+            safe_id = str(uuid.UUID(str(recording_id)))
+        except (TypeError, ValueError):
+            return {"error": "Invalid recording ID", "status": 422}
+        base_path, headers = ctx
+        params = {"author_id": str(author_id)} if author_id else {}
+        try:
+            response = requests.get(
+                f"{base_path}/review/{safe_id}",
+                params=params,
+                headers=headers,
+                timeout=(3, 10),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Recording service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/recording_drafts/review_decision", type="jsonrpc", auth="user", methods=["POST"])
+    def review_draft_decision_proxy(
+        self, recording_id=None, decision=None, comment=None, author_id=None, **kwargs
+    ):
+        err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_reviewer")
+        if err:
+            return err
+        try:
+            safe_id = str(uuid.UUID(str(recording_id)))
+        except (TypeError, ValueError):
+            return {"error": "Invalid recording ID", "status": 422}
+        if decision not in {"approved", "rejected"}:
+            return {"error": "Invalid review decision", "status": 422}
+        payload = {"decision": decision}
+        if isinstance(comment, str) and comment.strip():
+            payload["comment"] = comment.strip()[:240]
+        if author_id is not None and str(author_id).strip():
+            payload["author_id"] = str(author_id).strip()[:240]
+        base_path, headers = ctx
+        try:
+            response = requests.post(
+                f"{base_path}/review/{safe_id}",
+                json=payload,
+                headers=headers,
+                timeout=(3, 10),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Recording service is unavailable", "status": 503}

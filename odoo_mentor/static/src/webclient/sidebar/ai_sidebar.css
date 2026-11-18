@@ -177,6 +177,30 @@
     background: var(--tutor-surface-soft);
 }
 
+#offcanvasAiSidebar .ai-sidebar-recorder-toggle {
+    height: 34px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: 1px solid var(--tutor-accent-strong);
+    background: var(--tutor-accent-strong);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: none;
+}
+
+#offcanvasAiSidebar .ai-sidebar-recorder-toggle:hover,
+#offcanvasAiSidebar .ai-sidebar-recorder-toggle:focus-visible {
+    background: var(--tutor-accent);
+    border-color: var(--tutor-accent);
+    color: #ffffff;
+}
+
 #offcanvasAiSidebar .ai-sidebar-brand-mark .oi {
     font-size: 17px;
 }
@@ -1062,6 +1086,34 @@
     text-align: left !important;
     text-indent: 0 !important;
     animation: tutor-exercise-choices-in 180ms ease-out both;
+}
+
+#chat-ui-container .ai-quota-actions {
+    display: flex !important;
+    align-self: flex-start !important;
+    justify-content: flex-start !important;
+    margin-top: 10px;
+}
+
+#chat-ui-container .ai-quota-plan-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 14px;
+    border-radius: 8px;
+    background: #714b67;
+    color: #fff !important;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none !important;
+    cursor: pointer;
+    transition: background-color 140ms ease, transform 140ms ease;
+}
+
+#chat-ui-container .ai-quota-plan-btn:hover {
+    background: #5b3b52;
+    color: #fff !important;
+    transform: translateY(-1px);
 }
 
 @keyframes tutor-exercise-choices-in {

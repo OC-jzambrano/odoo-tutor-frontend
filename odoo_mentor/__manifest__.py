@@ -9,6 +9,7 @@
     "live_test_url": "https://demo.iapps.bond/demo/start",
     "depends": ["base", "web"],
     "data": [
+        "security/odoo_tutor_security.xml",
         "security/ir.access.csv",
         "views/odoo_tutor_menus.xml",
         "views/res_config_settings_views.xml",

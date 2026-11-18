@@ -413,3 +413,19 @@ msgstr "Cuéntanos qué podemos mejorar..."
 #: odoo_mentor/static/src/webclient/sidebar/ai_sidebar.js:1
 msgid "Send"
 msgstr "Enviar"
+
+#. module: odoo_mentor
+#: odoo_mentor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+#: odoo_mentor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Your trial quota has finished. Get a subscription to continue on our plans page: https://odooconcept.com/pricing"
+msgstr "Tu cuota de prueba ha terminado. Consigue una suscripción para continuar en nuestra página de planes: https://odooconcept.com/pricing"
+
+#. module: odoo_mentor
+#: odoo_mentor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "Get a subscription"
+msgstr "Conseguir una suscripción"
+
+#. module: odoo_mentor
+#: odoo_mentor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
+msgid "View Plans"
+msgstr "Ver planes"
