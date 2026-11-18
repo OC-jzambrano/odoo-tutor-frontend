@@ -6,6 +6,7 @@
     "author": "Juan Zambrano <juanzamdev@gmail.com>, Odoo Concept",
     "support": "juanzamdev@gmail.com",
     "website": "https://odooconcept.com",
+    "live_test_url": "https://demo.iapps.bond/demo/start",
     "depends": ["base", "web"],
     "data": [
         "security/ir.access.csv",
