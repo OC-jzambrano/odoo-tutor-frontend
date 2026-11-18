@@ -34,7 +34,7 @@ services:
       - --database=odoo20_local
       - --db-filter=^odoo20_local$
       - --dev=assets,qweb
-      - --addons-path=/usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
+      - --addons-path=/usr/lib/python3/dist-packages/odoo/addons,/opt/extra-addons
     volumes:
       - odoo20_data:/var/lib/odoo
 

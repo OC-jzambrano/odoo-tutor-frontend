@@ -14,8 +14,8 @@ class AiChatFeedback(models.Model):
     # Identificador que recibes del frontend
     message_uid = fields.Char(required=True, index=True)
 
-    # (Opcional) si el mensaje existe como mail.message, lo linkeamos
-    mail_message_id = fields.Many2one("mail.message", index=True, ondelete="set null")
+    # (Opcional) si el mensaje existe como mail.message, guardamos su id sin acoplar depends a mail
+    mail_message_id = fields.Integer(index=True)
 
     # SNAPSHOT del contenido del mensaje al que se le hace feedback
     message_body_html = fields.Html(string="Message (HTML)", sanitize=False)
@@ -63,7 +63,7 @@ class AiChatFeedback(models.Model):
         - uid numérico (id de mail.message)
         - uid tipo Message-Id (cabecera email) en mail.message.message_id
         """
-        if not message_uid:
+        if not message_uid or "mail.message" not in self.env:
             return False
 
         MailMessage = self.env["mail.message"].sudo()
