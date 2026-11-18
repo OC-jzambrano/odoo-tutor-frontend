@@ -14,7 +14,10 @@ services:
       retries: 10
 
   odoo:
-    image: odoo:20.0
+    image: odoo-mentor:local
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       db:
         condition: service_healthy
@@ -34,7 +37,6 @@ services:
       - --addons-path=/usr/lib/python3/dist-packages/odoo/addons,/mnt/extra-addons
     volumes:
       - odoo20_data:/var/lib/odoo
-      - ./odoo_mentor:/mnt/extra-addons/odoo_mentor:ro
 
 volumes:
   odoo20_db_data:
