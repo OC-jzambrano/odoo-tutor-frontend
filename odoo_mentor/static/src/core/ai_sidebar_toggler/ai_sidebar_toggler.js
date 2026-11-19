@@ -535,7 +535,7 @@ class AiFloatingButton extends Component {
 
             if (msg.code === "TRIAL_QUOTA_EXHAUSTED") {
                 this.notificationService.add(
-                    _t("Your trial quota has finished. Get a subscription to continue on our plans page: https://odooconcept.com/pricing"),
+                    _t("Your trial quota has finished. Get a subscription to continue."),
                     {
                         type: "warning",
                         sticky: true,

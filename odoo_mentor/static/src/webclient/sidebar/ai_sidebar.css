@@ -1090,30 +1090,56 @@
 
 #chat-ui-container .ai-quota-actions {
     display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
     align-self: flex-start !important;
     justify-content: flex-start !important;
-    margin-top: 10px;
+    gap: 8px;
+    width: 100%;
+    margin: 10px 0 0 !important;
+    padding: 0 !important;
+    white-space: normal !important;
 }
 
+#chat-ui-container .nlux-comp-chatItem--received .ai-quota-actions,
+#chat-ui-container .nlux-comp-chatItem--received .ai-quota-actions * {
+    white-space: normal !important;
+    text-indent: 0 !important;
+}
+
+#chat-ui-container .nlux-comp-chatItem--received .ai-quota-plan-btn,
 #chat-ui-container .ai-quota-plan-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 7px 14px;
-    border-radius: 8px;
-    background: #714b67;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--tutor-accent, #714b67);
     color: #fff !important;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 600;
+    line-height: 1.25;
     text-decoration: none !important;
+    text-align: center;
     cursor: pointer;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
     transition: background-color 140ms ease, transform 140ms ease;
 }
 
+#chat-ui-container .nlux-comp-chatItem--received .ai-quota-plan-btn:hover,
 #chat-ui-container .ai-quota-plan-btn:hover {
-    background: #5b3b52;
+    background: var(--tutor-accent-strong, #5b3b52);
     color: #fff !important;
     transform: translateY(-1px);
+}
+
+@media (max-width: 480px) {
+    #chat-ui-container .nlux-comp-chatItem--received .ai-quota-plan-btn,
+    #chat-ui-container .ai-quota-plan-btn {
+        width: 100%;
+    }
 }
 
 @keyframes tutor-exercise-choices-in {
@@ -1946,7 +1972,10 @@
     white-space: normal !important;
 }
 
-#chat-ui-container .nlux-comp-chatItem--received .ai-exercise-choice-yes {
+#chat-ui-container .nlux-comp-chatItem--received .ai-exercise-choice-yes,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container .ai-quota-plan-btn,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble .ai-quota-plan-btn,
+#chat-ui-container .nlux-comp-chatItem--received .ai-quota-plan-btn {
     color: #fff !important;
 }
 

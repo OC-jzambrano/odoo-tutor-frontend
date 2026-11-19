@@ -25,7 +25,9 @@ describe("Tutor quota settings navigation", () => {
     openTutorPlans(fakeWindow);
 
     expect(TUTOR_PLANS_URL).toBe("https://odooconcept.com/pricing");
-    expect(TRIAL_QUOTA_EXHAUSTED_MESSAGE).toContain(TUTOR_PLANS_URL);
+    expect(TRIAL_QUOTA_EXHAUSTED_MESSAGE).toBe(
+      "Your trial quota has finished. Get a subscription to continue.",
+    );
     expect(fakeWindow.open).toHaveBeenCalledWith(
       TUTOR_PLANS_URL,
       "_blank",

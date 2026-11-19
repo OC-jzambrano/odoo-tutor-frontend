@@ -1746,17 +1746,14 @@ export class AiSidebar extends Component {
 
         const actions = document.createElement("div");
         actions.className = "ai-quota-actions";
-        actions.innerHTML = `
-            <a
-                class="ai-quota-plan-btn"
-                href="${this._escapeHtml(TUTOR_PLANS_URL)}"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="${this._escapeHtml(_t("Get a subscription"))}"
-            >
-                ${this._escapeHtml(_t("Get a subscription"))}
-            </a>
-        `;
+        const planLink = document.createElement("a");
+        planLink.className = "ai-quota-plan-btn";
+        planLink.href = TUTOR_PLANS_URL;
+        planLink.target = "_blank";
+        planLink.rel = "noopener noreferrer";
+        planLink.setAttribute("aria-label", _t("Get a subscription"));
+        planLink.textContent = _t("Get a subscription");
+        actions.appendChild(planLink);
 
         textBlock.appendChild(actions);
         return true;
@@ -3191,7 +3188,7 @@ export class AiSidebar extends Component {
                 error: true,
                 error_code: isQuotaError ? "TRIAL_QUOTA_EXHAUSTED" : null,
                 response: isQuotaError
-                    ? _t("Your trial quota has finished. Get a subscription to continue on our plans page: https://odooconcept.com/pricing")
+                    ? _t("Your trial quota has finished. Get a subscription to continue.")
                     : error?.message || String(error),
             };
         }
