@@ -17,6 +17,7 @@ import {
   isAuthenticatedAck,
   isAuthenticationFailure,
   isTicketResponseValid,
+  shouldRetryWithoutStoredSession,
 } from "./ws_ticket_protocol";
 import { TRIAL_QUOTA_EXHAUSTED_MESSAGE } from "./settings_navigation";
 
@@ -357,7 +358,8 @@ export const aiWsService = {
       return currentAttempt;
     }
 
-    async function connectInternal() {
+    async function connectInternal(options = {}) {
+      const skipStoredSession = Boolean(options?.skipStoredSession);
 
       // ✅ Si ya hay socket open o connecting, no crees otro
       if (
@@ -392,7 +394,7 @@ export const aiWsService = {
         odooSessionId: sess.session_id || null,
       };
 
-      const restoredSessionId = readStoredWsSession(sessionScope);
+      const restoredSessionId = skipStoredSession ? null : readStoredWsSession(sessionScope);
       if (restoredSessionId) {
         params.set("session_id", restoredSessionId);
       }
@@ -461,6 +463,22 @@ export const aiWsService = {
               clearTimeout(authTimer);
               settled = true;
               connectionFailed = true;
+              if (restoredSessionId) {
+                clearStoredWsSession();
+              }
+              if (
+                restoredSessionId &&
+                !skipStoredSession &&
+                shouldRetryWithoutStoredSession(data)
+              ) {
+                st.ws = null;
+                st.connectPromise = null;
+                try {
+                  ws.close(4003, "stale_session_retry");
+                } catch {}
+                connectInternal({ skipStoredSession: true }).then(resolve, reject);
+                return;
+              }
               setStatus(st, "error");
               ws.close(4003, "authentication_failed");
               reject(new Error(data.message || "WebSocket authentication failed"));

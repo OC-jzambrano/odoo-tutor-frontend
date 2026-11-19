@@ -32,3 +32,15 @@ export function isAuthenticationFailure(data) {
         data.success === false)
   );
 }
+
+export function shouldRetryWithoutStoredSession(data) {
+  if (!isAuthenticationFailure(data)) {
+    return false;
+  }
+  const msg = String(data?.message || data?.reason || data?.code || "").toLowerCase();
+  return (
+    msg.includes("another user") ||
+    msg.includes("session") ||
+    msg.includes("not found")
+  );
+}

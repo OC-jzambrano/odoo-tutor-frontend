@@ -4,6 +4,7 @@ import {
   isAuthenticatedAck,
   isAuthenticationFailure,
   isTicketResponseValid,
+  shouldRetryWithoutStoredSession,
 } from "../../../odoo_mentor/static/src/core/ws_ticket_protocol.js";
 
 describe("WebSocket ticket protocol", () => {
@@ -29,5 +30,17 @@ describe("WebSocket ticket protocol", () => {
     expect(isAuthenticatedAck({ type: "connection_established" })).toBe(false);
     expect(isAuthenticationFailure({ type: "authentication_failed", success: false })).toBe(true);
     expect(isAuthenticationFailure({ type: "error" })).toBe(true);
+    expect(
+      shouldRetryWithoutStoredSession({
+        type: "error",
+        message: "WebSocket session belongs to another user",
+      }),
+    ).toBe(true);
+    expect(
+      shouldRetryWithoutStoredSession({
+        type: "authentication_failed",
+        message: "Invalid ticket signature",
+      }),
+    ).toBe(false);
   });
 });
