@@ -9,7 +9,7 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
-import { openTutorPlans, openTutorSettings } from "../settings_navigation";
+import { openTutorPlans, openTutorSettings, TUTOR_PLANS_URL } from "../settings_navigation";
 // Helpers
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
@@ -445,6 +445,7 @@ class AiFloatingButton extends Component {
             previewTick: Date.now(),
             previewCopyTargets: [],
             previewCopiedText: null,
+            previewQuotaCtaVisible: false,
             exerciseCtaVisible: false,
             exerciseCtaId: null,
             exerciseCtaStatus: "",
@@ -463,15 +464,19 @@ class AiFloatingButton extends Component {
         this.state.previewCopyTargets = Array.isArray(previewState.copyTargets)
             ? previewState.copyTargets
             : [];
+        this.state.previewQuotaCtaVisible = !!previewState.quotaCtaVisible;
         this.state.exerciseCtaVisible = !!exerciseCtaState.visible;
         this.state.exerciseCtaId = exerciseCtaState.exerciseId || null;
         this.state.exerciseCtaStatus = exerciseCtaState.status || "";
+        this.tutorPlansUrl = TUTOR_PLANS_URL;
+        this.onQuotaPlanClick = () => openTutorPlans();
 
         this._syncPreviewState = () => {
             previewState.message = this.state.previewMessage;
             previewState.timestamp = this.state.previewTimestamp;
             previewState.visible = this.state.previewVisible;
             previewState.copyTargets = this.state.previewCopyTargets;
+            previewState.quotaCtaVisible = this.state.previewQuotaCtaVisible;
         };
 
         this._applyExerciseCtaState = (data = getExerciseCtaState()) => {
@@ -489,7 +494,7 @@ class AiFloatingButton extends Component {
             }
         };
 
-        this._setPreviewMessage = (text, timestamp, copyTargets = []) => {
+        this._setPreviewMessage = (text, timestamp, copyTargets = [], options = {}) => {
             const cleaned = translateKnownTutorText(text);
             if (!cleaned) return;
 
@@ -501,6 +506,7 @@ class AiFloatingButton extends Component {
             this.state.previewTick = Date.now();
             this.state.previewCopyTargets = Array.isArray(copyTargets) ? copyTargets : [];
             this.state.previewCopiedText = null;
+            this.state.previewQuotaCtaVisible = Boolean(options?.quotaCta);
 
             const offcanvasEl = document.getElementById("offcanvasAiSidebar");
             const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
@@ -534,8 +540,10 @@ class AiFloatingButton extends Component {
             if (!msg || typeof msg !== "object") return;
 
             if (msg.code === "TRIAL_QUOTA_EXHAUSTED") {
+                const quotaText = _t("Your trial quota has finished. Get a subscription to continue.");
+                this._setPreviewMessage(quotaText, msg.timestamp, [], { quotaCta: true });
                 this.notificationService.add(
-                    _t("Your trial quota has finished. Get a subscription to continue."),
+                    quotaText,
                     {
                         type: "warning",
                         sticky: true,
@@ -731,6 +739,7 @@ class AiFloatingButton extends Component {
                 this.state.previewTick = Date.now();
                 this.state.previewCopyTargets = [];
                 this.state.previewCopiedText = null;
+                this.state.previewQuotaCtaVisible = false;
                 this._syncPreviewState?.();
             };
 

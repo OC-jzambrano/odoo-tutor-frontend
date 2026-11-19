@@ -15,6 +15,10 @@ const sidebarCss = fs.readFileSync(
   path.join(ROOT, "odoo_mentor/static/src/webclient/sidebar/ai_sidebar.css"),
   "utf8",
 );
+const togglerCss = fs.readFileSync(
+  path.join(ROOT, "odoo_mentor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.css"),
+  "utf8",
+);
 const avatarBase64 = fs
   .readFileSync(path.join(ROOT, "odoo_mentor/static/images/iabotv2.png"))
   .toString("base64");
@@ -151,24 +155,93 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
 </html>`;
 }
 
+function buildFloatingBubbleHtml({ viewportWidth = 1280, viewportHeight = 760 } = {}) {
+  const dragX = Math.max(16, viewportWidth - 116);
+  const dragY = Math.max(240, viewportHeight - 120);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f1f5f9;
+  }
+  ${togglerCss}
+</style>
+</head>
+<body>
+  <div
+    class="ai-floating-button has-preview"
+    style="transform: translate3d(${dragX}px, ${dragY}px, 0);"
+  >
+    <div class="ai-owl-preview" role="button" tabindex="0">
+      <button type="button" class="ai-owl-preview-close" aria-label="Close preview">×</button>
+      <div class="ai-owl-preview-time">Just now</div>
+      <div class="ai-owl-preview-text">Your trial quota has finished. Get a subscription to continue.</div>
+      <div class="ai-owl-quota-actions" role="group" aria-label="Subscription actions">
+        <a
+          class="ai-owl-quota-plan-btn"
+          href="https://odooconcept.com/pricing"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Get a subscription</a>
+      </div>
+      <div class="ai-owl-preview-tail"></div>
+    </div>
+
+    <button class="ai-owl-trigger" type="button" aria-label="Open Odoo Tutor">
+      <span class="ai-owl-trigger-halo"></span>
+      <span class="ai-owl-trigger-shell">
+        <span class="ai-owl-trigger-core">
+          <img src="${avatarDataUrl}" alt="AI Assistant" class="ai-owl-trigger-img" />
+        </span>
+      </span>
+      <span class="ai-owl-trigger-badge">AI</span>
+    </button>
+  </div>
+</body>
+</html>`;
+}
+
 const SCENARIOS = [
   {
     name: "sidebar-desktop-light",
+    kind: "sidebar",
     theme: "light",
     viewport: { width: 1280, height: 760 },
     sidebarWidth: "420px",
   },
   {
     name: "sidebar-desktop-dark",
+    kind: "sidebar",
     theme: "dark",
     viewport: { width: 1280, height: 760 },
     sidebarWidth: "420px",
   },
   {
     name: "sidebar-mobile-light",
+    kind: "sidebar",
     theme: "light",
     viewport: { width: 390, height: 760 },
     sidebarWidth: "100%",
+  },
+  {
+    name: "floating-bubble-desktop",
+    kind: "floating",
+    viewport: { width: 1280, height: 760 },
+  },
+  {
+    name: "floating-bubble-mobile",
+    kind: "floating",
+    viewport: { width: 390, height: 760 },
   },
 ];
 
@@ -181,41 +254,86 @@ async function run() {
   try {
     for (const scenario of SCENARIOS) {
       const page = await browser.newPage({ viewport: scenario.viewport });
-      await page.setContent(buildFixtureHtml(scenario), { waitUntil: "load" });
-      await page.waitForTimeout(250);
+      const html =
+        scenario.kind === "floating"
+          ? buildFloatingBubbleHtml({
+              viewportWidth: scenario.viewport.width,
+              viewportHeight: scenario.viewport.height,
+            })
+          : buildFixtureHtml(scenario);
+      await page.setContent(html, { waitUntil: "load" });
+      await page.waitForTimeout(300);
 
       const screenshotPath = path.join(OUT_DIR, `${scenario.name}.png`);
-      await page.locator("#offcanvasAiSidebar").screenshot({ path: screenshotPath });
+      let metrics;
 
-      const metrics = await page.evaluate(() => {
-        const sidebar = document.querySelector("#offcanvasAiSidebar");
-        const quotaItem = document.querySelector('[data-testid="quota-item"]');
-        const quotaBubble = quotaItem.querySelector(".nlux-markdown-container");
-        const quotaBtn = quotaItem.querySelector(".ai-quota-plan-btn");
-        const yesBtn = document.querySelector(".ai-exercise-choice-yes");
+      if (scenario.kind === "floating") {
+        const clip = await page.evaluate(() => {
+          const preview = document.querySelector(".ai-owl-preview").getBoundingClientRect();
+          const trigger = document.querySelector(".ai-owl-trigger").getBoundingClientRect();
+          const pad = 16;
+          const x = Math.max(0, Math.floor(Math.min(preview.left, trigger.left) - pad));
+          const y = Math.max(0, Math.floor(Math.min(preview.top, trigger.top) - pad));
+          const right = Math.min(window.innerWidth, Math.ceil(Math.max(preview.right, trigger.right) + pad));
+          const bottom = Math.min(window.innerHeight, Math.ceil(Math.max(preview.bottom, trigger.bottom) + pad));
+          return { x, y, width: right - x, height: bottom - y };
+        });
+        await page.screenshot({ path: screenshotPath, clip });
 
-        const sidebarRect = sidebar.getBoundingClientRect();
-        const bubbleRect = quotaBubble.getBoundingClientRect();
-        const btnRect = quotaBtn.getBoundingClientRect();
-        const btnStyle = getComputedStyle(quotaBtn);
-        const yesStyle = getComputedStyle(yesBtn);
+        metrics = await page.evaluate(() => {
+          const preview = document.querySelector(".ai-owl-preview");
+          const btn = document.querySelector(".ai-owl-quota-plan-btn");
+          const previewRect = preview.getBoundingClientRect();
+          const btnRect = btn.getBoundingClientRect();
+          const btnStyle = getComputedStyle(btn);
+          return {
+            quotaBtn: {
+              color: btnStyle.color,
+              backgroundColor: btnStyle.backgroundColor,
+              whiteSpace: btnStyle.whiteSpace,
+              height: Math.round(btnRect.height),
+              width: Math.round(btnRect.width),
+              fitsBubble:
+                btnRect.left >= previewRect.left - 1 &&
+                btnRect.right <= previewRect.right + 1,
+              fitsSidebar: previewRect.left >= 0 && previewRect.right <= window.innerWidth + 1,
+            },
+            horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+          };
+        });
+      } else {
+        await page.locator("#offcanvasAiSidebar").screenshot({ path: screenshotPath });
 
-        return {
-          quotaBtn: {
-            color: btnStyle.color,
-            backgroundColor: btnStyle.backgroundColor,
-            whiteSpace: btnStyle.whiteSpace,
-            height: Math.round(btnRect.height),
-            width: Math.round(btnRect.width),
-            fitsBubble:
-              btnRect.left >= bubbleRect.left - 1 &&
-              btnRect.right <= bubbleRect.right + 1,
-            fitsSidebar: btnRect.right <= sidebarRect.right + 1,
-          },
-          yesBtnColor: yesStyle.color,
-          horizontalOverflow: sidebar.scrollWidth > sidebar.clientWidth + 1,
-        };
-      });
+        metrics = await page.evaluate(() => {
+          const sidebar = document.querySelector("#offcanvasAiSidebar");
+          const quotaItem = document.querySelector('[data-testid="quota-item"]');
+          const quotaBubble = quotaItem.querySelector(".nlux-markdown-container");
+          const quotaBtn = quotaItem.querySelector(".ai-quota-plan-btn");
+          const yesBtn = document.querySelector(".ai-exercise-choice-yes");
+
+          const sidebarRect = sidebar.getBoundingClientRect();
+          const bubbleRect = quotaBubble.getBoundingClientRect();
+          const btnRect = quotaBtn.getBoundingClientRect();
+          const btnStyle = getComputedStyle(quotaBtn);
+          const yesStyle = getComputedStyle(yesBtn);
+
+          return {
+            quotaBtn: {
+              color: btnStyle.color,
+              backgroundColor: btnStyle.backgroundColor,
+              whiteSpace: btnStyle.whiteSpace,
+              height: Math.round(btnRect.height),
+              width: Math.round(btnRect.width),
+              fitsBubble:
+                btnRect.left >= bubbleRect.left - 1 &&
+                btnRect.right <= bubbleRect.right + 1,
+              fitsSidebar: btnRect.right <= sidebarRect.right + 1,
+            },
+            yesBtnColor: yesStyle.color,
+            horizontalOverflow: sidebar.scrollWidth > sidebar.clientWidth + 1,
+          };
+        });
+      }
 
       report.push({
         scenario: scenario.name,

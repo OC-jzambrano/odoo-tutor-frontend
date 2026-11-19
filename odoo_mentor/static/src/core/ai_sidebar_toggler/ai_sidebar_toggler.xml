@@ -60,6 +60,24 @@
                             </t>
                         </div>
 
+                        <t t-if="this.state.previewQuotaCtaVisible">
+                            <div class="ai-owl-quota-actions"
+                                 role="group"
+                                 t-att-aria-label="this.translate('Subscription actions')">
+                                <a
+                                    class="ai-owl-quota-plan-btn"
+                                    t-att-href="this.tutorPlansUrl"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    t-on-mousedown.stop.prevent="this.noop"
+                                    t-on-touchstart.stop.prevent="this.noop"
+                                    t-on-click.stop.prevent="this.onQuotaPlanClick"
+                                >
+                                    <t t-out="this.translate('Get a subscription')"/>
+                                </a>
+                            </div>
+                        </t>
+
                         <t t-if="this.launcherExerciseCtaVisible">
                             <div class="ai-owl-exercise-actions"
                                  role="group"

@@ -448,6 +448,45 @@
     color: var(--tutor-float-text-muted);
 }
 
+.ai-owl-quota-actions {
+    position: relative !important;
+    z-index: 2;
+    width: 100% !important;
+    margin-top: 10px;
+    display: flex !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    pointer-events: auto !important;
+}
+
+.ai-owl-quota-plan-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--tutor-float-accent), var(--tutor-float-accent-strong));
+    color: #fff !important;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.25;
+    text-decoration: none !important;
+    text-align: center;
+    white-space: normal !important;
+    cursor: pointer !important;
+    box-shadow: var(--tutor-float-shadow-soft);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.ai-owl-quota-plan-btn:hover {
+    color: #fff !important;
+    transform: translateY(-1px);
+    box-shadow: var(--tutor-float-shadow);
+}
+
 /* Prevent accidental text selection while dragging. */
 body.ai-widget-dragging,
 body.ai-widget-dragging * {
@@ -511,5 +550,9 @@ body.ai-widget-dragging * {
     .ai-owl-exercise-actions {
         margin-top: 10px;
         justify-content: flex-start !important;
+    }
+
+    .ai-owl-quota-plan-btn {
+        width: 100%;
     }
 }
