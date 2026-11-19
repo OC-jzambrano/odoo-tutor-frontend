@@ -1050,7 +1050,9 @@
 }
 
 #chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container:has(.ai-exercise-actions),
-#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble:has(.ai-exercise-actions) {
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble:has(.ai-exercise-actions),
+#chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container:has(.ai-quota-actions),
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble:has(.ai-quota-actions) {
     align-items: flex-start !important;
     gap: 0 !important;
     min-height: 0 !important;
@@ -1062,7 +1064,9 @@
 }
 
 #chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container:has(.ai-exercise-actions) p:last-of-type,
-#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble:has(.ai-exercise-actions) p:last-of-type {
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble:has(.ai-exercise-actions) p:last-of-type,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container:has(.ai-quota-actions) p:last-of-type,
+#chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble:has(.ai-quota-actions) p:last-of-type {
     margin-bottom: 0 !important;
 }
 
