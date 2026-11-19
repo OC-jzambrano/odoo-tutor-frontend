@@ -103,3 +103,22 @@ def test_activation_attempts_use_a_rolling_window_and_reject_malformed_state():
         [900, 950, "bad", True, 700], 1000, 200
     ) == [900, 950]
     assert CONFIG.recent_activation_attempts({"unexpected": 1}, 1000, 200) == []
+
+
+def test_dev_environment_allows_loopback_http_and_ws_only(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "prod")
+    with pytest.raises(ValueError):
+        CONFIG.canonical_https_origin("http://localhost:8069")
+    with pytest.raises(ValueError):
+        CONFIG.backend_api_base_from_ws_url("ws://localhost:8001/ws")
+
+    monkeypatch.setenv("APP_ENV", "dev")
+    assert CONFIG.canonical_https_origin("http://localhost:8069") == "http://localhost:8069"
+    assert (
+        CONFIG.backend_api_base_from_ws_url("ws://localhost:8001/ws")
+        == "http://localhost:8001"
+    )
+    with pytest.raises(ValueError):
+        CONFIG.canonical_https_origin("http://odoo.example.com")
+    with pytest.raises(ValueError):
+        CONFIG.backend_api_base_from_ws_url("ws://tutor.example.com/ws")

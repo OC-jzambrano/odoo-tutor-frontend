@@ -1,7 +1,7 @@
 import uuid
 from odoo import api, fields, models
 
-from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
+from ..constants import default_chatbot_ws_base_url
 
 
 class ResConfigSettings(models.TransientModel):
@@ -32,7 +32,7 @@ class ResConfigSettings(models.TransientModel):
         if not params.get_str("odoo_tutor.installation_id", ""):
             params.set_str("odoo_tutor.installation_id", str(uuid.uuid4()))
         if not params.get_str("odoo_tutor.chatbot_ws_base_url", ""):
-            params.set_str("odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL)
+            params.set_str("odoo_tutor.chatbot_ws_base_url", default_chatbot_ws_base_url())
 
     @api.model
     def _register_hook(self):
@@ -45,7 +45,7 @@ class ResConfigSettings(models.TransientModel):
         params = self.env["ir.config_parameter"].sudo()
         params.set_str(
             "odoo_tutor.chatbot_ws_base_url",
-            (self.chatbot_ws_base_url or DEFAULT_CHATBOT_WS_BASE_URL).strip(),
+            (self.chatbot_ws_base_url or default_chatbot_ws_base_url()).strip(),
         )
         params.set_str("odoo_tutor.llm_provider", self.chatbot_llm_provider or "openai")
         if self.chatbot_llm_api_key:
@@ -57,7 +57,7 @@ class ResConfigSettings(models.TransientModel):
         res = super().get_values()
         params = self.env["ir.config_parameter"].sudo()
         res.update(
-            chatbot_ws_base_url=params.get_str("odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL),
+            chatbot_ws_base_url=params.get_str("odoo_tutor.chatbot_ws_base_url", default_chatbot_ws_base_url()),
             chatbot_installation_id=params.get_str("odoo_tutor.installation_id", ""),
             chatbot_activation_status=params.get_str("odoo_tutor.activation_status", "inactive"),
             chatbot_llm_provider=params.get_str("odoo_tutor.llm_provider", "openai"),

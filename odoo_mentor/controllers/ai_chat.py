@@ -7,7 +7,7 @@ from urllib.parse import urlsplit, urlunsplit
 from odoo import http
 from odoo.http import request
 
-from ..constants import DEFAULT_CHATBOT_WS_BASE_URL
+from ..constants import DEFAULT_CHATBOT_WS_BASE_URL, default_chatbot_ws_base_url
 from ..services.tutor_service_config import (
     backend_api_base_from_ws_url,
     canonical_https_origin,
@@ -15,6 +15,18 @@ from ..services.tutor_service_config import (
     parse_activation_response,
 )
 from .ai.ai_bot import AiBot
+
+
+def _server_api_base_for_request(api_base):
+    """Rewrite localhost API targets to host.docker.internal when running in Docker."""
+    if not os.path.exists("/.dockerenv"):
+        return api_base
+    parsed = urlsplit(api_base)
+    host = parsed.hostname
+    if host in {"localhost", "127.0.0.1"}:
+        netloc = f"host.docker.internal:{parsed.port}" if parsed.port else "host.docker.internal"
+        return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+    return api_base
 
 
 class AiChatController(http.Controller):
@@ -26,12 +38,13 @@ class AiChatController(http.Controller):
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
     def _get_ws_base_url(self):
+        default_ws_url = default_chatbot_ws_base_url()
         ws_base_url = (
             request.env["ir.config_parameter"]
             .sudo()
-            .get_str("odoo_tutor.chatbot_ws_base_url", DEFAULT_CHATBOT_WS_BASE_URL)
+            .get_str("odoo_tutor.chatbot_ws_base_url", default_ws_url)
         )
-        return (ws_base_url or "").strip() or DEFAULT_CHATBOT_WS_BASE_URL
+        return (ws_base_url or "").strip() or default_ws_url
 
     @http.route("/ai_chat/ws_config", type="jsonrpc", auth="user")
     def ws_config(self, **kwargs):
@@ -56,7 +69,9 @@ class AiChatController(http.Controller):
                 or request.httprequest.url_root
                 or params.get_str("web.base.url", "")
             )
-            api_base = backend_api_base_from_ws_url(self._get_ws_base_url())
+            api_base = _server_api_base_for_request(
+                backend_api_base_from_ws_url(self._get_ws_base_url())
+            )
         except (TypeError, ValueError, UnicodeError):
             return {"error": "Odoo public HTTPS URL is not configured"}
         if not credential:
@@ -247,7 +262,9 @@ class AiChatController(http.Controller):
         credential = params.get_str("odoo_tutor.installation_credential", "")
         try:
             installation_id = str(uuid.UUID(raw_installation_id))
-            api_base = backend_api_base_from_ws_url(self._get_ws_base_url())
+            api_base = _server_api_base_for_request(
+                backend_api_base_from_ws_url(self._get_ws_base_url())
+            )
         except (TypeError, ValueError, UnicodeError):
             return {"error": "Tutor installation is not configured", "status": 503}, None
         if (

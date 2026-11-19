@@ -1,11 +1,32 @@
 """Validate public Odoo origins and derive the HTTPS service API endpoint."""
 
+import ipaddress
 import math
+import os
 from urllib.parse import urlsplit
+
+_DEV_ENV_VALUES = {"dev", "development", "local"}
+
+
+def _is_dev_environment():
+    return os.getenv("APP_ENV", "prod").strip().lower() in _DEV_ENV_VALUES
+
+
+def _is_loopback_host(hostname):
+    if hostname == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
 
 
 def canonical_https_origin(value):
-    """Return a canonical HTTPS origin, rejecting paths and wildcard hosts."""
+    """Return a canonical origin, requiring HTTPS in production.
+
+    In explicit local dev mode (``APP_ENV=dev``), loopback HTTP origins such as
+    ``http://localhost:8069`` are also accepted.
+    """
     if not isinstance(value, str) or not value or len(value) > 2048:
         raise ValueError("invalid_origin")
     if value != value.strip() or "*" in value or "\\" in value:
@@ -17,7 +38,7 @@ def canonical_https_origin(value):
         raise ValueError("invalid_origin") from exc
     hostname = parsed.hostname
     if (
-        parsed.scheme != "https"
+        parsed.scheme not in ("https", "http")
         or not hostname
         or parsed.username
         or parsed.password
@@ -35,14 +56,21 @@ def canonical_https_origin(value):
     hostname = hostname.rstrip(".")
     if not hostname or hostname.startswith("."):
         raise ValueError("invalid_origin")
+    if parsed.scheme == "http" and not (_is_dev_environment() and _is_loopback_host(hostname)):
+        raise ValueError("invalid_origin")
     authority = f"[{hostname}]" if ":" in hostname else hostname
-    if port not in (None, 443):
+    default_port = 443 if parsed.scheme == "https" else 80
+    if port not in (None, default_port):
         authority = f"{authority}:{port}"
-    return f"https://{authority}"
+    return f"{parsed.scheme}://{authority}"
 
 
 def backend_api_base_from_ws_url(value):
-    """Derive the HTTPS API origin from a configured WSS endpoint."""
+    """Derive the HTTP(S) API origin from a configured WS(S) endpoint.
+
+    Production requires ``wss://``. In explicit local dev mode (``APP_ENV=dev``),
+    loopback ``ws://localhost:*`` / ``ws://127.0.0.1:*`` endpoints are also accepted.
+    """
     if not isinstance(value, str) or not value or len(value) > 2048:
         raise ValueError("invalid_websocket_url")
     try:
@@ -52,7 +80,7 @@ def backend_api_base_from_ws_url(value):
         raise ValueError("invalid_websocket_url") from exc
     hostname = parsed.hostname
     if (
-        parsed.scheme != "wss"
+        parsed.scheme not in ("wss", "ws")
         or not hostname
         or parsed.username
         or parsed.password
@@ -63,10 +91,14 @@ def backend_api_base_from_ws_url(value):
     ):
         raise ValueError("invalid_websocket_url")
     hostname = hostname.encode("idna").decode("ascii").lower()
+    if parsed.scheme == "ws" and not (_is_dev_environment() and _is_loopback_host(hostname)):
+        raise ValueError("invalid_websocket_url")
+    http_scheme = "https" if parsed.scheme == "wss" else "http"
+    default_port = 443 if http_scheme == "https" else 80
     authority = f"[{hostname}]" if ":" in hostname else hostname
-    if port not in (None, 443):
+    if port not in (None, default_port):
         authority = f"{authority}:{port}"
-    return f"https://{authority}"
+    return f"{http_scheme}://{authority}"
 
 
 def parse_activation_response(body, expected_installation_id):

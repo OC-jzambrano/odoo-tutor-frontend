@@ -27,6 +27,7 @@ services:
       HOST: db
       USER: odoo
       PASSWORD: odoo
+      APP_ENV: "dev"
       ODOO_TUTOR_ENABLE_SKIP_STEP: "true"
     command:
       - odoo
