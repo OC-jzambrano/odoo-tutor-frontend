@@ -41,6 +41,7 @@ Try it out by sending the chatbot a message like this:
     ],
     "images": [
         "static/description/banner.png",
+        "static/description/demo_sales_quotation.gif",
         "static/description/tutor_crm_exercise.png",
         "static/description/tutor_welcome_preview.png",
     ],
