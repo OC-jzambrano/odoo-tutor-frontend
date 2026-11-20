@@ -11,6 +11,7 @@ import {
 
 const X2MANY_SELECTOR = ".o_field_one2many, .o_field_many2many";
 const ROW_SELECTOR = ".o_data_row, .o_kanban_record";
+const FORM_ALERT_SELECTOR = ".o_form_view .alert.alert-warning, .o_form_view .alert.alert-danger";
 
 export const interactionObserverService = {
   dependencies: ["ai_ws", "context_service"],
@@ -18,10 +19,19 @@ export const interactionObserverService = {
   start(_env, { ai_ws: aiWs, context_service: contextService }) {
     const rowCounts = new WeakMap();
     const seenNotifications = new WeakSet();
+    const seenFormAlerts = new WeakMap();
     let dragged = null;
     let searchTimer = null;
 
-    const context = () => contextService?.getContext?.() || {};
+    const context = (element = null) => {
+      const ctx = contextService?.getContext?.() || {};
+      if (ctx.model || !element) return ctx;
+      const domModel =
+        element.getAttribute?.("data-odoo-model") ||
+        element.closest?.("[data-odoo-model]")?.getAttribute?.("data-odoo-model") ||
+        null;
+      return domModel ? { ...ctx, model: domModel } : ctx;
+    };
     const send = (event) => {
       if (!event) return;
       aiWs?.sendEvent?.({
@@ -144,10 +154,24 @@ export const interactionObserverService = {
           send(
             buildX2ManyRowEvent(
               { field, before: previous, after: count },
-              context()
+              context(widget)
             )
           );
         }
+      });
+
+      document.querySelectorAll(FORM_ALERT_SELECTOR).forEach((alertEl) => {
+        if (!alertEl.getClientRects?.().length) return;
+        const message = (alertEl.textContent || "").replace(/\s+/g, " ").trim();
+        if (!message || seenFormAlerts.get(alertEl) === message) return;
+        seenFormAlerts.set(alertEl, message);
+        const type = alertEl.classList.contains("alert-danger") ? "danger" : "warning";
+        send(
+          buildNotificationShownEvent(
+            { type, message },
+            context(alertEl.querySelector("[data-odoo-model]") || alertEl)
+          )
+        );
       });
 
       if (searchChanged) {

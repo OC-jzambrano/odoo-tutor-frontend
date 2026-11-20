@@ -103,7 +103,7 @@ function describeTarget(el) {
     };
 }
 
-/** ✅ ESTA FUNCIÓN FALTABA / quedaba fuera de scope */
+// Create the visual overlay and label for element picking.
 function createPickerOverlay() {
     const overlay = document.createElement("div");
     overlay.className = "o_ai_picker_overlay";
@@ -413,7 +413,7 @@ export const aiRecorderService = {
             lastSeen.clear();
         }
 
-        // ✅ Picker robusto (sin dependencia rota)
+        // Let the user interactively pick a DOM target element.
         async function pickTarget({ timeoutMs = 30000 } = {}) {
             if (pickerActive) return null;
             pickerActive = true;

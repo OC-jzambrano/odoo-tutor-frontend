@@ -1,11 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-// Regression test: the context hint is a floating overlay anchored above the
-// composer, like a popup/mini-modal — it is allowed to visually sit on top
-// of the last chat message. What it must never do is reserve scroll space
-// (padding-bottom) in the conversation container, because that shifts the
-// message list itself, making the hint look like it's "part of" the chat
-// flow instead of a popup in front of it. See ai_sidebar.js#_syncHintScrollPadding.
+// Ensure the floating context hint overlays the chat without reserving scroll padding.
 test("context hint overlays the chat without shifting the message layout", async ({ page }) => {
   let wsRef;
 
@@ -52,9 +47,7 @@ test("context hint overlays the chat without shifting the message layout", async
     page.getByText("Create the task Design inside the project.", { exact: true }).first(),
   ).toBeVisible();
 
-  // Push two more tutor instructions so the conversation fills toward the
-  // bottom of the scroll area, matching the real-world scenario in the bug
-  // report where several message bubbles already sat near the composer.
+  // Push two more tutor instructions to fill the conversation near the composer.
   wsRef.send(
     JSON.stringify({
       type: "tutor_push",
@@ -93,8 +86,7 @@ test("context hint overlays the chat without shifting the message layout", async
   const hint = page.locator(".ai-inline-hint");
   await expect(hint).toBeVisible();
 
-  // The message must not have shifted to make room for the hint — the hint
-  // is a popup that floats in front of the chat, not an extra chat bubble.
+  // Verify the floating hint did not shift the last chat message position.
   const messageBoxAfter = await lastMessage.boundingBox();
   expect(messageBoxAfter).not.toBeNull();
   expect(messageBoxAfter.y).toBeCloseTo(messageBoxBefore.y, 0);

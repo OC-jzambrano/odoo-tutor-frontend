@@ -11,13 +11,13 @@ class AiChatFeedback(models.Model):
         "res.users", required=True, default=lambda self: self.env.user, index=True
     )
 
-    # Identificador que recibes del frontend
+    # Message identifier received from the frontend.
     message_uid = fields.Char(required=True, index=True)
 
-    # (Opcional) si el mensaje existe como mail.message, guardamos su id sin acoplar depends a mail
+    # Optional mail.message ID stored without coupling depends to mail.
     mail_message_id = fields.Integer(index=True)
 
-    # SNAPSHOT del contenido del mensaje al que se le hace feedback
+    # Snapshot of the message content being rated.
     message_body_html = fields.Html(string="Message (HTML)", sanitize=False)
     message_body_text = fields.Text(string="Message (Text)", index=False)
 
@@ -34,19 +34,16 @@ class AiChatFeedback(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        """
-        Garantiza que se guarde el contenido del mensaje aunque luego lo borren,
-        y si podemos, enlazamos el mail.message.
-        """
+        """Store a message snapshot and link mail.message when available."""
         for vals in vals_list:
-            # 1) Normaliza texto/html si vino uno solo
+            # Populate plain text when only HTML is provided.
             if vals.get("message_body_html") and not vals.get("message_body_text"):
                 vals["message_body_text"] = html2plaintext(vals["message_body_html"] or "")
             elif vals.get("message_body_text") and not vals.get("message_body_html"):
-                # si te llega texto plano, lo dejamos en text; html puede quedar vacío
+                # Keep plain text only when HTML is omitted.
                 pass
 
-            # 2) Si no vino contenido, intenta resolverlo desde mail.message usando message_uid
+            # Resolve missing content from mail.message using message_uid.
             if not vals.get("message_body_html") and not vals.get("message_body_text"):
                 msg = self._resolve_mail_message(vals.get("message_uid"))
                 if msg:
@@ -57,22 +54,17 @@ class AiChatFeedback(models.Model):
         return super().create(vals_list)
 
     def _resolve_mail_message(self, message_uid):
-        """
-        Intenta mapear message_uid a un mail.message.
-        Soporta:
-        - uid numérico (id de mail.message)
-        - uid tipo Message-Id (cabecera email) en mail.message.message_id
-        """
+        """Resolve message_uid to a mail.message by numeric ID or Message-Id."""
         if not message_uid or "mail.message" not in self.env:
             return False
 
         MailMessage = self.env["mail.message"].sudo()
 
-        # Caso 1: uid es un id numérico
+        # Match numeric mail.message ID.
         if str(message_uid).isdigit():
             msg = MailMessage.browse(int(message_uid))
             return msg if msg.exists() else False
 
-        # Caso 2: uid coincide con message_id (cabecera) o similar
+        # Match email Message-Id header.
         msg = MailMessage.search([("message_id", "=", message_uid)], limit=1)
         return msg or False

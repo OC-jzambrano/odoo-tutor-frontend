@@ -156,9 +156,7 @@ patch(actionService, {
       aiWs?.sendLiveContext?.({ context_model: model, route, force: !!opts.force });
     };
 
-    // ---------
-    // ✅ BOOT PROBE: al recargar, a veces currentController tarda en existir
-    // ---------
+    // Poll briefly on boot because currentController may initialize asynchronously.
     const bootProbe = () => {
       const maxMs = 3000;
       const stepMs = 120;
@@ -175,15 +173,13 @@ patch(actionService, {
         }
       };
 
-      // 1er intento próximo frame + reintentos
+      // Schedule initial check on next animation frame.
       requestAnimationFrame(() => setTimeout(tick, 0));
     };
 
     bootProbe();
 
-    // ---------
-    // ✅ doAction override IN-PLACE (sin spread)
-    // ---------
+    // Wrap doAction in place to emit live context and state transitions.
     const _superDoAction = res.doAction.bind(res);
 
     res.doAction = async (actionRequest, options = {}) => {
@@ -202,7 +198,7 @@ patch(actionService, {
 
       const result = await _superDoAction(actionRequest, options);
 
-      // esperar a que el controller exista de verdad
+      // Wait one tick so the new controller is mounted.
       setTimeout(() => {
         const controllerState = extractStateFromController(res.currentController);
         const postModel = controllerState.model || extractModelFromController(res.currentController);

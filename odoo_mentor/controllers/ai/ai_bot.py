@@ -25,7 +25,7 @@ class AiBot:
         )
 
     def _ws_url(self, *, user_login: str, db: str, session_id: str | None):
-        # mismos params que JS
+        # Match query parameters used by the JS client.
         parts = [f"user_login={user_login}", f"db={db}"]
         if session_id:
             parts.append(f"session_id={session_id}")
@@ -37,7 +37,7 @@ class AiBot:
 
         user_login = request.env.user.login
         db = request.env.cr.dbname
-        # en Odoo suele ser request.session.sid; si en tu JS usas odoo.session_info.session_id, suelen coincidir.
+        # Reuse the frontend WebSocket session ID when provided.
         session_id = self.ws_session_id
 
         url = self._ws_url(user_login=user_login, db=db, session_id=session_id)
@@ -53,7 +53,7 @@ class AiBot:
             }
             ws.send(json.dumps(payload))
 
-            raw = ws.recv()  # si tu backend manda JSON final
+            raw = ws.recv()  # Expect final JSON response from backend.
             data = json.loads(raw) if raw else {}
 
             return {

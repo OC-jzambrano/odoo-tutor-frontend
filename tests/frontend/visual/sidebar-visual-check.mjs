@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import { renderInlineMarkdownHtml } from "../../../odoo_mentor/static/src/core/format_markdown.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../../..");
@@ -17,6 +18,10 @@ const sidebarCss = fs.readFileSync(
 );
 const togglerCss = fs.readFileSync(
   path.join(ROOT, "odoo_mentor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.css"),
+  "utf8",
+);
+const spotlightCss = fs.readFileSync(
+  path.join(ROOT, "odoo_mentor/static/src/core/target_hint_overlay.css"),
   "utf8",
 );
 const avatarBase64 = fs
@@ -118,7 +123,22 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
 
                       <div class="nlux-comp-chatItem nlux-comp-chatItem--sent nlux-comp-chatItem--bubblesLayout">
                         <div class="nlux-comp-message">
-                          <div class="nlux-markdown-container"><p>continue</p></div>
+                          <div class="nlux-markdown-container"><p>What is this max for?</p></div>
+                        </div>
+                      </div>
+
+                      <div class="nlux-comp-chatItem nlux-comp-chatItem--received nlux-comp-chatItem--bubblesLayout" data-testid="markdown-item">
+                        <div class="nlux-comp-chatItem-participantInfo">
+                          <div class="nlux-comp-avatar">
+                            <div class="nlux-comp-avatarContainer">
+                              <div class="nlux-comp-avatarPicture" style="background-image: url('${avatarDataUrl}')"></div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="nlux-comp-message">
+                          <div class="nlux-markdown-container">${renderInlineMarkdownHtml(
+                            "The **Max Quantity** is the target stock level. Odoo suggests replenishing up to **50 units**—subject to the order multiple.",
+                          )}</div>
                         </div>
                       </div>
 
@@ -211,6 +231,82 @@ function buildFloatingBubbleHtml({ viewportWidth = 1280, viewportHeight = 760 } 
 </html>`;
 }
 
+function buildSpotlightHtml() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f8fafc;
+    color: #1f2937;
+  }
+  .demo-form {
+    padding: 84px 40px 40px 40px;
+    max-width: 520px;
+  }
+  .demo-setting {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+  }
+  .demo-sidebar-hint-wrap {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    width: 360px;
+  }
+  ${sidebarCss}
+  ${spotlightCss}
+</style>
+</head>
+<body>
+  <div class="demo-form">
+    <div class="demo-setting">
+      <input id="target-checkbox" type="checkbox" style="width: 18px; height: 18px;" />
+      <label for="target-checkbox" style="font-size: 14px; font-weight: 600;">Purchase Warnings</label>
+    </div>
+  </div>
+
+  <div id="offcanvasAiSidebar" class="is-light-theme demo-sidebar-hint-wrap" style="position: fixed; top: auto; height: auto; background: transparent; box-shadow: none;">
+    <div class="ai-inline-hint has-target-action" style="position: relative; width: 100%;">
+      <div class="ai-inline-hint-header">
+        <div class="ai-inline-hint-badge">
+          <span class="ai-inline-hint-badge-icon">💡</span>
+          <span class="ai-inline-hint-badge-text">Context hint</span>
+        </div>
+        <div class="ai-inline-hint-time">Just now</div>
+      </div>
+      <button type="button" class="ai-inline-hint-locate" title="Show me where" aria-label="Show me where">⌖</button>
+      <button type="button" class="ai-inline-hint-close" aria-label="Close hint">×</button>
+      <div class="ai-inline-hint-text">Enable Purchase Warnings here, then click Save.</div>
+    </div>
+  </div>
+
+  <div class="ai-target-spotlight-layer">
+    <div class="ai-target-spotlight-ring" style="left: 48px; top: 90px; width: 30px; height: 30px;">
+      <span class="ai-target-spotlight-pulse"></span>
+    </div>
+    <div class="ai-target-spotlight-bubble" style="left: 20px; top: 46px;">
+      <span class="ai-target-spotlight-dot"></span>
+      <span class="ai-target-spotlight-label">Purchase Warnings</span>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 const SCENARIOS = [
   {
     name: "sidebar-desktop-light",
@@ -243,6 +339,11 @@ const SCENARIOS = [
     kind: "floating",
     viewport: { width: 390, height: 760 },
   },
+  {
+    name: "target-hint-spotlight",
+    kind: "spotlight",
+    viewport: { width: 820, height: 320 },
+  },
 ];
 
 async function run() {
@@ -260,14 +361,38 @@ async function run() {
               viewportWidth: scenario.viewport.width,
               viewportHeight: scenario.viewport.height,
             })
-          : buildFixtureHtml(scenario);
+          : scenario.kind === "spotlight"
+            ? buildSpotlightHtml()
+            : buildFixtureHtml(scenario);
       await page.setContent(html, { waitUntil: "load" });
       await page.waitForTimeout(300);
 
       const screenshotPath = path.join(OUT_DIR, `${scenario.name}.png`);
       let metrics;
 
-      if (scenario.kind === "floating") {
+      if (scenario.kind === "spotlight") {
+        await page.screenshot({ path: screenshotPath });
+        metrics = await page.evaluate(() => {
+          const locateBtn = document.querySelector(".ai-inline-hint-locate");
+          const closeBtn = document.querySelector(".ai-inline-hint-close");
+          const bubble = document.querySelector(".ai-target-spotlight-bubble");
+          const locateRect = locateBtn.getBoundingClientRect();
+          const closeRect = closeBtn.getBoundingClientRect();
+          const bubbleStyle = getComputedStyle(bubble);
+          return {
+            quotaBtn: {
+              color: bubbleStyle.color,
+              backgroundColor: bubbleStyle.backgroundColor,
+              whiteSpace: "normal",
+              height: Math.round(locateRect.height),
+              width: Math.round(locateRect.width),
+              fitsBubble: locateRect.right <= closeRect.left,
+              fitsSidebar: true,
+            },
+            horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+          };
+        });
+      } else if (scenario.kind === "floating") {
         const clip = await page.evaluate(() => {
           const preview = document.querySelector(".ai-owl-preview").getBoundingClientRect();
           const trigger = document.querySelector(".ai-owl-trigger").getBoundingClientRect();
@@ -310,6 +435,9 @@ async function run() {
           const quotaBubble = quotaItem.querySelector(".nlux-markdown-container");
           const quotaBtn = quotaItem.querySelector(".ai-quota-plan-btn");
           const yesBtn = document.querySelector(".ai-exercise-choice-yes");
+          const markdownItem = document.querySelector('[data-testid="markdown-item"]');
+          const markdownText = markdownItem?.textContent || "";
+          const strongCount = markdownItem?.querySelectorAll("strong").length || 0;
 
           const sidebarRect = sidebar.getBoundingClientRect();
           const bubbleRect = quotaBubble.getBoundingClientRect();
@@ -330,6 +458,8 @@ async function run() {
               fitsSidebar: btnRect.right <= sidebarRect.right + 1,
             },
             yesBtnColor: yesStyle.color,
+            markdownBoldCount: strongCount,
+            hasRawAsterisks: markdownText.includes("**"),
             horizontalOverflow: sidebar.scrollWidth > sidebar.clientWidth + 1,
           };
         });
@@ -355,6 +485,9 @@ async function run() {
       }
       if (metrics.horizontalOverflow) {
         failures.push(`${scenario.name}: sidebar has horizontal overflow`);
+      }
+      if (scenario.kind === "sidebar" && (metrics.hasRawAsterisks || metrics.markdownBoldCount < 2)) {
+        failures.push(`${scenario.name}: markdown bold failed (strong=${metrics.markdownBoldCount}, rawAsterisks=${metrics.hasRawAsterisks})`);
       }
 
       await page.close();

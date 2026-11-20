@@ -412,6 +412,39 @@
     color: var(--tutor-accent-strong);
 }
 
+#offcanvasAiSidebar .ai-inline-hint.has-target-action {
+    padding-right: 76px;
+}
+
+#offcanvasAiSidebar .ai-inline-hint-locate {
+    position: absolute;
+    top: 12px;
+    right: 44px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: var(--tutor-radius-pill);
+    background: rgba(135, 90, 123, 0.14);
+    color: var(--tutor-accent-strong);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+#offcanvasAiSidebar .ai-inline-hint-locate:hover {
+    background: var(--tutor-accent);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+#offcanvasAiSidebar .ai-inline-hint-locate:active {
+    transform: scale(0.95);
+}
+
 #offcanvasAiSidebar .ai-inline-hint-close {
     position: absolute;
     top: 12px;

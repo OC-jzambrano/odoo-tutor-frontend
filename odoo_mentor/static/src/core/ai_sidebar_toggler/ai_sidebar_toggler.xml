@@ -3,7 +3,8 @@
     <t t-name="ai_chat.AiFloatingButton">
         <t t-if="this.state.showButton">
             <div
-                class="ai-floating-button"
+                class="ai-floating-button o-overlay-item"
+                data-ai-tutor-ignore-event="true"
                 t-ref="this.floatingRoot"
                 t-att-class="{
                     'is-dragging': this.state.dragging,
@@ -44,6 +45,7 @@
                                     <span
                                         class="ai-copy-value"
                                         t-att-class="{ 'is-copied': this.state.previewCopiedText === seg.text }"
+                                        t-att-data-copy-text="seg.text"
                                         role="button"
                                         tabindex="0"
                                         t-att-title="this.state.previewCopiedText === seg.text ? this.translate('Copied!') : seg.copyLabel"
@@ -53,6 +55,9 @@
                                         t-on-touchstart.stop.prevent="this.noop"
                                         t-out="seg.text"
                                     />
+                                </t>
+                                <t t-elif="seg.isBold">
+                                    <strong t-out="seg.text"/>
                                 </t>
                                 <t t-else="">
                                     <t t-out="seg.text"/>

@@ -6,7 +6,7 @@ import { proxy } from "@odoo/owl";
 export const aiChatStoreService = {
   start() {
     const state = proxy({
-      tutorPushes: [],     // <- aquí pintaremos
+      tutorPushes: [],  // Store pushed tutor messages for rendering.
       unreadCount: 0,
       isChatOpen: false,
       isAtBottom: true,

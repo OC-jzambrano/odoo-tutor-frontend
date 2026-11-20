@@ -9,6 +9,7 @@ import { _t } from "@web/core/l10n/translation";
 import { detectActiveViewType, normalizeDomEvent } from "../normalize_event";
 import { normalizePersistentRecordId } from "../record_id";
 import { buildCopySegments } from "../copy_targets";
+import { formatPreviewSegments } from "../format_markdown";
 import { openTutorPlans, openTutorSettings, TUTOR_PLANS_URL } from "../settings_navigation";
 // Helpers
 const TUTOR_PUSH_TYPES = new Set([
@@ -535,9 +536,44 @@ class AiFloatingButton extends Component {
             this.state.previewHovered = false;
         };
 
+        this._applyConnectionEstablishedPreview = (msg) => {
+            if (!msg || typeof msg !== "object") return;
+            if (
+                msg.is_resumed &&
+                msg.mode === "exercise_active" &&
+                msg.current_instruction
+            ) {
+                this.state.optionalStepVisible =
+                    this.aiWs?.enableSkipStep === true &&
+                    msg.is_optional === true &&
+                    !!msg.exercise_id;
+                this.state.optionalStepExerciseId = this.state.optionalStepVisible
+                    ? msg.exercise_id
+                    : null;
+                this.state.optionalStepLoading = false;
+                this._setPreviewMessage(
+                    msg.current_instruction,
+                    msg.timestamp,
+                    msg.copy_targets || []
+                );
+                return;
+            }
+            if (msg.mode && msg.mode !== "exercise_active") {
+                this.state.optionalStepVisible = false;
+                this.state.optionalStepExerciseId = null;
+                this.state.optionalStepLoading = false;
+                this._onPreviewReset?.();
+            }
+        };
+
         this._onPreviewMessage = (ev) => {
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
+
+            if (msg.type === "connection_established") {
+                this._applyConnectionEstablishedPreview(msg);
+                return;
+            }
 
             if (msg.code === "TRIAL_QUOTA_EXHAUSTED") {
                 const quotaText = _t("Your trial quota has finished. Get a subscription to continue.");
@@ -581,6 +617,14 @@ class AiFloatingButton extends Component {
             }
 
             if (TUTOR_PUSH_TYPES.has(msg.type)) {
+                if (msg.type === "exercise_completed_push") {
+                    const offcanvasEl = document.getElementById("offcanvasAiSidebar");
+                    const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
+                    if (isChatOpen) {
+                        this._onPreviewReset?.();
+                        return;
+                    }
+                }
                 this._setPreviewMessage(msg.response || "", msg.timestamp, msg.copy_targets);
                 return;
             }
@@ -723,6 +767,29 @@ class AiFloatingButton extends Component {
             this.aiWs?.subscribe?.(this._onTutorHintForBadge);
             window.addEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
 
+            // Intercept copy-chip clicks at window capture phase (registered at Odoo boot,
+            // before any KanbanColumnQuickCreate / KanbanQuickCreateController / Dropdown
+            // capture listener) so clicking a copy chip never folds Add Stage, closes
+            // Quick Create, or steals focus from the active Odoo input field.
+            this._onWindowCaptureCopyMousedown = (ev) => {
+                const copyEl = ev.target?.closest?.(".ai-floating-button .ai-copy-value");
+                if (!copyEl) return;
+                ev.preventDefault();
+                ev.stopImmediatePropagation();
+            };
+            this._onWindowCaptureCopyClick = (ev) => {
+                const copyEl = ev.target?.closest?.(".ai-floating-button .ai-copy-value");
+                if (!copyEl) return;
+                ev.preventDefault();
+                ev.stopImmediatePropagation();
+                const text = copyEl.dataset?.copyText || copyEl.textContent || "";
+                if (text) {
+                    this.onCopyPreviewSegment({ isCopy: true, text }, ev);
+                }
+            };
+            window.addEventListener("mousedown", this._onWindowCaptureCopyMousedown, { capture: true });
+            window.addEventListener("click", this._onWindowCaptureCopyClick, { capture: true });
+
             this._restoreWidgetPosition();
             this._syncChatOpenStateFromDom();
 
@@ -744,6 +811,11 @@ class AiFloatingButton extends Component {
             };
 
             window.addEventListener("ai:preview_reset", this._onPreviewReset);
+
+            const cachedConn = this.aiWs?.getLastConnectionInfo?.();
+            if (cachedConn) {
+                this._applyConnectionEstablishedPreview(cachedConn);
+            }
 
             this._onExerciseCtaUpdate = (e) => {
                 this._applyExerciseCtaState(e?.detail || getExerciseCtaState());
@@ -800,8 +872,7 @@ class AiFloatingButton extends Component {
             this._syncChatOpenStateFromDom();
 
             let currentModel = null;
-            // Tutor remains available across the authenticated web client,
-            // including settings and screens without a supported model action.
+            // Keep the tutor launcher visible across all authenticated screens.
             let showButton = true;
             let hasResolvedUnsupportedModel = false;
 
@@ -860,9 +931,21 @@ class AiFloatingButton extends Component {
             this.state.ctx = this._getContextSnapshot();
         }, 500);
 
+        const TUTOR_UI_SELECTOR = [
+            "[data-ai-tutor-ignore-event='true']",
+            "#offcanvasAiSidebar",
+            "#chat-ui-container",
+            ".ai-floating-button",
+            ".ai-owl-preview",
+            ".ai_feedback_popover",
+            ".nlux-AiChat-root",
+            ".offcanvas-backdrop",
+        ].join(", ");
+        const isTutorUiTarget = (target) => Boolean(target?.closest?.(TUTOR_UI_SELECTOR));
+
         this._onDocClick = (ev) => {
             if (!ev.target || !ev.target.tagName) return;
-            if (ev.target.closest?.("[data-ai-tutor-ignore-event='true']")) return;
+            if (isTutorUiTarget(ev.target)) return;
 
             const t = ev.target;
             const td = t?.closest?.("td");
@@ -954,6 +1037,7 @@ class AiFloatingButton extends Component {
 
         this._onDocInput = (ev) => {
             if (!ev.target || !["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
+            if (isTutorUiTarget(ev.target)) return;
 
             const base = this._getContextSnapshot();
             const uiType = classifyElement(ev.target);
@@ -1006,6 +1090,7 @@ class AiFloatingButton extends Component {
 
         this._onDocChange = (ev) => {
             if (!ev.target || !["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName)) return;
+            if (isTutorUiTarget(ev.target)) return;
             const base = this._getContextSnapshot();
             const uiType = classifyElement(ev.target);
             const gctx = findGridContext(ev.target);
@@ -1541,7 +1626,9 @@ class AiFloatingButton extends Component {
     }
 
     get previewSegments() {
-        return buildCopySegments(this.state.previewMessage, this.state.previewCopyTargets);
+        return formatPreviewSegments(
+            buildCopySegments(this.state.previewMessage, this.state.previewCopyTargets)
+        );
     }
 
     async onCopyPreviewSegment(seg, ev) {
@@ -1998,6 +2085,16 @@ class AiFloatingButton extends Component {
         if (this._onTutorHintEventForBadge) {
             window.removeEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
             this._onTutorHintEventForBadge = null;
+        }
+
+        if (this._onWindowCaptureCopyMousedown) {
+            window.removeEventListener("mousedown", this._onWindowCaptureCopyMousedown, { capture: true });
+            this._onWindowCaptureCopyMousedown = null;
+        }
+
+        if (this._onWindowCaptureCopyClick) {
+            window.removeEventListener("click", this._onWindowCaptureCopyClick, { capture: true });
+            this._onWindowCaptureCopyClick = null;
         }
 
         this._clearHintBadgeAutoHideTimer?.();

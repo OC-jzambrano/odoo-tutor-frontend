@@ -25,6 +25,15 @@ import {
     buildRecordingDraftPayload,
 } from "../../core/recording_draft";
 import { TUTOR_PLANS_URL } from "../../core/settings_navigation";
+import { renderInlineMarkdownHtml } from "../../core/format_markdown";
+import {
+    extractTargetHint,
+    shouldAutoShowTargetHint,
+} from "../../core/target_hint_resolver";
+import {
+    hideTargetHintOverlay,
+    showTargetHintOverlay,
+} from "../../core/target_hint_overlay";
 
 const TUTOR_PUSH_TYPES = new Set([
     "tutor_push",
@@ -151,9 +160,7 @@ function getCurrentColorScheme() {
         return "dark";
     }
 
-    // Odoo can leave the color_scheme cookie set to "dark" even while the
-    // active client view is light. Use the rendered Odoo surfaces before that
-    // fallback so the tutor follows what the user is actually seeing.
+    // Inspect rendered Odoo surfaces before falling back to the color_scheme cookie.
     for (const element of [
         document.querySelector(".o_action_manager"),
         document.querySelector(".o_web_client"),
@@ -316,20 +323,76 @@ export class AiSidebar extends Component {
 
             hintMessage: "",
             hintTimestamp: null,
+            hintTarget: null,
+            activeStepTarget: null,
             hintVisible: false,
             hintHovered: false,
             hintExiting: false,
             hintCycle: 0,
         });
 
+        this._reinforceStepKey = null;
+        this._reinforceCount = 0;
+
+        this.onShowTargetHint = async () => {
+            const target = this.state.hintTarget || this.state.activeStepTarget;
+            if (!target) return;
+            const shown = showTargetHintOverlay(target);
+            if (!shown) {
+                this.notification?.add?.(
+                    _t("The target element is not visible on this screen yet."),
+                    { type: "info" }
+                );
+                return;
+            }
+            if (this._isSidebarOpen?.()) {
+                await this.hideSidebar();
+                showTargetHintOverlay(target);
+            }
+        };
+
+        this._clearTargetHintState = () => {
+            this._reinforceStepKey = null;
+            this._reinforceCount = 0;
+            this.state.activeStepTarget = null;
+            this.state.hintTarget = null;
+            hideTargetHintOverlay();
+        };
+
+        this._syncStepTargetFromPayload = (payload) => {
+            const target = extractTargetHint(payload);
+            if (payload && typeof payload === "object" && payload.current_step !== undefined) {
+                const stepKey = `${payload.exercise_id || this.state.exerciseId || ""}:${payload.current_step ?? ""}`;
+                if (this._reinforceStepKey !== stepKey) {
+                    this._reinforceStepKey = stepKey;
+                    this._reinforceCount = 0;
+                    this.state.activeStepTarget = target || null;
+                    this.state.hintTarget = null;
+                    hideTargetHintOverlay();
+                    return;
+                }
+            }
+            if (target) {
+                this.state.activeStepTarget = target;
+            }
+        };
+
         window.aiTutorDebug = window.aiTutorDebug || {};
 
-        window.aiTutorDebug.showHint = (text, timestamp = new Date().toISOString()) => {
-            this._setInlineHint(text, timestamp);
+        window.aiTutorDebug.showHint = (text, timestamp = new Date().toISOString(), target = null) => {
+            this._setInlineHint(text, timestamp, target);
         };
 
         window.aiTutorDebug.hideHint = () => {
             this.closeInlineHint();
+        };
+
+        window.aiTutorDebug.showTargetHint = (target, caption) => {
+            return showTargetHintOverlay(target, caption ? { caption } : {});
+        };
+
+        window.aiTutorDebug.hideTargetHint = () => {
+            hideTargetHintOverlay();
         };
 
         window.aiTutorDebug.pushTutorMessage = (
@@ -366,7 +429,7 @@ export class AiSidebar extends Component {
             () => [this.state.currentContext]
         );
 
-        this._setInlineHint = (text, timestamp) => {
+        this._setInlineHint = (text, timestamp, target = null) => {
             const cleaned = (text || "")
                 .toString()
                 .replace(/\*\*/g, "")
@@ -376,6 +439,11 @@ export class AiSidebar extends Component {
 
             if (!cleaned) return;
 
+            const resolvedTarget =
+                extractTargetHint({ target }) ||
+                (target && typeof target === "object" ? target : null) ||
+                this.state.activeStepTarget ||
+                null;
             const translated = translateKnownTutorText(cleaned);
             if (
                 this.state.hintVisible &&
@@ -384,6 +452,7 @@ export class AiSidebar extends Component {
             ) {
                 this._clearInlineHintTimers();
                 this.state.hintTimestamp = normalizeTutorTimestamp(timestamp);
+                if (resolvedTarget) this.state.hintTarget = resolvedTarget;
                 this.state.hintHovered = false;
                 this._scheduleInlineHintAutoHide();
                 return;
@@ -392,6 +461,7 @@ export class AiSidebar extends Component {
             this._clearInlineHintTimers();
             this.state.hintMessage = translated;
             this.state.hintTimestamp = normalizeTutorTimestamp(timestamp);
+            this.state.hintTarget = resolvedTarget;
             this.state.hintHovered = false;
             this.state.hintExiting = false;
             this.state.hintCycle += 1;
@@ -541,7 +611,11 @@ export class AiSidebar extends Component {
 
                 if (!text) return;
 
-                this._setInlineHint(text, msg.timestamp);
+                const hintTarget = extractTargetHint(msg);
+                if (hintTarget) {
+                    this.state.activeStepTarget = hintTarget;
+                }
+                this._setInlineHint(text, msg.timestamp, hintTarget);
             };
 
             if (!this._tutorHintSubscribed) {
@@ -929,8 +1003,8 @@ export class AiSidebar extends Component {
             const key = normalizeForCopyTargetLookup(textBlock.textContent || "");
             const targets = registry.get(key);
 
-            textBlock.dataset.copyHighlighted = "1";
             if (targets?.length) {
+                textBlock.dataset.copyHighlighted = "1";
                 this._wrapCopyTargetsInElement(textBlock, targets);
             }
         });
@@ -1396,7 +1470,7 @@ export class AiSidebar extends Component {
     _buildManualReceivedItem(text) {
         const item = document.createElement("div");
         item.className = "nlux-comp-chatItem nlux-comp-chatItem--received nlux-comp-chatItem--bubblesLayout";
-        item.innerHTML = `<div class="nlux-comp-chatItem-participantInfo"><div class="nlux-comp-avatar"><div class="nlux-comp-avatarContainer"><div class="nlux-comp-avatarPicture" style="background-image: url('${TUTOR_ASSISTANT_AVATAR_URL}')"></div></div></div></div><div class="nlux-comp-message"><div class="nlux-markdown-container">${this._escapeHtml(text).replace(/\n/g, "<br/>")}</div></div>`;
+        item.innerHTML = `<div class="nlux-comp-chatItem-participantInfo"><div class="nlux-comp-avatar"><div class="nlux-comp-avatarContainer"><div class="nlux-comp-avatarPicture" style="background-image: url('${TUTOR_ASSISTANT_AVATAR_URL}')"></div></div></div></div><div class="nlux-comp-message"><div class="nlux-markdown-container">${renderInlineMarkdownHtml(text)}</div></div>`;
         return item;
     }
 
@@ -1690,11 +1764,16 @@ export class AiSidebar extends Component {
                 ) || []
             );
             const receivedCount = receivedItems.length;
-            const targetIndex = minReceivedCount > 0 ? minReceivedCount - 1 : receivedCount - 1;
-            const item = targetIndex >= 0 ? receivedItems[targetIndex] : null;
+            const hasExpectedCount = minReceivedCount <= 0 || receivedCount >= minReceivedCount;
+            const item = hasExpectedCount && receivedCount > 0
+                ? receivedItems[receivedCount - 1]
+                : null;
             if (item) {
                 if (item.querySelector(".ai-exercise-actions")) return;
-                if (this._attachExerciseActions(item, normalizedExerciseId, options)) return;
+                if (this._attachExerciseActions(item, normalizedExerciseId, options)) {
+                    requestAnimationFrame(() => this._scrollConversationToBottom?.());
+                    return;
+                }
             }
             if (attempts > 1) {
                 window.setTimeout(
@@ -1943,6 +2022,7 @@ export class AiSidebar extends Component {
 
         try {
             const response = await this._sendExerciseChoiceToWs({ exerciseId: normalizedExerciseId, answer, action });
+            this._syncStepTargetFromPayload(response?.raw || response);
             const responseText = this._prepareAssistantDisplayText(
                 this._extractResponseText(response),
                 this._extractCopyTargets(response)
@@ -2035,6 +2115,7 @@ export class AiSidebar extends Component {
                     context: this.state.currentContext || {},
                 })
             );
+            this._syncStepTargetFromPayload(response?.raw || response);
             const responseText = getVisibleSkipResponse(
                 response,
                 (payload) =>
@@ -2799,6 +2880,25 @@ export class AiSidebar extends Component {
             if (!restoredFromStorage) {
                 this.startProcess(info.exercise_id);
             }
+            return;
+        }
+
+        // Clear stale local exercise state if the backend session is no longer active.
+        if (info.mode && info.mode !== "exercise_active") {
+            if (this.state.processActive || this._readStoredActiveExercise()) {
+                this.completeProcess();
+            }
+        }
+
+        if (
+            info.is_resumed &&
+            info.mode === "awaiting_confirmation" &&
+            info.exercise_id &&
+            !this.state.processActive
+        ) {
+            this._pendingConfirmationExerciseId = info.exercise_id;
+            this._registerExercisePrompt(info.exercise_id);
+            this._scheduleExerciseActionsForLastMessage(info.exercise_id, 80, 1);
         }
     }
 
@@ -2925,10 +3025,23 @@ export class AiSidebar extends Component {
             return false;
         }
 
+        const firstExistingNode = segments.firstChild;
+        const existingNormalizedTexts = new Set(
+            Array.from(
+                segments.querySelectorAll(".nlux-comp-chatItem .nlux-markdown-container")
+            )
+                .map((el) => normalizeAssistantTextForCompare(el?.innerText || el?.textContent || ""))
+                .filter(Boolean)
+        );
+
+        const fragment = document.createDocumentFragment();
+        let addedCount = 0;
+
         for (const entry of messages) {
             const text = String(entry?.text || "").trim();
             if (!text) continue;
-            if (entry.role !== "user" && this._isDuplicateAssistantText(text)) {
+            const normalized = normalizeAssistantTextForCompare(text);
+            if (existingNormalizedTexts.has(normalized)) {
                 continue;
             }
 
@@ -2936,7 +3049,24 @@ export class AiSidebar extends Component {
                 entry.role === "user"
                     ? this._buildManualSentItem(text)
                     : this._buildManualReceivedItem(text);
-            segments.appendChild(item);
+            fragment.appendChild(item);
+            addedCount += 1;
+        }
+
+        if (addedCount > 0) {
+            if (firstExistingNode) {
+                // Always insert persisted history ABOVE any live NLUX segment that
+                // arrived while reconnecting so new messages are never buried.
+                segments.insertBefore(fragment, firstExistingNode);
+            } else {
+                segments.appendChild(fragment);
+            }
+        }
+
+        if (this._pendingConfirmationExerciseId && !this.state.processActive) {
+            const pendingExId = this._pendingConfirmationExerciseId;
+            this._pendingConfirmationExerciseId = null;
+            this._scheduleExerciseActionsForLastMessage(pendingExId, 40, 1);
         }
 
         try {
@@ -2947,6 +3077,7 @@ export class AiSidebar extends Component {
         requestAnimationFrame(() => {
             this._ensureCopyButtons?.();
             this._installManualSelectionGuard?.();
+            this._scrollConversationToBottom?.();
             this._scheduleConversationReadStateSync?.();
             window.dispatchEvent(new Event("resize"));
         });
@@ -2967,6 +3098,35 @@ export class AiSidebar extends Component {
             if (!msg || typeof msg !== "object") return;
 
             if (!TUTOR_PUSH_TYPES.has(msg.type)) return;
+
+            const stepTarget = extractTargetHint(msg);
+            const stepKey = `${msg.exercise_id || this.state.exerciseId || ""}:${msg.current_step ?? ""}`;
+            if (msg.type === "reinforce_push") {
+                if (stepTarget) {
+                    this.state.activeStepTarget = stepTarget;
+                }
+                if (this._reinforceStepKey !== stepKey) {
+                    this._reinforceStepKey = stepKey;
+                    this._reinforceCount = 0;
+                }
+                this._reinforceCount += 1;
+                const autoTarget = stepTarget || this.state.activeStepTarget;
+                if (autoTarget && shouldAutoShowTargetHint({ reinforceCount: this._reinforceCount })) {
+                    showTargetHintOverlay(autoTarget);
+                }
+            } else if (
+                msg.type === "instruction_push" ||
+                msg.type === "exercise_completed_push" ||
+                msg.type === "welcome_push"
+            ) {
+                this._reinforceStepKey = stepKey;
+                this._reinforceCount = 0;
+                hideTargetHintOverlay();
+                this.state.hintTarget = null;
+                this.state.activeStepTarget = msg.type === "instruction_push" ? (stepTarget || null) : null;
+            } else if (stepTarget) {
+                this.state.activeStepTarget = stepTarget;
+            }
 
             const text =
                 msg.response ||
@@ -3174,7 +3334,9 @@ export class AiSidebar extends Component {
                 item.querySelector(".nlux-comp-messageText");
 
             if (md) {
-                md.innerHTML = this._escapeHtml(text).replace(/\n/g, "<br/>");
+                delete md.dataset.copyHighlighted;
+                md.removeAttribute?.("data-copy-highlighted");
+                md.innerHTML = renderInlineMarkdownHtml(text);
                 if (md.hasAttribute?.("nlux-message-id")) {
                     md.setAttribute(
                         "nlux-message-id",
@@ -3189,7 +3351,7 @@ export class AiSidebar extends Component {
 
                 const body = document.createElement("div");
                 body.className = "nlux-markdown-container";
-                body.innerHTML = this._escapeHtml(text).replace(/\n/g, "<br/>");
+                body.innerHTML = renderInlineMarkdownHtml(text);
                 msgRoot.appendChild(body);
             }
         } else {
@@ -3263,6 +3425,7 @@ export class AiSidebar extends Component {
                 throw new Error("El chat seguro no está conectado. Recarga Odoo AI Tutor e inténtalo de nuevo.");
             }
             data = await this.aiWs.chat({ message, context: safeContext });
+            this._syncStepTargetFromPayload(data);
         } catch (error) {
             const isQuotaError = error?.code === "TRIAL_QUOTA_EXHAUSTED";
             data = {
@@ -3350,6 +3513,7 @@ export class AiSidebar extends Component {
         this._lastInjectedTutorAt = 0;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._clearTargetHintState?.();
         this.aiChatStore?.markRead?.();
         this.aiChatStore?.clearTutorPushes?.();
 
@@ -3700,6 +3864,7 @@ export class AiSidebar extends Component {
         this._timerStartedAtMs = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._clearTargetHintState?.();
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.exerciseId = null;
@@ -3709,6 +3874,13 @@ export class AiSidebar extends Component {
         this.state.timerPausedReason = "";
         this.state.timerSeconds = 0;
         this.state.timerValue = "00:00:00";
+        this._syncComposerDisabledState();
+        window.__AI_TUTOR_OWL_PREVIEW__ = {
+            message: "",
+            timestamp: "",
+            visible: false,
+        };
+        window.dispatchEvent(new CustomEvent("ai:preview_reset"));
     }
 
     completeProcess() {
@@ -3719,6 +3891,7 @@ export class AiSidebar extends Component {
         this._timerStartedAtMs = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._clearTargetHintState?.();
         this.state.showButtons = false;
         this.state.processActive = false;
         this.state.exerciseChoicePending = false;
@@ -3726,7 +3899,16 @@ export class AiSidebar extends Component {
         this.state.timerInterval = null;
         this.state.timerPaused = false;
         this.state.timerPausedReason = "";
+        this.state.timerSeconds = 0;
+        this.state.timerValue = "00:00:00";
         this.state.exerciseId = null;
+        this._syncComposerDisabledState();
+        window.__AI_TUTOR_OWL_PREVIEW__ = {
+            message: "",
+            timestamp: "",
+            visible: false,
+        };
+        window.dispatchEvent(new CustomEvent("ai:preview_reset"));
     }
 
     async showResultModal() {

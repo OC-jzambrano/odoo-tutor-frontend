@@ -429,3 +429,13 @@ msgstr "Conseguir una suscripción"
 #: odoo_mentor/static/src/core/ai_sidebar_toggler/ai_sidebar_toggler.js:1
 msgid "View Plans"
 msgstr "Ver planes"
+
+#. module: odoo_mentor
+#: odoo_mentor/static/src/webclient/sidebar/ai_sidebar.xml:1
+msgid "Show me where"
+msgstr "Muéstrame dónde"
+
+#. module: odoo_mentor
+#: odoo_mentor/static/src/webclient/sidebar/ai_sidebar.js:1
+msgid "The target element is not visible on this screen yet."
+msgstr "El elemento indicado aún no es visible en esta pantalla."

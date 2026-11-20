@@ -1,7 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-// Real-time timers: the hint auto-hide window is 15s, so these tests
-// deliberately wait past it. Generous per-test timeout to accommodate.
+// Allow generous per-test timeout to wait past the 15s hint auto-hide timer.
 test.setTimeout(90_000);
 
 test.beforeEach(async ({ page }) => {

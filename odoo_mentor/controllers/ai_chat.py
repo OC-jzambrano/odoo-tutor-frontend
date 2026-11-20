@@ -75,8 +75,7 @@ class AiChatController(http.Controller):
         except (TypeError, ValueError, UnicodeError):
             return {"error": "Odoo public HTTPS URL is not configured"}
         if not credential:
-            # The hosted trial is bounded per authenticated Odoo user by the backend.
-            # Serialize first use so parallel browser sessions do not rotate credentials.
+            # Serialize first trial registration to avoid credential rotation.
             request.env.cr.execute(
                 "SELECT pg_advisory_xact_lock(hashtext(%s))",
                 ("odoo_tutor_trial_installation:" + installation_id,),
@@ -172,14 +171,14 @@ class AiChatController(http.Controller):
 
     @http.route("/ai_chat/chat", type="jsonrpc", auth="user", methods=["POST"])
     def get_quickboard_item(self, **kwargs):
-        """Endpoint principal para el chatbot AI"""
+        """Main endpoint for the AI chatbot."""
         data = json.loads(request.httprequest.data or "{}")
         ws_session_id = data.get("ws_session_id")
 
         bot = AiBot(request.env, ws_session_id=ws_session_id)
 
         try:
-            # Obtener datos del cuerpo de la solicitud
+            # Parse JSON payload from the request body.
             if request.httprequest.data:
                 data = json.loads(request.httprequest.data)
             else:
@@ -189,7 +188,7 @@ class AiChatController(http.Controller):
             context = data.get("context", {})
             history = data.get("history", [])
 
-            # Validación del mensaje
+            # Validate required message text.
             if not message or not isinstance(message, str):
                 raise ValueError("El parámetro 'message' es requerido y debe ser texto")
 

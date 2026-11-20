@@ -26,8 +26,7 @@ class ResConfigSettings(models.TransientModel):
     def _ensure_installation_identity(self):
         """Create stable per-database settings as soon as the addon is used."""
         params = self.env["ir.config_parameter"].sudo()
-        # Remove the retired shared key during module initialization as well as
-        # when settings are saved, so upgrades do not leave it stored server-side.
+        # Clear the retired shared API key on initialization and save.
         params.set_str("odoo_tutor.chatbot_api_key", "")
         if not params.get_str("odoo_tutor.installation_id", ""):
             params.set_str("odoo_tutor.installation_id", str(uuid.uuid4()))

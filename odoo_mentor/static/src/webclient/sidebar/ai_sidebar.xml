@@ -2,7 +2,8 @@
 <templates xml:space="preserve">
     <t t-name="ai_chat.AiSidebar">
         <div
-            class="offcanvas offcanvas-end d-flex flex-column"
+            class="offcanvas offcanvas-end d-flex flex-column o-overlay-item"
+            data-ai-tutor-ignore-event="true"
             t-att-class="{
                 'is-dark-theme': this.state.colorScheme === 'dark',
                 'is-light-theme': this.state.colorScheme !== 'dark',
@@ -365,6 +366,7 @@
                                      t-att-class="{
                                          'is-exiting': this.state.hintExiting,
                                          'is-paused': this.state.hintHovered,
+                                         'has-target-action': !!(this.state.hintTarget or this.state.activeStepTarget),
                                      }"
                                      t-on-mouseenter="this.pauseInlineHint"
                                      t-on-mouseleave="this.resumeInlineHint">
@@ -380,6 +382,16 @@
                                             <t t-out="this.hintTimeAgo"/>
                                         </div>
                                     </div>
+
+                                    <button
+                                        t-if="this.state.hintTarget or this.state.activeStepTarget"
+                                        type="button"
+                                        class="ai-inline-hint-locate"
+                                        data-ai-tutor-ignore-event="true"
+                                        t-on-click.stop.prevent="this.onShowTargetHint"
+                                        t-att-title="this.translate('Show me where')"
+                                        t-att-aria-label="this.translate('Show me where')"
+                                    ><i class="oi" data-icon="my_location"/></button>
 
                                     <button
                                         type="button"
