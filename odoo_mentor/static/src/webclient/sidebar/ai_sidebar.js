@@ -96,14 +96,14 @@ function cleanText(value) {
 }
 
 function translateKnownTutorText(value) {
-    const cleaned = cleanText(value);
-    const normalized = normalizeAssistantTextForCompare(cleaned);
+    const raw = String(value || "").trim();
+    const normalized = normalizeAssistantTextForCompare(raw);
 
     if (normalized === "do you want to continue the exercise?") {
         return _t("Do you want to continue the exercise?");
     }
 
-    return cleaned;
+    return raw;
 }
 
 function normalizeTutorTimestamp(ts) {
@@ -2257,6 +2257,11 @@ export class AiSidebar extends Component {
         this.aiChatStore?.markOpen?.(true);
         this._syncConversationReadState();
 
+        if (!this.state.isChatInitialized && this.chatUiRef?.el) {
+            this.createAiChat();
+            this.state.isChatInitialized = true;
+        }
+
         if (!this.state.showRecorderPanel) {
             requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
         }
@@ -2265,6 +2270,7 @@ export class AiSidebar extends Component {
 
         this._sendCurrentLiveContext();
 
+        this._flushPendingHistory?.();
         this._flushPendingTutorMessages?.();
         this._scheduleConversationReadStateSync?.();
         if (this.state.hintVisible && this.state.hintMessage && !this.state.hintExiting) {
@@ -2781,6 +2787,21 @@ export class AiSidebar extends Component {
         return !!el?.classList?.contains("show");
     }
     // WS Tutor Push
+    _restoreExerciseFromConnectionInfo(info) {
+        if (!info || typeof info !== "object") return;
+        if (
+            info.is_resumed &&
+            info.mode === "exercise_active" &&
+            info.exercise_id &&
+            !this.state.processActive
+        ) {
+            const restoredFromStorage = this._restoreActiveExerciseSession();
+            if (!restoredFromStorage) {
+                this.startProcess(info.exercise_id);
+            }
+        }
+    }
+
     _setupHistoryListener() {
         if (this._historySubscribed) return;
 
@@ -2796,22 +2817,32 @@ export class AiSidebar extends Component {
         }
 
         this._onHistoryLoaded = (ev) => {
-            const payload = ev?.kind ? ev.data : ev;
+            if (!ev || typeof ev !== "object") return;
+
+            if (ev.type === "connection_established") {
+                this._restoreExerciseFromConnectionInfo(ev);
+                return;
+            }
+
+            if (ev.kind !== "history") return;
+
+            const payload = ev.data;
             const sessionId = payload?.session_id;
             const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+            if (!sessionId) return;
 
-            if (this._historyRenderedForSessionId === sessionId) return;
-            this._historyRenderedForSessionId = sessionId;
-
-            try {
-                this._renderHistory(messages);
-            } finally {
+            if (this._historyRenderedForSessionId === sessionId) {
                 this._resolveHistoryReady?.();
                 this._resolveHistoryReady = null;
+                return;
             }
+
+            this._pendingHistory = { sessionId, messages };
+            this._flushPendingHistory();
         };
 
-        this._onHistoryLoadedEvent = (e) => this._onHistoryLoaded({ kind: "history", data: e?.detail });
+        this._onHistoryLoadedEvent = (e) =>
+            this._onHistoryLoaded({ kind: "history", data: e?.detail });
 
         try {
             this.aiWs?.subscribe?.(this._onHistoryLoaded);
@@ -2820,6 +2851,48 @@ export class AiSidebar extends Component {
             console.warn("[AiSidebar] history subscribe failed:", e);
         }
         window.addEventListener("ai:history_loaded", this._onHistoryLoadedEvent);
+
+        const cachedConn = this.aiWs?.getLastConnectionInfo?.();
+        if (cachedConn) {
+            this._restoreExerciseFromConnectionInfo(cachedConn);
+        }
+
+        const cachedHistory = this.aiWs?.getLastHistory?.();
+        if (cachedHistory?.session_id) {
+            this._onHistoryLoaded({ kind: "history", data: cachedHistory });
+        }
+    }
+
+    _flushPendingHistory() {
+        const pending = this._pendingHistory;
+        if (!pending || !pending.sessionId) return false;
+
+        const { sessionId, messages } = pending;
+        if (this._historyRenderedForSessionId === sessionId) {
+            this._pendingHistory = null;
+            this._resolveHistoryReady?.();
+            this._resolveHistoryReady = null;
+            return true;
+        }
+
+        if (!Array.isArray(messages) || messages.length === 0) {
+            this._historyRenderedForSessionId = sessionId;
+            this._pendingHistory = null;
+            this._resolveHistoryReady?.();
+            this._resolveHistoryReady = null;
+            return true;
+        }
+
+        const rendered = this._renderHistory(messages);
+        if (!rendered) {
+            return false;
+        }
+
+        this._historyRenderedForSessionId = sessionId;
+        this._pendingHistory = null;
+        this._resolveHistoryReady?.();
+        this._resolveHistoryReady = null;
+        return true;
     }
 
     _teardownHistoryListener() {
@@ -2843,19 +2916,21 @@ export class AiSidebar extends Component {
 
     _renderHistory(messages) {
         const root = this.chatUiRef?.el;
-        if (!root || !Array.isArray(messages) || messages.length === 0) return;
+        if (!root || !Array.isArray(messages) || messages.length === 0) return false;
 
         this._ensureConversationVisible();
 
         const segments = root.querySelector(".nlux-chatSegments-container");
         if (!segments) {
-            console.warn("[AiSidebar] NLUX segments container not found for history render");
-            return;
+            return false;
         }
 
         for (const entry of messages) {
             const text = String(entry?.text || "").trim();
             if (!text) continue;
+            if (entry.role !== "user" && this._isDuplicateAssistantText(text)) {
+                continue;
+            }
 
             const item =
                 entry.role === "user"
@@ -2869,7 +2944,13 @@ export class AiSidebar extends Component {
             this._startLockToAnchor();
         } catch (_) {}
 
-        requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+        requestAnimationFrame(() => {
+            this._ensureCopyButtons?.();
+            this._installManualSelectionGuard?.();
+            this._scheduleConversationReadStateSync?.();
+            window.dispatchEvent(new Event("resize"));
+        });
+        return true;
     }
 
     _setupTutorPushListener() {
@@ -3246,6 +3327,7 @@ export class AiSidebar extends Component {
         this._initFeedbackObserver();
 
         requestAnimationFrame(() => {
+            this._flushPendingHistory?.();
             this._flushPendingTutorMessages?.();
             this._startCopyButtonsObserver?.();
             this._installManualSelectionGuard?.();
@@ -3259,6 +3341,11 @@ export class AiSidebar extends Component {
     async reset() {
         const pendingQueue = getTutorPendingQueue();
         pendingQueue.splice(0, pendingQueue.length);
+        this._pendingHistory = null;
+        this._historyRenderedForSessionId = null;
+        this._resolveHistoryReady?.();
+        this._resolveHistoryReady = null;
+        this._historyReadyPromise = null;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
         this._clearStoredActiveExercise();
@@ -3293,7 +3380,7 @@ export class AiSidebar extends Component {
         window.dispatchEvent(new CustomEvent("ai:preview_reset"));
 
         try {
-            await this.aiWs.restart({ reason: "ui_reset", clearSession: true });
+            await this.aiWs.restart({ reason: "ui_reset", clearSession: true, newSession: true });
         } catch (e) {
             console.warn("[ai_sidebar] ws restart failed:", e);
         }
@@ -3695,6 +3782,7 @@ export class AiSidebar extends Component {
             const segs = root.querySelector(".nlux-chatSegments-container");
             if (conv && segs) {
                 this._initAntiAutoScroll(conv, segs);
+                this._flushPendingHistory?.();
                 this._disconnectContainerFinder();
                 return true;
             }

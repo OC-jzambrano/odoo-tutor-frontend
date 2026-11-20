@@ -199,6 +199,8 @@ function getState() {
     // session_id del backend (sale en "connection_established")
     wsSessionId: null,
     wsSessionWaiters: [],
+    lastHistory: null,
+    lastConnectionInfo: null,
 
     // cola global
     queue: window.__AI_TUTOR_WS_QUEUE || (window.__AI_TUTOR_WS_QUEUE = []),
@@ -343,9 +345,9 @@ export const aiWsService = {
       return ok;
     };
 
-    function connect() {
+    function connect(options = {}) {
       if (st.connectPromise) return st.connectPromise;
-      const currentAttempt = connectInternal();
+      const currentAttempt = connectInternal(options);
       st.connectPromise = currentAttempt;
       currentAttempt.then(
         () => {
@@ -359,7 +361,8 @@ export const aiWsService = {
     }
 
     async function connectInternal(options = {}) {
-      const skipStoredSession = Boolean(options?.skipStoredSession);
+      const newSession = Boolean(options?.newSession);
+      const skipStoredSession = Boolean(options?.skipStoredSession) || newSession;
 
       // ✅ Si ya hay socket open o connecting, no crees otro
       if (
@@ -395,11 +398,16 @@ export const aiWsService = {
       };
 
       const restoredSessionId = skipStoredSession ? null : readStoredWsSession(sessionScope);
-      if (restoredSessionId) {
+      if (newSession) {
+        params.set("new_session", "1");
+        st.lastHistory = null;
+        st.lastConnectionInfo = null;
+      } else if (restoredSessionId) {
         params.set("session_id", restoredSessionId);
       }
 
-      const fullUrl = `${baseUrl}?${params.toString()}`;
+      const queryString = params.toString();
+      const fullUrl = queryString ? `${baseUrl}?${queryString}` : baseUrl;
       console.log("[ai_ws] connecting");
 
       // ⚠️ IMPORTANTE: reset wsSessionId por conexión nueva
@@ -522,14 +530,17 @@ export const aiWsService = {
             data.session_id
           ) {
             st.wsSessionId = data.session_id;
+            st.lastConnectionInfo = data;
             window.__AI_TUTOR_WS_SESSION_ID = data.session_id;
             persistWsSession({ ...sessionScope, wsSessionId: data.session_id });
             console.log("[ai_ws] ✅ WS session_id captured:", data.session_id);
 
-            // ✅ Cargar historial persistido (Redis) para repintar el chat tras un reload.
+            // ✅ Cargar historial persistido solo cuando el backend reanuda una sesión existente.
+            // En sesiones nuevas (p. ej. Reset), el backend enviará welcome_push directamente.
             const historySessionId = data.session_id;
-            fetchSessionHistory(getHttpBaseUrl(baseUrl), historySessionId).then((messages) => {
+            const emitHistory = (messages) => {
               if (st.wsSessionId !== historySessionId) return; // conexión superada mientras tanto
+              st.lastHistory = { session_id: historySessionId, messages };
               for (const fn of st.listeners) {
                 try {
                   fn({ kind: "history", data: { session_id: historySessionId, messages } });
@@ -544,7 +555,13 @@ export const aiWsService = {
                   })
                 );
               } catch {}
-            });
+            };
+
+            if (data.is_resumed === true) {
+              fetchSessionHistory(getHttpBaseUrl(baseUrl), historySessionId).then(emitHistory);
+            } else {
+              emitHistory([]);
+            }
 
             // resolver waiters
             const waiters = st.wsSessionWaiters.splice(0);
@@ -922,6 +939,8 @@ export const aiWsService = {
       st.authenticated = false;
       st.wsSessionId = null;
       if (clearSession) {
+        st.lastHistory = null;
+        st.lastConnectionInfo = null;
         clearPersistedSession();
       }
       setStatus(st, "closed");
@@ -949,10 +968,10 @@ export const aiWsService = {
       }
     }
 
-    async function restart({ reason = "restart", clearSession = false } = {}) {
+    async function restart({ reason = "restart", clearSession = false, newSession = false } = {}) {
       await disconnect({ code: 1000, reason, clearSession });
       await new Promise((r) => setTimeout(r, 80));
-      await connect();
+      await connect({ newSession: Boolean(newSession || clearSession) });
     }
 
     const api = {
@@ -976,6 +995,8 @@ export const aiWsService = {
       get wsSessionId() {
         return st.wsSessionId;
       },
+      getLastHistory: () => st.lastHistory,
+      getLastConnectionInfo: () => st.lastConnectionInfo,
       clearPersistedSession,
     };
 
