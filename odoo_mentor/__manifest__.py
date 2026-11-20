@@ -17,6 +17,8 @@ Try it out by sending the chatbot a message like this:
 - How to configure purchase warnings on products?
 - How to create a replenishment rule?
 - How to configure and manage activities in Odoo CRM?
+
+Watch the full 1080p HD demo video: https://youtu.be/Ki0tSjDGM0k
 """,
     "author": "Juan Zambrano <juanzamdev@gmail.com>, Odoo Concept",
     "support": "juanzamdev@gmail.com",

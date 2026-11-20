@@ -64,7 +64,8 @@ Official Odoo 20 demo exercises:
 - How to create a replenishment rule?
 - How to configure and manage activities in Odoo CRM?
 
-The listing includes an Odoo 20 banner, real CRM exercise screenshots, and an
-animated walkthrough GIF (`demo_sales_quotation.gif`) captured from a live Odoo 20
-B2B sales quotation exercise run. Use sample records and exclude credentials and
-personal information from any future media.
+The listing includes an Odoo 20 banner, real CRM exercise screenshots, an
+animated walkthrough GIF (`demo_sales_quotation.gif`), and a link to the full
+1080p HD YouTube demo (`https://youtu.be/Ki0tSjDGM0k`) captured from a live
+Odoo 20 B2B sales quotation exercise run. Use sample records and exclude
+credentials and personal information from any future media.
