@@ -2,7 +2,22 @@
     "name": "Odoo Tutor",
     "version": "20.0.1.0.2",
     "category": "Extra Tools",
-    "summary": "Learn Odoo 20 with contextual AI guidance and hands-on exercises.",
+    "summary": "Learn Odoo 20 with contextual AI guidance and hands-on exercises across Project, Sales, Purchase, Inventory, and CRM.",
+    "description": """
+Odoo Tutor — Contextual AI Learning Companion for Odoo 20
+=========================================================
+
+Learn Odoo 20 while you work with step-by-step interactive guidance, visual UI
+spotlights, and contextual hints directly inside your Odoo workspace.
+
+Official Odoo 20 Demo Exercises
+-------------------------------
+- How to configure task dependencies in Odoo Project?
+- How to create a sales quotation from scratch for a new B2B customer?
+- How to configure purchase warnings on products?
+- How to create a replenishment rule?
+- How to configure and manage activities in Odoo CRM?
+""",
     "author": "Juan Zambrano <juanzamdev@gmail.com>, Odoo Concept",
     "support": "juanzamdev@gmail.com",
     "website": "https://odooconcept.com",
