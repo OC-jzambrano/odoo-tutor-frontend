@@ -56,14 +56,13 @@ names or version labels may refer to Odoo 19; those exercises are compatible
 with Odoo 20. The add-on, listing, supported version and all customer-facing
 branding remain Odoo 20.
 
-Featured exercise identifiers:
+Official Odoo 20 demo exercises:
 
-- `create-opportunity-manual`
-- `create-b2b-sales-quotation`
-- `create-storable-product`
-- `activities-management`
-- `define-pipeline-stages`
-- `create-internal-transfer`
+- How to configure task dependencies in Odoo Project?
+- How to create a sales quotation from scratch for a new B2B customer?
+- How to configure purchase warnings on products?
+- How to create a replenishment rule?
+- How to configure and manage activities in Odoo CRM?
 
 The listing includes an Odoo 20 banner and real CRM exercise screenshots from a
 demo database. The obsolete screenshots showing the retired shared-key setting
