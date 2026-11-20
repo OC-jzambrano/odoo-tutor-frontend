@@ -10,7 +10,7 @@ Odoo Tutor — Contextual AI Learning Companion for Odoo 20
 Learn Odoo 20 while you work with step-by-step interactive guidance, visual UI
 spotlights, and contextual hints directly inside your Odoo workspace.
 
-Official Odoo 20 Demo Exercises
+Try it out by sending the chatbot a message like this:
 -------------------------------
 - How to configure task dependencies in Odoo Project?
 - How to create a sales quotation from scratch for a new B2B customer?
