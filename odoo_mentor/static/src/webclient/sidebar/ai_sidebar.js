@@ -22,6 +22,7 @@ import {
 import { shouldQueueTutorMessage } from "../../core/tutor_message_delivery";
 import {
     buildDraftStepFromEvent,
+    buildRecorderModuleOptions,
     buildRecordingDraftPayload,
 } from "../../core/recording_draft";
 import { TUTOR_PLANS_URL } from "../../core/settings_navigation";
@@ -214,6 +215,7 @@ export class AiSidebar extends Component {
         // Services
         this.contextService = useService("context_service");
         this.notification = useService("notification");
+        this.menuService = useService("menu");
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
         this.aiChatStore = useService("ai_chat_store");
@@ -303,6 +305,7 @@ export class AiSidebar extends Component {
             recorderSessionId: null,
             recorderTitle: "",
             recorderModule: "",
+            recorderModuleOptions: buildRecorderModuleOptions(),
             recorderSteps: [],
             recorderSaving: false,
             recorderFeed: [],
@@ -548,6 +551,7 @@ export class AiSidebar extends Component {
             }
 
             this._loadRecorderPermission();
+            this._loadRecorderModuleOptions();
             this.state.breadcrumbPath = this._getCurrentBreadcrumbPath();
 
             this.contextInterval = setInterval(() => {
@@ -2448,13 +2452,24 @@ export class AiSidebar extends Component {
         }
     }
 
+    _loadRecorderModuleOptions() {
+        try {
+            const apps = this.menuService?.getApps?.() || [];
+            this.state.recorderModuleOptions = buildRecorderModuleOptions(apps);
+        } catch (e) {
+            this.state.recorderModuleOptions = buildRecorderModuleOptions();
+        }
+    }
+
     async toggleRecorderPanel() {
         if (!this.state.canSeeRecorderToggle) return;
 
         this.state.showRecorderPanel = !this.state.showRecorderPanel;
         this._closeFeedbackPopover();
 
-        if (!this.state.showRecorderPanel) {
+        if (this.state.showRecorderPanel) {
+            this._loadRecorderModuleOptions();
+        } else {
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
             window.dispatchEvent(new Event("resize"));
             this._focusComposerInput();
@@ -2473,7 +2488,7 @@ export class AiSidebar extends Component {
         const mod = (this.state.recorderModule || "").trim();
         if (!title || !mod) {
             this.notification.add(
-                _t("Enter both an exercise title and an app/module before starting capture."),
+                _t("Enter an exercise title and select an app/module before starting capture."),
                 { type: "warning" }
             );
             return;

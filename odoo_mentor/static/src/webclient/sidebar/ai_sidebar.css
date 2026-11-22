@@ -1766,13 +1766,21 @@
     color: #bfdbfe;
 }
 
-#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_step textarea.form-control {
-    background: rgba(15, 23, 42, 0.62);
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_step textarea.form-control,
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_meta .form-control,
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_meta .form-select {
+    background-color: rgba(15, 23, 42, 0.62);
     border-color: rgba(148, 163, 184, 0.22);
     color: var(--tutor-text);
 }
 
-#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_step textarea.form-control::placeholder {
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_meta .form-select option {
+    background-color: #0f172a;
+    color: var(--tutor-text);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_step textarea.form-control::placeholder,
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_meta .form-control::placeholder {
     color: var(--tutor-text-soft);
 }
 

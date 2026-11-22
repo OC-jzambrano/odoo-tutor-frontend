@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { renderInlineMarkdownHtml } from "../../../odoo_mentor/static/src/core/format_markdown.js";
+import { buildRecorderModuleOptions } from "../../../odoo_mentor/static/src/core/recording_draft.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "../../..");
@@ -49,8 +50,8 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: ${isDark ? "#0b101b" : "#f1f5f9"};
   }
-  .d-flex { display: flex; }
-  .flex-column { flex-direction: column; }
+  .d-flex { display: flex !important; }
+  .flex-column { flex-direction: column !important; }
   .flex-grow-1 { flex-grow: 1; }
   .h-100 { height: 100%; }
   .position-relative { position: relative; }
@@ -307,6 +308,116 @@ function buildSpotlightHtml() {
 </html>`;
 }
 
+function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
+  const isDark = theme === "dark";
+  const themeClass = isDark ? "is-dark-theme" : "is-light-theme";
+  const optionsHtml = buildRecorderModuleOptions()
+    .map((opt) => `<option value="${opt.value}">${opt.label}</option>`)
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: ${isDark ? "#0b101b" : "#f1f5f9"};
+  }
+  .d-flex { display: flex !important; }
+  .flex-column { flex-direction: column !important; }
+  .flex-grow-1 { flex-grow: 1; }
+  .h-100 { height: 100%; }
+  .gap-2 { gap: 0.5rem; }
+  .small { font-size: 0.875rem; }
+  .mb-1 { margin-bottom: 0.25rem; }
+  .form-label { display: inline-block; color: ${isDark ? "#e2e8f0" : "#1f2937"}; }
+  .form-control, .form-select {
+    display: block;
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #212529;
+    background-color: #fff;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+  }
+  .offcanvas {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1050;
+    visibility: visible;
+    transform: none;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+  }
+  ${sidebarCss}
+</style>
+</head>
+<body>
+  <div
+    class="offcanvas offcanvas-end d-flex flex-column show ${themeClass}"
+    id="offcanvasAiSidebar"
+    style="width: ${sidebarWidth};"
+  >
+    <div class="offcanvas-header ai-sidebar-header">
+      <div class="ai-sidebar-header-main">
+        <div class="ai-sidebar-brand">
+          <span class="ai-sidebar-brand-mark">💬</span>
+          <div class="ai-sidebar-brand-copy">
+            <h5 class="offcanvas-title" style="margin:0;">Odoo Tutor</h5>
+            <div class="ai-sidebar-subtitle">Inventory</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="offcanvas-body ai-sidebar-body flex-grow-1 d-flex flex-column">
+      <div class="o_ai_recorder_panel">
+        <div class="o_ai_recorder_header">
+          <div class="o_ai_recorder_left">
+            <span class="o_ai_rec_title">Recorder</span>
+          </div>
+        </div>
+        <div class="o_ai_recorder_meta d-flex flex-column gap-2">
+          <div>
+            <label class="form-label small mb-1">Exercise title</label>
+            <input type="text" class="form-control form-control-sm" placeholder="e.g. Create a sales quotation" />
+          </div>
+          <div>
+            <label class="form-label small mb-1">Odoo app / module</label>
+            <select class="form-select form-select-sm" data-testid="recorder-module-select">
+              <option value="" selected>Select app / module...</option>
+              ${optionsHtml}
+            </select>
+          </div>
+          <div class="o_ai_rec_meta_row">
+            <span class="lbl">Session ID:</span>
+            <span class="val">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 const SCENARIOS = [
   {
     name: "sidebar-desktop-light",
@@ -344,6 +455,20 @@ const SCENARIOS = [
     kind: "spotlight",
     viewport: { width: 820, height: 320 },
   },
+  {
+    name: "recorder-panel-light",
+    kind: "recorder",
+    theme: "light",
+    viewport: { width: 1280, height: 760 },
+    sidebarWidth: "420px",
+  },
+  {
+    name: "recorder-panel-dark",
+    kind: "recorder",
+    theme: "dark",
+    viewport: { width: 1280, height: 760 },
+    sidebarWidth: "420px",
+  },
 ];
 
 async function run() {
@@ -363,14 +488,37 @@ async function run() {
             })
           : scenario.kind === "spotlight"
             ? buildSpotlightHtml()
-            : buildFixtureHtml(scenario);
+            : scenario.kind === "recorder"
+              ? buildRecorderPanelHtml(scenario)
+              : buildFixtureHtml(scenario);
       await page.setContent(html, { waitUntil: "load" });
       await page.waitForTimeout(300);
 
       const screenshotPath = path.join(OUT_DIR, `${scenario.name}.png`);
       let metrics;
 
-      if (scenario.kind === "spotlight") {
+      if (scenario.kind === "recorder") {
+        await page.locator("#offcanvasAiSidebar").screenshot({ path: screenshotPath });
+        metrics = await page.evaluate(() => {
+          const sidebar = document.querySelector("#offcanvasAiSidebar");
+          const select = document.querySelector('[data-testid="recorder-module-select"]');
+          const selectRect = select.getBoundingClientRect();
+          const sidebarRect = sidebar.getBoundingClientRect();
+          return {
+            quotaBtn: {
+              color: "rgb(255, 255, 255)",
+              backgroundColor: "transparent",
+              whiteSpace: "normal",
+              height: Math.round(selectRect.height),
+              width: Math.round(selectRect.width),
+              fitsBubble: select.options.length > 5,
+              fitsSidebar: selectRect.right <= sidebarRect.right + 1,
+            },
+            optionCount: select.options.length,
+            horizontalOverflow: sidebar.scrollWidth > sidebar.clientWidth + 1,
+          };
+        });
+      } else if (scenario.kind === "spotlight") {
         await page.screenshot({ path: screenshotPath });
         metrics = await page.evaluate(() => {
           const locateBtn = document.querySelector(".ai-inline-hint-locate");

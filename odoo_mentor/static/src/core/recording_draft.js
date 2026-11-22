@@ -128,6 +128,61 @@ export function buildDraftStepFromEvent(normalized, { id = null, el = null } = {
     };
 }
 
+const EXCLUDED_RECORDER_MODULES = new Set(["odoo_mentor", "odoo_tutor"]);
+
+export const DEFAULT_ODOO_MODULE_OPTIONS = Object.freeze([
+    { value: "account", label: "Invoicing / Accounting (account)" },
+    { value: "base", label: "Settings (base)" },
+    { value: "calendar", label: "Calendar (calendar)" },
+    { value: "contacts", label: "Contacts (contacts)" },
+    { value: "crm", label: "CRM" },
+    { value: "hr", label: "Employees (hr)" },
+    { value: "mail", label: "Discuss (mail)" },
+    { value: "mrp", label: "Manufacturing (mrp)" },
+    { value: "point_of_sale", label: "Point of Sale (point_of_sale)" },
+    { value: "project", label: "Project (project)" },
+    { value: "purchase", label: "Purchase (purchase)" },
+    { value: "sale", label: "Sales (sale)" },
+    { value: "stock", label: "Inventory (stock)" },
+    { value: "website", label: "Website (website)" },
+]);
+
+function extractModuleFromApp(app) {
+    if (!app || typeof app !== "object") return "";
+    const explicit = trimText(app.module || "", 120);
+    if (explicit) return explicit;
+    const xmlid = trimText(app.xmlid || "", 240);
+    if (xmlid && xmlid.includes(".")) {
+        return trimText(xmlid.split(".")[0], 120);
+    }
+    const name = trimText(app.name || "", 120);
+    if (!name) return "";
+    return name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+}
+
+export function buildRecorderModuleOptions(apps = []) {
+    const byModule = new Map();
+    for (const app of Array.isArray(apps) ? apps : []) {
+        const value = extractModuleFromApp(app);
+        if (!value || EXCLUDED_RECORDER_MODULES.has(value)) continue;
+        const name = trimText(app?.name || "", 120);
+        const label =
+            name && name.toLowerCase() !== value.toLowerCase()
+                ? `${name} (${value})`
+                : name || value;
+        if (!byModule.has(value)) {
+            byModule.set(value, { value, label });
+        }
+    }
+    if (!byModule.size) {
+        return DEFAULT_ODOO_MODULE_OPTIONS.map((opt) => ({ ...opt }));
+    }
+    return Array.from(byModule.values()).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 export function buildRecordingDraftPayload({ recordingId, title, module, steps }) {
     const cleanTitle = trimText(title, 240);
     const cleanModule = trimText(module, 240);

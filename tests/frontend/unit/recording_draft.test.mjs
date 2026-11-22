@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
     buildDraftStepFromEvent,
+    buildRecorderModuleOptions,
     buildRecordingDraftPayload,
+    DEFAULT_ODOO_MODULE_OPTIONS,
     isRecorderUiElement,
     isSensitiveInputElement,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
@@ -136,5 +138,25 @@ describe("recording_draft helpers", () => {
             module: "crm",
             steps: [step],
         });
+    });
+
+    it("builds sorted deduplicated dropdown options from installed Odoo apps with fallback", () => {
+        const options = buildRecorderModuleOptions([
+            { name: "Sales", xmlid: "sale.sale_menu_root" },
+            { name: "CRM", xmlid: "crm.crm_menu_root" },
+            { name: "Inventory", xmlid: "stock.menu_stock_root" },
+            { name: "Odoo Tutor", xmlid: "odoo_mentor.menu_odoo_tutor_root" },
+            { name: "Apps", xmlid: "base.menu_management" },
+            { name: "Settings", xmlid: "base.menu_administration" },
+        ]);
+
+        expect(options).toEqual([
+            { value: "base", label: "Apps (base)" },
+            { value: "crm", label: "CRM" },
+            { value: "stock", label: "Inventory (stock)" },
+            { value: "sale", label: "Sales (sale)" },
+        ]);
+
+        expect(buildRecorderModuleOptions([])).toEqual(DEFAULT_ODOO_MODULE_OPTIONS);
     });
 });

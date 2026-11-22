@@ -222,12 +222,19 @@
                                     </div>
                                     <div>
                                         <label class="form-label small mb-1" t-out="this.translate('Odoo app / module')"/>
-                                        <input type="text"
-                                               class="form-control form-control-sm"
-                                               t-att-disabled="this.state.recorderStatus !== 'idle'"
-                                               t-att-value="this.state.recorderModule"
-                                               t-on-input="(ev) => this.state.recorderModule = ev.target.value"
-                                               t-att-placeholder="this.translate('e.g. sale, crm, stock')"/>
+                                        <select class="form-select form-select-sm"
+                                                t-att-disabled="this.state.recorderStatus !== 'idle'"
+                                                t-att-value="this.state.recorderModule"
+                                                t-on-change="(ev) => this.state.recorderModule = ev.target.value">
+                                            <option value=""
+                                                    t-att-selected="!this.state.recorderModule"
+                                                    t-out="this.translate('Select app / module...')"/>
+                                            <t t-foreach="this.state.recorderModuleOptions" t-as="opt" t-key="opt.value">
+                                                <option t-att-value="opt.value"
+                                                        t-att-selected="this.state.recorderModule === opt.value"
+                                                        t-out="opt.label"/>
+                                            </t>
+                                        </select>
                                     </div>
                                     <div class="o_ai_rec_meta_row">
                                         <span class="lbl" t-out="this.translate('Session ID:')"/>
