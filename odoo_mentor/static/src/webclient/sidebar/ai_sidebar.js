@@ -24,6 +24,8 @@ import {
     buildDraftStepFromEvent,
     buildRecorderModuleOptions,
     buildRecordingDraftPayload,
+    extractModuleFromApp,
+    findAppForModule,
 } from "../../core/recording_draft";
 import { TUTOR_PLANS_URL } from "../../core/settings_navigation";
 import { renderInlineMarkdownHtml } from "../../core/format_markdown";
@@ -2455,7 +2457,15 @@ export class AiSidebar extends Component {
     _loadRecorderModuleOptions() {
         try {
             const apps = this.menuService?.getApps?.() || [];
-            this.state.recorderModuleOptions = buildRecorderModuleOptions(apps);
+            const options = buildRecorderModuleOptions(apps);
+            this.state.recorderModuleOptions = options;
+            if (this.state.recorderStatus === "idle" && !this.state.recorderModule) {
+                const currentApp = this.menuService?.getCurrentApp?.();
+                const currentModule = extractModuleFromApp(currentApp);
+                if (currentModule && options.some((opt) => opt.value === currentModule)) {
+                    this.state.recorderModule = currentModule;
+                }
+            }
         } catch (e) {
             this.state.recorderModuleOptions = buildRecorderModuleOptions();
         }
@@ -2478,6 +2488,7 @@ export class AiSidebar extends Component {
 
     async onRecorderStart() {
         if (this.state.recorderStatus === "paused") {
+            await this.hideSidebar();
             const sid = await this.aiRecorder.resumeRecording();
             this.state.recorderSessionId = sid;
             this.state.recorderStatus = "recording";
@@ -2493,7 +2504,25 @@ export class AiSidebar extends Component {
             );
             return;
         }
-        const sid = await this.aiRecorder.startRecording({ exerciseId: this.state.exerciseId || null });
+
+        const apps = this.menuService?.getApps?.() || [];
+        const selectedApp = findAppForModule(apps, mod);
+        if (selectedApp && this.menuService?.selectMenu) {
+            const currentAppId = this.menuService?.getCurrentApp?.()?.id;
+            if (currentAppId !== selectedApp.id) {
+                try {
+                    await this.menuService.selectMenu(selectedApp);
+                } catch {}
+            }
+        }
+
+        await this.hideSidebar();
+
+        const sid = await this.aiRecorder.startRecording({
+            exerciseId: this.state.exerciseId || null,
+            module: mod,
+            moduleRootXmlid: selectedApp?.xmlid || null,
+        });
         this.state.recorderSessionId = sid;
         this.state.recorderStatus = "recording";
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";

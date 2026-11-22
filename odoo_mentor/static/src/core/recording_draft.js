@@ -28,10 +28,56 @@ export function isRecorderUiElement(el) {
     if (!el?.closest) return false;
     return !!(
         el.closest("#offcanvasAiSidebar") ||
+        el.closest(".offcanvas-backdrop") ||
+        el.closest(".ai-floating-button") ||
+        el.closest(".ai-owl-trigger") ||
+        el.closest("[data-ai-tutor-ignore-event='true']") ||
         el.closest(".o_ai_recorder_panel") ||
         el.closest(".o_ai_picker_overlay") ||
         el.closest(".o_ai_picker_label")
     );
+}
+
+export function isModuleEntryNavigationEvent(
+    normalized,
+    { module = null, moduleRootXmlid = null, el = null } = {}
+) {
+    const rawTarget = trimText(
+        normalized?.meta?.target_name || normalized?.dom?.dom_key || "",
+        240
+    ).toLowerCase();
+
+    if (
+        rawTarget === "btn.home-menu" ||
+        el?.closest?.(".o_menu_toggle, .o_navbar_apps_menu > button, .o_navbar_apps_menu > a")
+    ) {
+        return true;
+    }
+
+    const strippedTarget = rawTarget.replace(/^menu\./, "");
+    const cleanRootXmlid = trimText(moduleRootXmlid || "", 240).toLowerCase();
+    if (cleanRootXmlid && strippedTarget === cleanRootXmlid) {
+        return true;
+    }
+
+    const cleanModule = trimText(module || "", 120).toLowerCase();
+    if (!cleanModule) return false;
+
+    if (
+        el?.closest?.(".o_app") &&
+        (strippedTarget === cleanModule || strippedTarget.startsWith(`${cleanModule}.`))
+    ) {
+        return true;
+    }
+
+    if (
+        strippedTarget === `${cleanModule}.menu_${cleanModule}_root` ||
+        strippedTarget === `${cleanModule}.${cleanModule}_menu_root`
+    ) {
+        return true;
+    }
+
+    return false;
 }
 
 export function isSensitiveInputElement(el, normalized = null) {
@@ -94,10 +140,14 @@ export function buildStepInstruction(normalized) {
     return label ? `Click ${label}` : "Click element";
 }
 
-export function buildDraftStepFromEvent(normalized, { id = null, el = null } = {}) {
+export function buildDraftStepFromEvent(
+    normalized,
+    { id = null, el = null, module = null, moduleRootXmlid = null } = {}
+) {
     if (!normalized) return null;
     if (isRecorderUiElement(el)) return null;
     if (isSensitiveInputElement(el, normalized)) return null;
+    if (isModuleEntryNavigationEvent(normalized, { module, moduleRootXmlid, el })) return null;
 
     const action = normalized.type === "field_changed" ? "change" : "click";
     const model = trimText(normalized.meta?.model || "", 240) || null;
@@ -147,7 +197,7 @@ export const DEFAULT_ODOO_MODULE_OPTIONS = Object.freeze([
     { value: "website", label: "Website (website)" },
 ]);
 
-function extractModuleFromApp(app) {
+export function extractModuleFromApp(app) {
     if (!app || typeof app !== "object") return "";
     const explicit = trimText(app.module || "", 120);
     if (explicit) return explicit;
@@ -161,6 +211,17 @@ function extractModuleFromApp(app) {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "_")
         .replace(/^_+|_+$/g, "");
+}
+
+export function findAppForModule(apps = [], moduleName = "") {
+    const target = trimText(moduleName, 120).toLowerCase();
+    if (!target) return null;
+    for (const app of Array.isArray(apps) ? apps : []) {
+        if (extractModuleFromApp(app).toLowerCase() === target) {
+            return app;
+        }
+    }
+    return null;
 }
 
 export function buildRecorderModuleOptions(apps = []) {

@@ -4,6 +4,9 @@ import {
     buildRecorderModuleOptions,
     buildRecordingDraftPayload,
     DEFAULT_ODOO_MODULE_OPTIONS,
+    extractModuleFromApp,
+    findAppForModule,
+    isModuleEntryNavigationEvent,
     isRecorderUiElement,
     isSensitiveInputElement,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
@@ -39,15 +42,23 @@ describe("recording_draft helpers", () => {
         ).toBe(false);
     });
 
-    it("ignores events originating from recorder or sidebar UI", () => {
+    it("ignores events originating from recorder, sidebar, backdrop, or floating toggle UI", () => {
         const insideSidebar = {
             closest: (sel) => (sel === "#offcanvasAiSidebar" ? {} : null),
+        };
+        const onBackdrop = {
+            closest: (sel) => (sel === ".offcanvas-backdrop" ? {} : null),
+        };
+        const onFloatingToggle = {
+            closest: (sel) => (sel === ".ai-floating-button" ? {} : null),
         };
         const insideApp = {
             closest: () => null,
         };
 
         expect(isRecorderUiElement(insideSidebar)).toBe(true);
+        expect(isRecorderUiElement(onBackdrop)).toBe(true);
+        expect(isRecorderUiElement(onFloatingToggle)).toBe(true);
         expect(isRecorderUiElement(insideApp)).toBe(false);
     });
 
@@ -158,5 +169,63 @@ describe("recording_draft helpers", () => {
         ]);
 
         expect(buildRecorderModuleOptions([])).toEqual(DEFAULT_ODOO_MODULE_OPTIONS);
+    });
+
+    it("ignores home-menu and selected module root navigation clicks while keeping sub-menus", () => {
+        const apps = [
+            { id: 10, name: "Inventory", xmlid: "stock.menu_stock_root" },
+            { id: 20, name: "Sales", xmlid: "sale.sale_menu_root" },
+        ];
+        expect(extractModuleFromApp(apps[0])).toBe("stock");
+        expect(findAppForModule(apps, "stock")).toEqual(apps[0]);
+        expect(findAppForModule(apps, "unknown")).toBeNull();
+
+        expect(
+            isModuleEntryNavigationEvent(
+                { type: "button_clicked", meta: { target_name: "btn.home-menu" } },
+                { module: "stock", moduleRootXmlid: "stock.menu_stock_root" }
+            )
+        ).toBe(true);
+
+        expect(
+            isModuleEntryNavigationEvent(
+                { type: "menu_clicked", meta: { target_name: "menu.stock.menu_stock_root" } },
+                { module: "stock", moduleRootXmlid: "stock.menu_stock_root" }
+            )
+        ).toBe(true);
+
+        expect(
+            buildDraftStepFromEvent(
+                {
+                    type: "menu_clicked",
+                    label: "Inventory",
+                    meta: { target_name: "menu.stock.menu_stock_root" },
+                },
+                { module: "stock", moduleRootXmlid: "stock.menu_stock_root" }
+            )
+        ).toBeNull();
+
+        const submenuStep = buildDraftStepFromEvent(
+            {
+                type: "menu_clicked",
+                label: "Operations",
+                meta: { target_name: "menu.stock.menu_stock_warehouse_mgmt" },
+            },
+            {
+                id: "55555555-5555-4555-8555-555555555555",
+                module: "stock",
+                moduleRootXmlid: "stock.menu_stock_root",
+            }
+        );
+        expect(submenuStep).toEqual({
+            id: "55555555-5555-4555-8555-555555555555",
+            instruction: "Open Operations",
+            target: {
+                action: "click",
+                model: null,
+                field: null,
+                target_key: "menu.stock.menu_stock_warehouse_mgmt",
+            },
+        });
     });
 });

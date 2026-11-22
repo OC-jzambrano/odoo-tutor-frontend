@@ -5,6 +5,7 @@ import { registry } from "@web/core/registry";
 import { normalizeDomEvent } from "./normalize_event";
 import {
     buildDraftStepFromEvent,
+    isModuleEntryNavigationEvent,
     isRecorderUiElement,
     isSensitiveInputElement,
 } from "./recording_draft";
@@ -170,6 +171,8 @@ export const aiRecorderService = {
         let status = "idle"; // idle | recording | paused
         let sessionId = null;
         let exerciseId = null;
+        let recordingModule = null;
+        let recordingModuleRootXmlid = null;
 
         const listeners = new Set();
         const logs = [];
@@ -232,6 +235,15 @@ export const aiRecorderService = {
             contextService,
           });
           if (isSensitiveInputElement(e?.target, normalized)) return;
+          if (
+            isModuleEntryNavigationEvent(normalized, {
+              module: recordingModule,
+              moduleRootXmlid: recordingModuleRootXmlid,
+              el: e?.target,
+            })
+          ) {
+            return;
+          }
 
           // dedupe: type + (field/target_name/dom_key) + res_id + value?
           const keyPart =
@@ -246,6 +258,8 @@ export const aiRecorderService = {
           const generatedStep = buildDraftStepFromEvent(normalized, {
             id: uuid(),
             el: e?.target,
+            module: recordingModule,
+            moduleRootXmlid: recordingModuleRootXmlid,
           });
           if (generatedStep) {
             pushLog({
@@ -355,6 +369,12 @@ export const aiRecorderService = {
                 sessionId = opts.sessionId || uuid();
             }
             exerciseId = opts.exerciseId || exerciseId || null;
+            if (opts.module !== undefined) {
+                recordingModule = opts.module || null;
+            }
+            if (opts.moduleRootXmlid !== undefined) {
+                recordingModuleRootXmlid = opts.moduleRootXmlid || null;
+            }
             status = "recording";
 
             attachDomListeners();
@@ -410,6 +430,8 @@ export const aiRecorderService = {
 
             sessionId = null;
             exerciseId = null;
+            recordingModule = null;
+            recordingModuleRootXmlid = null;
             lastSeen.clear();
         }
 
