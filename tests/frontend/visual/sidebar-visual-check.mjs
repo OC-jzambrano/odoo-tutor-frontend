@@ -232,6 +232,57 @@ function buildFloatingBubbleHtml({ viewportWidth = 1280, viewportHeight = 760 } 
 </html>`;
 }
 
+function buildFloatingRecordingHtml({ viewportWidth = 320, viewportHeight = 220 } = {}) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f1f5f9;
+  }
+  ${togglerCss}
+</style>
+</head>
+<body>
+  <div class="ai-floating-button is-recording" style="transform: translate3d(36px, 60px, 0);">
+    <button class="ai-owl-trigger" type="button" aria-label="Recording exercise - open Odoo Tutor recorder">
+      <span class="ai-owl-trigger-halo"></span>
+      <span class="ai-owl-trigger-shell">
+        <span class="ai-owl-trigger-core">
+          <span class="ai-owl-trigger-rec-icon" aria-hidden="true">
+            <span class="ai-owl-trigger-rec-dot"></span>
+          </span>
+        </span>
+      </span>
+      <span class="ai-owl-trigger-badge">REC</span>
+    </button>
+  </div>
+
+  <div class="ai-floating-button is-recording-paused" style="transform: translate3d(172px, 60px, 0);">
+    <button class="ai-owl-trigger" type="button" aria-label="Recording paused - open Odoo Tutor recorder">
+      <span class="ai-owl-trigger-halo"></span>
+      <span class="ai-owl-trigger-shell">
+        <span class="ai-owl-trigger-core">
+          <span class="ai-owl-trigger-rec-icon" aria-hidden="true">
+            <span class="ai-owl-trigger-rec-pause"><span></span><span></span></span>
+          </span>
+        </span>
+      </span>
+      <span class="ai-owl-trigger-badge">PAUSED</span>
+    </button>
+  </div>
+</body>
+</html>`;
+}
+
 function buildSpotlightHtml() {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -451,6 +502,11 @@ const SCENARIOS = [
     viewport: { width: 390, height: 760 },
   },
   {
+    name: "floating-bubble-recording",
+    kind: "floating_recording",
+    viewport: { width: 320, height: 220 },
+  },
+  {
     name: "target-hint-spotlight",
     kind: "spotlight",
     viewport: { width: 820, height: 320 },
@@ -486,6 +542,11 @@ async function run() {
               viewportWidth: scenario.viewport.width,
               viewportHeight: scenario.viewport.height,
             })
+          : scenario.kind === "floating_recording"
+            ? buildFloatingRecordingHtml({
+                viewportWidth: scenario.viewport.width,
+                viewportHeight: scenario.viewport.height,
+              })
           : scenario.kind === "spotlight"
             ? buildSpotlightHtml()
             : scenario.kind === "recorder"
@@ -497,7 +558,27 @@ async function run() {
       const screenshotPath = path.join(OUT_DIR, `${scenario.name}.png`);
       let metrics;
 
-      if (scenario.kind === "recorder") {
+      if (scenario.kind === "floating_recording") {
+        await page.screenshot({ path: screenshotPath });
+        metrics = await page.evaluate(() => {
+          const recBadge = document.querySelector(".is-recording .ai-owl-trigger-badge");
+          const recIcon = document.querySelector(".is-recording .ai-owl-trigger-rec-icon");
+          const badgeStyle = getComputedStyle(recBadge);
+          const iconRect = recIcon.getBoundingClientRect();
+          return {
+            quotaBtn: {
+              color: badgeStyle.color,
+              backgroundColor: badgeStyle.backgroundColor,
+              whiteSpace: "normal",
+              height: Math.round(recBadge.getBoundingClientRect().height),
+              width: Math.round(iconRect.width),
+              fitsBubble: recBadge.textContent.trim() === "REC",
+              fitsSidebar: iconRect.width >= 56 && iconRect.height >= 56,
+            },
+            horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+          };
+        });
+      } else if (scenario.kind === "recorder") {
         await page.locator("#offcanvasAiSidebar").screenshot({ path: screenshotPath });
         metrics = await page.evaluate(() => {
           const sidebar = document.querySelector("#offcanvasAiSidebar");

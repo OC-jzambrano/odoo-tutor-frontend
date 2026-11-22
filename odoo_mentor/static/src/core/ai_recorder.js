@@ -5,9 +5,13 @@ import { registry } from "@web/core/registry";
 import { normalizeDomEvent } from "./normalize_event";
 import {
     buildDraftStepFromEvent,
+    clearPersistedRecordingSession,
+    getRecorderStorageKey,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
     isSensitiveInputElement,
+    loadPersistedRecordingSession,
+    savePersistedRecordingSession,
 } from "./recording_draft";
 
 const DUP_WINDOW_MS = 800;
@@ -171,14 +175,80 @@ export const aiRecorderService = {
         let status = "idle"; // idle | recording | paused
         let sessionId = null;
         let exerciseId = null;
+        let recordingTitle = "";
         let recordingModule = null;
         let recordingModuleRootXmlid = null;
+        let recordedSteps = [];
+        let recordedFeed = [];
+        let recordedStepIndex = 0;
+        let recordedNote = "";
 
         const listeners = new Set();
         const logs = [];
         const lastSeen = new Map();
 
         let pickerActive = false;
+
+        function getStorage() {
+            try {
+                if (window.sessionStorage) return window.sessionStorage;
+            } catch {}
+            return null;
+        }
+
+        function getStorageKey() {
+            const sess = (window.odoo && window.odoo.session_info) || {};
+            return getRecorderStorageKey({ db: sess.db, uid: sess.uid });
+        }
+
+        function getSessionState() {
+            return {
+                status,
+                sessionId,
+                exerciseId,
+                title: recordingTitle,
+                module: recordingModule || "",
+                moduleRootXmlid: recordingModuleRootXmlid,
+                steps: recordedSteps.slice(),
+                feed: recordedFeed.slice(),
+                stepIndex: recordedStepIndex,
+                note: recordedNote,
+            };
+        }
+
+        function persistSessionState() {
+            const storage = getStorage();
+            const key = getStorageKey();
+            if (status === "idle" || !sessionId) {
+                clearPersistedRecordingSession(storage, key);
+                return;
+            }
+            savePersistedRecordingSession(storage, key, getSessionState());
+        }
+
+        function syncSessionMeta(patch = {}) {
+            if (!patch || typeof patch !== "object") return;
+            if (patch.title !== undefined) recordingTitle = (patch.title || "").toString();
+            if (patch.module !== undefined) recordingModule = patch.module || null;
+            if (patch.moduleRootXmlid !== undefined) {
+                recordingModuleRootXmlid = patch.moduleRootXmlid || null;
+            }
+            if (Array.isArray(patch.steps)) recordedSteps = patch.steps.slice();
+            if (Array.isArray(patch.feed)) recordedFeed = patch.feed.slice(0, 60);
+            if (patch.stepIndex !== undefined) {
+                recordedStepIndex = Math.max(0, Math.floor(Number(patch.stepIndex) || 0));
+            }
+            if (patch.note !== undefined) recordedNote = (patch.note || "").toString();
+            persistSessionState();
+        }
+
+        function appendRecordedStep(step) {
+            if (!step?.id) return;
+            if (!recordedSteps.some((existing) => existing?.id === step.id)) {
+                recordedSteps = [...recordedSteps, step];
+                persistSessionState();
+            }
+        }
 
         function emitToUI(evt) {
             for (const fn of listeners) {
@@ -262,6 +332,7 @@ export const aiRecorderService = {
             moduleRootXmlid: recordingModuleRootXmlid,
           });
           if (generatedStep) {
+            appendRecordedStep(generatedStep);
             pushLog({
               _id: generatedStep.id,
               session_id: sessionId,
@@ -329,6 +400,7 @@ export const aiRecorderService = {
             el,
           });
           if (generatedStep) {
+            appendRecordedStep(generatedStep);
             pushLog({
               _id: generatedStep.id,
               session_id: sessionId,
@@ -367,8 +439,15 @@ export const aiRecorderService = {
             const resuming = status === "paused" && !!sessionId;
             if (!sessionId || status === "idle") {
                 sessionId = opts.sessionId || uuid();
+                recordedSteps = [];
+                recordedFeed = [];
+                recordedStepIndex = 0;
+                recordedNote = "";
             }
             exerciseId = opts.exerciseId || exerciseId || null;
+            if (opts.title !== undefined) {
+                recordingTitle = (opts.title || "").toString();
+            }
             if (opts.module !== undefined) {
                 recordingModule = opts.module || null;
             }
@@ -378,6 +457,7 @@ export const aiRecorderService = {
             status = "recording";
 
             attachDomListeners();
+            persistSessionState();
 
             const eventName = resuming ? "recording_resumed" : "recording_started";
             const payload = {
@@ -402,6 +482,7 @@ export const aiRecorderService = {
             if (status !== "recording") return;
             status = "paused";
             detachDomListeners();
+            persistSessionState();
 
             const payload = {
                 _id: uuid(),
@@ -430,9 +511,15 @@ export const aiRecorderService = {
 
             sessionId = null;
             exerciseId = null;
+            recordingTitle = "";
             recordingModule = null;
             recordingModuleRootXmlid = null;
+            recordedSteps = [];
+            recordedFeed = [];
+            recordedStepIndex = 0;
+            recordedNote = "";
             lastSeen.clear();
+            clearPersistedRecordingSession(getStorage(), getStorageKey());
         }
 
         // Let the user interactively pick a DOM target element.
@@ -545,11 +632,31 @@ export const aiRecorderService = {
             return payload;
         }
 
+        const restored = loadPersistedRecordingSession(getStorage(), getStorageKey());
+        if (restored) {
+            status = restored.status;
+            sessionId = restored.sessionId;
+            exerciseId = restored.exerciseId;
+            recordingTitle = restored.title;
+            recordingModule = restored.module || null;
+            recordingModuleRootXmlid = restored.moduleRootXmlid;
+            recordedSteps = restored.steps;
+            recordedFeed = restored.feed;
+            recordedStepIndex = restored.stepIndex;
+            recordedNote = restored.note;
+            if (status === "recording") {
+                attachDomListeners();
+            }
+        }
+
         const api = {
             get status() { return status; },
             get sessionId() { return sessionId; },
             get exerciseId() { return exerciseId; },
             get logs() { return logs; },
+
+            getSessionState,
+            syncSessionMeta,
 
             startRecording,
             resumeRecording,

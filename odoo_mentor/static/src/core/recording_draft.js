@@ -283,3 +283,128 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
         steps: validSteps,
     };
 }
+
+export const ACTIVE_RECORDING_STORAGE_KEY = "odoo_tutor.active_recording_session";
+export const ACTIVE_RECORDING_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+export function getRecorderStorageKey({ db = null, uid = null } = {}) {
+    const cleanDb = trimText(db || "default_db", 120) || "default_db";
+    const cleanUid =
+        uid !== null && uid !== undefined && String(uid).trim()
+            ? trimText(String(uid), 64)
+            : "default_user";
+    return `${ACTIVE_RECORDING_STORAGE_KEY}:${cleanDb}:${cleanUid}`;
+}
+
+export function sanitizePersistedRecordingSession(
+    raw,
+    { now = Date.now(), maxAgeMs = ACTIVE_RECORDING_MAX_AGE_MS } = {}
+) {
+    if (!raw || typeof raw !== "object") return null;
+    const status = raw.status === "recording" || raw.status === "paused" ? raw.status : null;
+    const sessionId = trimText(raw.sessionId || "", 128);
+    if (!status || !sessionId) return null;
+
+    const updatedAt = Number(raw.updatedAt);
+    if (
+        Number.isFinite(updatedAt) &&
+        (updatedAt > now + 60000 || now - updatedAt > maxAgeMs)
+    ) {
+        return null;
+    }
+
+    const steps = (Array.isArray(raw.steps) ? raw.steps : [])
+        .map((step) => {
+            if (!step || typeof step !== "object") return null;
+            const id = trimText(step.id || "", 128);
+            const instruction = trimText(step.instruction || "", 2000);
+            if (!id || !instruction) return null;
+            const action = step.target?.action === "change" ? "change" : "click";
+            return {
+                id,
+                instruction,
+                target: {
+                    action,
+                    model: trimText(step.target?.model || "", 240) || null,
+                    field: trimText(step.target?.field || "", 240) || null,
+                    target_key: trimText(step.target?.target_key || "", 240) || null,
+                },
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 200);
+
+    const feed = (Array.isArray(raw.feed) ? raw.feed : [])
+        .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const _id = trimText(item._id || "", 128);
+            if (!_id) return null;
+            return {
+                _id,
+                event_type: trimText(item.event_type || "STEP_SAVED", 64) || "STEP_SAVED",
+                target: trimText(item.target || "", 240) || "-",
+                timestamp: trimText(item.timestamp || "", 64) || null,
+                note: trimText(item.note || "", 2000),
+            };
+        })
+        .filter(Boolean)
+        .slice(0, 60);
+
+    return {
+        status,
+        sessionId,
+        exerciseId: trimText(raw.exerciseId || "", 128) || null,
+        title: trimText(raw.title || "", 240),
+        module: trimText(raw.module || "", 120),
+        moduleRootXmlid: trimText(raw.moduleRootXmlid || "", 240) || null,
+        steps,
+        feed,
+        stepIndex: Math.max(0, Math.floor(Number(raw.stepIndex) || 0)),
+        note: trimText(raw.note || "", 2000),
+        updatedAt: Number.isFinite(updatedAt) ? updatedAt : now,
+    };
+}
+
+export function clearPersistedRecordingSession(storage, key) {
+    if (!storage || !key) return;
+    try {
+        storage.removeItem(key);
+    } catch {}
+}
+
+export function savePersistedRecordingSession(storage, key, state, { now = Date.now() } = {}) {
+    if (!storage || !key) return false;
+    const sanitized = sanitizePersistedRecordingSession({ ...state, updatedAt: now }, { now });
+    if (!sanitized) {
+        clearPersistedRecordingSession(storage, key);
+        return false;
+    }
+    try {
+        storage.setItem(key, JSON.stringify(sanitized));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export function loadPersistedRecordingSession(
+    storage,
+    key,
+    { now = Date.now(), maxAgeMs = ACTIVE_RECORDING_MAX_AGE_MS } = {}
+) {
+    if (!storage || !key) return null;
+    try {
+        const raw = storage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const sanitized = sanitizePersistedRecordingSession(parsed, { now, maxAgeMs });
+        if (!sanitized) {
+            storage.removeItem(key);
+            return null;
+        }
+        return sanitized;
+    } catch {
+        clearPersistedRecordingSession(storage, key);
+        return null;
+    }
+}

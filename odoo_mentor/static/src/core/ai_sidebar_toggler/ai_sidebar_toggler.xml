@@ -9,6 +9,8 @@
                 t-att-class="{
                     'is-dragging': this.state.dragging,
                     'is-open': this.state.chatOpen,
+                    'is-recording': this.state.recorderStatus === 'recording',
+                    'is-recording-paused': this.state.recorderStatus === 'paused',
                     'has-preview': this.state.previewVisible &amp;&amp; this.state.previewMessage &amp;&amp; !this.state.chatOpen &amp;&amp; !this.state.dragging,
                     'has-exercise-cta': this.launcherExerciseCtaVisible,
                     'has-attention': this.launcherHasAttention,
@@ -133,7 +135,17 @@
                     <span class="ai-owl-trigger-halo"/>
                     <span class="ai-owl-trigger-shell">
                         <span class="ai-owl-trigger-core">
+                            <span t-if="this.state.recorderStatus === 'recording' or this.state.recorderStatus === 'paused'"
+                                  class="ai-owl-trigger-rec-icon"
+                                  aria-hidden="true">
+                                <span t-if="this.state.recorderStatus === 'recording'" class="ai-owl-trigger-rec-dot"/>
+                                <span t-else="" class="ai-owl-trigger-rec-pause">
+                                    <span/>
+                                    <span/>
+                                </span>
+                            </span>
                             <img
+                                t-else=""
                                 t-att-src="'/odoo_mentor/static/images/iabotv2.png'"
                                 alt="Asistente IA"
                                 class="ai-owl-trigger-img"
@@ -141,7 +153,11 @@
                         </span>
                     </span>
 
-                    <span class="ai-owl-trigger-badge">AI</span>
+                    <span class="ai-owl-trigger-badge">
+                        <t t-if="this.state.recorderStatus === 'recording'" t-out="this.translate('REC')"/>
+                        <t t-elif="this.state.recorderStatus === 'paused'" t-out="this.translate('PAUSED')"/>
+                        <t t-else="">AI</t>
+                    </span>
                     <span t-if="!this.state.optionalStepVisible and this.state.hintBadgeVisible" class="ai-owl-trigger-hint" title="Nueva pista">
                         <i class="oi" data-icon="lightbulb"/>
                     </span>

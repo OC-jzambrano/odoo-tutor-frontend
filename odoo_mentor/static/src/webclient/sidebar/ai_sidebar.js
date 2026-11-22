@@ -552,6 +552,7 @@ export class AiSidebar extends Component {
                 el.addEventListener("hidden.bs.offcanvas", this._onHidden);
             }
 
+            this._restoreRecorderSession();
             this._loadRecorderPermission();
             this._loadRecorderModuleOptions();
             this.state.breadcrumbPath = this._getCurrentBreadcrumbPath();
@@ -2440,6 +2441,25 @@ export class AiSidebar extends Component {
         }));
     }
     // Recorder / Pick
+    _restoreRecorderSession() {
+        const restored = this.aiRecorder?.getSessionState?.();
+        if (
+            !restored ||
+            (restored.status !== "recording" && restored.status !== "paused") ||
+            !restored.sessionId
+        ) {
+            return;
+        }
+        this.state.recorderStatus = restored.status;
+        this.state.recorderSessionId = restored.sessionId;
+        this.state.recorderTitle = restored.title || "";
+        this.state.recorderModule = restored.module || "";
+        this.state.recorderSteps = Array.isArray(restored.steps) ? restored.steps : [];
+        this.state.recorderFeed = Array.isArray(restored.feed) ? restored.feed : [];
+        this.state.recorderStepIndex = Number(restored.stepIndex) || 0;
+        this.state.recorderNote = restored.note || "";
+    }
+
     async _loadRecorderPermission() {
         try {
             const [isExpert, isReviewer] = await Promise.all([
@@ -2448,6 +2468,11 @@ export class AiSidebar extends Component {
             ]);
             this.state.canSeeRecorderToggle = !!isExpert;
             this.state.canReviewRecordings = !!isReviewer;
+            if (this.state.canSeeRecorderToggle && this.state.recorderStatus !== "idle") {
+                this.state.showRecorderPanel = true;
+            } else if (!this.state.canSeeRecorderToggle && this.state.recorderStatus !== "idle") {
+                await this.onRecorderFinish();
+            }
         } catch (e) {
             this.state.canSeeRecorderToggle = false;
             this.state.canReviewRecordings = false;
@@ -2520,6 +2545,7 @@ export class AiSidebar extends Component {
 
         const sid = await this.aiRecorder.startRecording({
             exerciseId: this.state.exerciseId || null,
+            title,
             module: mod,
             moduleRootXmlid: selectedApp?.xmlid || null,
         });
@@ -2565,12 +2591,14 @@ export class AiSidebar extends Component {
         this.state.recorderSteps = (this.state.recorderSteps || []).map((step) =>
             step.id === stepId ? { ...step, instruction: value } : step
         );
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
     }
 
     onRecorderRemoveStep(stepId) {
         this.state.recorderSteps = (this.state.recorderSteps || []).filter(
             (step) => step.id !== stepId
         );
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
     }
 
     async onRecorderSaveForReview() {
@@ -2819,6 +2847,12 @@ export class AiSidebar extends Component {
             this.state.recorderStepIndex = stepIndex;
             this.state.recorderNote = "";
             this.state.recorderPicked = null;
+            this.aiRecorder?.syncSessionMeta?.({
+                steps: this.state.recorderSteps,
+                feed: this.state.recorderFeed,
+                stepIndex: this.state.recorderStepIndex,
+                note: this.state.recorderNote,
+            });
 
             this.notification.add(_t("Step saved."), { type: "success" });
         } catch (e) {

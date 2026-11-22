@@ -454,6 +454,7 @@ class AiFloatingButton extends Component {
             optionalStepVisible: false,
             optionalStepLoading: false,
             optionalStepExerciseId: null,
+            recorderStatus: this.aiRecorder?.status || "idle",
         });
 
         const previewState = getOwlPreviewState();
@@ -766,6 +767,12 @@ class AiFloatingButton extends Component {
             this.aiWs?.subscribe?.(this._onPreviewMessage);
             this.aiWs?.subscribe?.(this._onTutorHintForBadge);
             window.addEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
+
+            this.state.recorderStatus = this.aiRecorder?.status || "idle";
+            this._onRecorderStatusChange = () => {
+                this.state.recorderStatus = this.aiRecorder?.status || "idle";
+            };
+            this.aiRecorder?.subscribe?.(this._onRecorderStatusChange);
 
             // Intercept copy-chip clicks at window capture phase (registered at Odoo boot,
             // before any KanbanColumnQuickCreate / KanbanQuickCreateController / Dropdown
@@ -1682,10 +1689,22 @@ class AiFloatingButton extends Component {
     }
 
     get openTutorLabel() {
+        if (this.state.recorderStatus === "recording") {
+            return _t("Recording exercise - open Odoo Tutor recorder");
+        }
+        if (this.state.recorderStatus === "paused") {
+            return _t("Recording paused - open Odoo Tutor recorder");
+        }
         return _t("Open Odoo Tutor");
     }
 
     get openTutorTitle() {
+        if (this.state.recorderStatus === "recording") {
+            return _t("Recording exercise - click to open recorder");
+        }
+        if (this.state.recorderStatus === "paused") {
+            return _t("Recording paused - click to open recorder");
+        }
         return this.launcherHasAttention
             ? _t("Open Odoo Tutor - new guidance available")
             : _t("Open Odoo Tutor");
@@ -2080,6 +2099,11 @@ class AiFloatingButton extends Component {
         if (this._onTutorHintForBadge) {
             this.aiWs?.unsubscribe?.(this._onTutorHintForBadge);
             this._onTutorHintForBadge = null;
+        }
+
+        if (this._onRecorderStatusChange) {
+            this.aiRecorder?.unsubscribe?.(this._onRecorderStatusChange);
+            this._onRecorderStatusChange = null;
         }
 
         if (this._onTutorHintEventForBadge) {

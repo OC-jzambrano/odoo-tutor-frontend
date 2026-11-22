@@ -3,12 +3,16 @@ import {
     buildDraftStepFromEvent,
     buildRecorderModuleOptions,
     buildRecordingDraftPayload,
+    clearPersistedRecordingSession,
     DEFAULT_ODOO_MODULE_OPTIONS,
     extractModuleFromApp,
     findAppForModule,
+    getRecorderStorageKey,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
     isSensitiveInputElement,
+    loadPersistedRecordingSession,
+    savePersistedRecordingSession,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
 
 describe("recording_draft helpers", () => {
@@ -227,5 +231,102 @@ describe("recording_draft helpers", () => {
                 target_key: "menu.stock.menu_stock_warehouse_mgmt",
             },
         });
+    });
+
+    it("persists and restores active recording sessions across page reloads", () => {
+        const store = new Map();
+        const storage = {
+            getItem: (k) => (store.has(k) ? store.get(k) : null),
+            setItem: (k, v) => store.set(k, String(v)),
+            removeItem: (k) => store.delete(k),
+        };
+        const key = getRecorderStorageKey({ db: "odoo_demo", uid: 2 });
+        expect(key).toBe("odoo_tutor.active_recording_session:odoo_demo:2");
+
+        const saved = savePersistedRecordingSession(
+            storage,
+            key,
+            {
+                status: "recording",
+                sessionId: "66666666-6666-4666-8666-666666666666",
+                title: "Activate Customer Addresses",
+                module: "sale",
+                moduleRootXmlid: "sale.sale_menu_root",
+                steps: [
+                    {
+                        id: "77777777-7777-4777-8777-777777777777",
+                        instruction: "Click Save",
+                        target: {
+                            action: "click",
+                            model: "res.config.settings",
+                            field: null,
+                            target_key: "execute",
+                        },
+                    },
+                ],
+                feed: [],
+                stepIndex: 1,
+                note: "",
+            },
+            { now: 1_000_000 }
+        );
+        expect(saved).toBe(true);
+
+        const restored = loadPersistedRecordingSession(storage, key, { now: 1_005_000 });
+        expect(restored).toEqual({
+            status: "recording",
+            sessionId: "66666666-6666-4666-8666-666666666666",
+            exerciseId: null,
+            title: "Activate Customer Addresses",
+            module: "sale",
+            moduleRootXmlid: "sale.sale_menu_root",
+            steps: [
+                {
+                    id: "77777777-7777-4777-8777-777777777777",
+                    instruction: "Click Save",
+                    target: {
+                        action: "click",
+                        model: "res.config.settings",
+                        field: null,
+                        target_key: "execute",
+                    },
+                },
+            ],
+            feed: [],
+            stepIndex: 1,
+            note: "",
+            updatedAt: 1_000_000,
+        });
+
+        // Expired sessions are dropped and removed from storage.
+        expect(
+            loadPersistedRecordingSession(storage, key, {
+                now: 1_000_000 + 13 * 60 * 60 * 1000,
+            })
+        ).toBeNull();
+        expect(storage.getItem(key)).toBeNull();
+
+        // Saving an idle state clears any previous entry.
+        savePersistedRecordingSession(
+            storage,
+            key,
+            { status: "paused", sessionId: "sess-1", steps: [] },
+            { now: 2_000_000 }
+        );
+        expect(storage.getItem(key)).not.toBeNull();
+        expect(
+            savePersistedRecordingSession(storage, key, { status: "idle", sessionId: null })
+        ).toBe(false);
+        expect(storage.getItem(key)).toBeNull();
+
+        // Explicit clear works cleanly.
+        savePersistedRecordingSession(
+            storage,
+            key,
+            { status: "recording", sessionId: "sess-2", steps: [] },
+            { now: 2_000_000 }
+        );
+        clearPersistedRecordingSession(storage, key);
+        expect(loadPersistedRecordingSession(storage, key, { now: 2_000_000 })).toBeNull();
     });
 });
