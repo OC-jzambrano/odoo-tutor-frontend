@@ -36,6 +36,7 @@ import {
     isRecorderUiElement,
     matchDryRunStepIndex,
     recomputeOptionalGroups,
+    reconcileDryRunAfterStepRemoval,
 } from "../../core/recording_draft";
 import {
     buildActiveSuspectWarnings,
@@ -2420,6 +2421,13 @@ export class AiSidebar extends Component {
         this.state.isLoading = false;
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
         this._resetInlineHintState?.({ clearMessage: true });
+
+        if (this.state.dryRunActive && this.state.dryRunPaused && (this.state.recorderSteps || []).length) {
+            this.state.dryRunPaused = false;
+            this.state.dryRunEditStepId = null;
+            this._attachDryRunListeners();
+            this._emitDryRunState();
+        }
     }
 
     async hideSidebar() {
@@ -2844,23 +2852,61 @@ export class AiSidebar extends Component {
         this.onRecorderRemoveStepIds([stepId]);
     }
 
-    onRecorderRemoveStepIds(stepIds = []) {
+    onRecorderRemoveStepIds(stepIds = [], { fromActivePrompt = false } = {}) {
         const idSet = new Set((Array.isArray(stepIds) ? stepIds : []).filter(Boolean));
         if (!idSet.size) return;
-        this.state.recorderSteps = recomputeOptionalGroups(
-            (this.state.recorderSteps || []).filter((step) => !idSet.has(step.id))
+
+        const prevSteps = this.state.recorderSteps || [];
+        const reconciled = reconcileDryRunAfterStepRemoval(
+            prevSteps,
+            Array.from(idSet),
+            this.state.dryRunActive
+                ? {
+                      active: true,
+                      paused: this.state.dryRunPaused,
+                      stepIndex: this.state.dryRunStepIndex,
+                      editStepId: this.state.dryRunEditStepId,
+                      skippedPromptStepId: this.state.dryRunSkippedPromptStepId,
+                      skippedPromptStepNumber: this.state.dryRunSkippedPromptStepNumber,
+                  }
+                : null,
+            { fromActivePrompt }
         );
+
+        this.state.recorderSteps = reconciled.steps;
         this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
-        if (this.state.dryRunActive) {
-            if (!this.state.recorderSteps.length) {
-                this.onRecorderStopDryRun();
-            } else {
-                this.state.dryRunStepIndex = Math.min(
-                    this.state.dryRunStepIndex,
-                    this.state.recorderSteps.length - 1
+
+        if (!this.state.dryRunActive) {
+            return;
+        }
+
+        hideTargetHintOverlay();
+
+        if (!reconciled.dryRun) {
+            this.onRecorderStopDryRun();
+            if (reconciled.completed && reconciled.steps.length > 0) {
+                this.notification.add(
+                    _t("Step removed — Dry-Run completed! All remaining steps verified."),
+                    { type: "success" }
                 );
-                this._emitDryRunState();
+            } else if (reconciled.completed) {
+                this.notification.add(_t("All steps removed. Dry-Run stopped."), {
+                    type: "info",
+                });
             }
+            return;
+        }
+
+        this.state.dryRunStepIndex = reconciled.dryRun.stepIndex;
+        this.state.dryRunEditStepId = reconciled.dryRun.editStepId;
+        this.state.dryRunSkippedPromptStepId = reconciled.dryRun.skippedPromptStepId;
+        this.state.dryRunSkippedPromptStepNumber = reconciled.dryRun.skippedPromptStepNumber;
+        if (!this.state.dryRunPaused) {
+            this._attachDryRunListeners();
+        }
+        this._emitDryRunState();
+        if (fromActivePrompt) {
+            this.notification.add(_t("Step removed. Continuing Dry-Run."), { type: "info" });
         }
     }
 
@@ -3089,6 +3135,9 @@ export class AiSidebar extends Component {
         if (action === "locate") {
             if (!step) return;
             const hint = step.target_hint || extractTargetHint({ target: step.target });
+            if (this._isSidebarOpen?.()) {
+                await this.hideSidebar();
+            }
             const shown = hint
                 ? showTargetHintOverlay(hint, { caption: step.instruction || hint.actionLabel })
                 : false;
@@ -3097,6 +3146,14 @@ export class AiSidebar extends Component {
                     _t("The target element is not visible on this screen yet."),
                     { type: "info" }
                 );
+            }
+            return;
+        }
+
+        if (action === "delete") {
+            const targetStepId = detail.stepId || step?.id || null;
+            if (targetStepId) {
+                this.onRecorderRemoveStepIds([targetStepId], { fromActivePrompt: true });
             }
             return;
         }
@@ -3190,6 +3247,38 @@ export class AiSidebar extends Component {
         if (action === "stop") {
             this.onRecorderStopDryRun();
         }
+    }
+
+    onChatDryRunLocate() {
+        this._handleDryRunAction({ action: "locate" });
+    }
+
+    onChatDryRunEdit() {
+        this._handleDryRunAction({ action: "edit", stepId: this.dryRunCurrentStep?.id || null });
+    }
+
+    onChatDryRunSkip() {
+        this._handleDryRunAction({ action: "skip" });
+    }
+
+    onChatDryRunDelete() {
+        this._handleDryRunAction({ action: "delete", stepId: this.dryRunCurrentStep?.id || null });
+    }
+
+    onChatDryRunToggleOptional() {
+        this._handleDryRunAction({
+            action: "toggle_optional",
+            stepId: this.dryRunCurrentStep?.id || null,
+        });
+    }
+
+    async onChatDryRunBackToBubble() {
+        if (!this.state.dryRunActive) return;
+        this.state.dryRunPaused = false;
+        this.state.dryRunEditStepId = null;
+        this._attachDryRunListeners();
+        await this.hideSidebar();
+        this._emitDryRunState();
     }
 
     async _waitForTargetElement(hint, { timeoutMs = 2600, intervalMs = 100 } = {}) {

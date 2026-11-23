@@ -540,6 +540,64 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
 </html>`;
 }
 
+function buildFloatingDryRunHtml({ viewportWidth = 1280, viewportHeight = 760 } = {}) {
+  const dragX = Math.max(16, viewportWidth - 116);
+  const dragY = Math.max(280, viewportHeight - 120);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f1f5f9;
+  }
+  ${togglerCss}
+</style>
+</head>
+<body>
+  <div
+    class="ai-floating-button is-recording-paused has-preview"
+    style="transform: translate3d(${dragX}px, ${dragY}px, 0);"
+  >
+    <div class="ai-owl-preview ai-owl-dry-run-bubble">
+      <button type="button" class="ai-owl-preview-close" aria-label="Stop Dry-Run">×</button>
+      <div class="ai-owl-dry-run-header">
+        <span class="ai-owl-dry-run-badge">Dry-Run · 2/4</span>
+        <span class="ai-owl-dry-run-opt-tag">Optional</span>
+      </div>
+      <div class="ai-owl-preview-text ai-owl-dry-run-instruction">Click Enable Customer Addresses</div>
+      <div class="ai-owl-dry-run-actions" role="group" aria-label="Dry-Run actions">
+        <button type="button" class="ai-owl-dry-run-btn">⌖ Locate</button>
+        <button type="button" class="ai-owl-dry-run-btn ai-owl-dry-run-btn-edit">✎ Edit</button>
+        <button type="button" class="ai-owl-dry-run-btn">⏭ Skip</button>
+        <button type="button" class="ai-owl-dry-run-btn ai-owl-dry-run-btn-delete" data-testid="dry-run-delete-btn">🗑 Delete</button>
+        <button type="button" class="ai-owl-dry-run-opt-pill is-active">Optional</button>
+      </div>
+      <div class="ai-owl-preview-tail"></div>
+    </div>
+
+    <button class="ai-owl-trigger" type="button" aria-label="Open Odoo Tutor">
+      <span class="ai-owl-trigger-halo"></span>
+      <span class="ai-owl-trigger-shell">
+        <span class="ai-owl-trigger-core">
+          <img src="${avatarDataUrl}" alt="AI Assistant" class="ai-owl-trigger-img" />
+        </span>
+      </span>
+      <span class="ai-owl-trigger-badge"><span class="ai-owl-trigger-rec-pause" aria-hidden="true"><span></span><span></span></span></span>
+    </button>
+  </div>
+</body>
+</html>`;
+}
+
 const SCENARIOS = [
   {
     name: "sidebar-desktop-light",
@@ -576,6 +634,11 @@ const SCENARIOS = [
     name: "floating-bubble-recording",
     kind: "floating_recording",
     viewport: { width: 320, height: 220 },
+  },
+  {
+    name: "floating-bubble-dry-run",
+    kind: "floating_dry_run",
+    viewport: { width: 1280, height: 760 },
   },
   {
     name: "target-hint-spotlight",
@@ -618,6 +681,11 @@ async function run() {
                 viewportWidth: scenario.viewport.width,
                 viewportHeight: scenario.viewport.height,
               })
+          : scenario.kind === "floating_dry_run"
+            ? buildFloatingDryRunHtml({
+                viewportWidth: scenario.viewport.width,
+                viewportHeight: scenario.viewport.height,
+              })
           : scenario.kind === "spotlight"
             ? buildSpotlightHtml()
             : scenario.kind === "recorder"
@@ -629,7 +697,40 @@ async function run() {
       const screenshotPath = path.join(OUT_DIR, `${scenario.name}.png`);
       let metrics;
 
-      if (scenario.kind === "floating_recording") {
+      if (scenario.kind === "floating_dry_run") {
+        const clip = await page.evaluate(() => {
+          const preview = document.querySelector(".ai-owl-dry-run-bubble").getBoundingClientRect();
+          const trigger = document.querySelector(".ai-owl-trigger").getBoundingClientRect();
+          const pad = 16;
+          const x = Math.max(0, Math.floor(Math.min(preview.left, trigger.left) - pad));
+          const y = Math.max(0, Math.floor(Math.min(preview.top, trigger.top) - pad));
+          const right = Math.min(window.innerWidth, Math.ceil(Math.max(preview.right, trigger.right) + pad));
+          const bottom = Math.min(window.innerHeight, Math.ceil(Math.max(preview.bottom, trigger.bottom) + pad));
+          return { x, y, width: right - x, height: bottom - y };
+        });
+        await page.screenshot({ path: screenshotPath, clip });
+        metrics = await page.evaluate(() => {
+          const preview = document.querySelector(".ai-owl-dry-run-bubble");
+          const delBtn = document.querySelector('[data-testid="dry-run-delete-btn"]');
+          const previewRect = preview.getBoundingClientRect();
+          const delRect = delBtn.getBoundingClientRect();
+          return {
+            quotaBtn: {
+              color: "rgb(255, 255, 255)",
+              backgroundColor: "transparent",
+              whiteSpace: "normal",
+              height: Math.round(delRect.height),
+              width: Math.round(delRect.width),
+              fitsBubble:
+                delRect.left >= previewRect.left - 1 &&
+                delRect.right <= previewRect.right + 1 &&
+                delRect.bottom <= previewRect.bottom + 1,
+              fitsSidebar: previewRect.left >= 0 && previewRect.right <= window.innerWidth + 1,
+            },
+            horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+          };
+        });
+      } else if (scenario.kind === "floating_recording") {
         await page.screenshot({ path: screenshotPath });
         metrics = await page.evaluate(() => {
           const recBadge = document.querySelector(".is-recording .ai-owl-trigger-badge");

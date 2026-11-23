@@ -294,25 +294,37 @@
                                 </div>
 
                                 <div class="o_ai_recorder_feed">
-                                    <div t-if="this.state.dryRunActive and this.state.dryRunPaused"
-                                         class="o_ai_rec_dry_run_banner d-flex align-items-center justify-content-between gap-2 mb-2">
-                                        <span class="small fw-semibold">
-                                            <t t-out="this.translate('Dry-Run paused on Step')"/>
-                                            <t t-out="' ' + (this.state.dryRunStepIndex + 1)"/>
-                                        </span>
-                                        <div class="d-flex gap-1">
-                                            <button type="button"
-                                                    class="btn btn-sm btn-primary"
-                                                    t-on-click.stop.prevent="this.onRecorderResumeDryRun">
-                                                <i class="oi" data-icon="play_arrow"/>
-                                                <t t-out="this.translate('Resume test')"/>
-                                            </button>
-                                            <button type="button"
-                                                    class="btn btn-sm btn-outline-secondary"
-                                                    t-on-click.stop.prevent="this.onRecorderStopDryRun">
-                                                <t t-out="this.translate('Stop')"/>
-                                            </button>
+                                    <div t-if="this.state.dryRunActive and this.dryRunCurrentStep"
+                                         class="o_ai_rec_dry_run_banner d-flex flex-column gap-1 mb-2">
+                                        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                                            <span class="small fw-semibold">
+                                                <t t-if="this.state.dryRunPaused" t-out="this.translate('Dry-Run paused')"/>
+                                                <t t-else="" t-out="this.translate('Dry-Run active')"/>
+                                                <t t-out="' · ' + (this.state.dryRunStepIndex + 1) + '/' + (this.state.recorderSteps || []).length"/>
+                                            </span>
+                                            <div class="d-flex gap-1">
+                                                <button t-if="this.state.dryRunPaused"
+                                                        type="button"
+                                                        class="btn btn-sm btn-primary"
+                                                        t-on-click.stop.prevent="this.onRecorderResumeDryRun">
+                                                    <i class="oi" data-icon="play_arrow"/>
+                                                    <t t-out="this.translate('Resume test')"/>
+                                                </button>
+                                                <button t-else=""
+                                                        type="button"
+                                                        class="btn btn-sm btn-outline-primary"
+                                                        t-on-click.stop.prevent="this.onChatDryRunBackToBubble">
+                                                    <t t-out="this.translate('Bubble mode')"/>
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary"
+                                                        t-on-click.stop.prevent="this.onRecorderStopDryRun">
+                                                    <t t-out="this.translate('Stop')"/>
+                                                </button>
+                                            </div>
                                         </div>
+                                        <div class="small text-muted o_ai_rec_dry_run_step_preview"
+                                             t-out="this.dryRunCurrentStep.instruction"/>
                                     </div>
 
                                     <div class="d-flex justify-content-between align-items-center gap-2 mb-1 flex-wrap">
@@ -413,7 +425,7 @@
                                                      'is-optional-step': step.is_optional,
                                                      'is-optional-block': !!step.optional_group,
                                                      'is-suspect-step': !!suspect,
-                                                     'is-dry-run-editing': this.state.dryRunEditStepId === step.id,
+                                                     'is-dry-run-editing': this.state.dryRunEditStepId === step.id or (this.state.dryRunActive and this.dryRunCurrentStep and this.dryRunCurrentStep.id === step.id),
                                                  }">
                                                 <div class="d-flex gap-1 align-items-center">
                                                     <span class="o_ai_rec_step_num" t-out="step_index + 1"/>
@@ -518,8 +530,81 @@
                     <div t-att-class="this.state.showRecorderPanel ? 'd-none' : {
                         'ai-chat-panel flex-grow-1 d-flex flex-column h-100 position-relative': true,
                         'has-skip-step': this.state.skipStepEnabled and this.state.processActive,
+                        'has-dry-run': this.state.dryRunActive and !!this.dryRunCurrentStep,
                     }"
                          t-ref="this.chatPanelRef">
+                        <div t-if="this.state.dryRunActive and this.dryRunCurrentStep"
+                             class="ai-chat-dry-run-bar"
+                             data-ai-tutor-ignore-event="true">
+                            <div class="ai-chat-dry-run-top">
+                                <div class="ai-chat-dry-run-badges">
+                                    <span class="ai-chat-dry-run-badge">
+                                        <t t-out="this.translate('Dry-Run')"/>
+                                        <t t-out="' · ' + (this.state.dryRunStepIndex + 1) + '/' + (this.state.recorderSteps || []).length"/>
+                                    </span>
+                                    <span t-if="this.state.dryRunPaused" class="ai-chat-dry-run-tag is-paused">
+                                        <t t-out="this.translate('Paused')"/>
+                                    </span>
+                                    <span t-if="this.dryRunCurrentStep.is_optional" class="ai-chat-dry-run-tag is-optional">
+                                        <t t-out="this.translate('Optional')"/>
+                                    </span>
+                                </div>
+                                <div class="ai-chat-dry-run-top-actions">
+                                    <button type="button"
+                                            class="ai-chat-dry-run-btn"
+                                            t-on-click.stop.prevent="this.onChatDryRunBackToBubble"
+                                            t-att-title="this.translate('Return to floating Dry-Run bubble')">
+                                        <t t-if="this.state.dryRunPaused" t-out="this.translate('Resume')"/>
+                                        <t t-else="" t-out="this.translate('Bubble')"/>
+                                    </button>
+                                    <button type="button"
+                                            class="ai-chat-dry-run-close"
+                                            t-on-click.stop.prevent="this.onRecorderStopDryRun"
+                                            t-att-title="this.translate('Stop Dry-Run')"
+                                            t-att-aria-label="this.translate('Stop Dry-Run')">×</button>
+                                </div>
+                            </div>
+                            <div class="ai-chat-dry-run-instruction" t-out="this.dryRunCurrentStep.instruction"/>
+                            <div class="ai-chat-dry-run-actions" role="group" t-att-aria-label="this.translate('Dry-Run actions')">
+                                <button type="button"
+                                        class="ai-chat-dry-run-btn"
+                                        t-on-click.stop.prevent="this.onChatDryRunLocate"
+                                        t-att-title="this.translate('Locate element on this screen')">
+                                    <i class="oi" data-icon="my_location"/>
+                                    <t t-out="this.translate('Locate')"/>
+                                </button>
+                                <button type="button"
+                                        class="ai-chat-dry-run-btn ai-chat-dry-run-btn-edit"
+                                        t-on-click.stop.prevent="this.onChatDryRunEdit"
+                                        t-att-title="this.translate('Edit this step in the recorder')">
+                                    <i class="oi" data-icon="edit"/>
+                                    <t t-out="this.translate('Edit')"/>
+                                </button>
+                                <button type="button"
+                                        class="ai-chat-dry-run-btn"
+                                        t-on-click.stop.prevent="this.onChatDryRunSkip"
+                                        t-att-title="this.translate('Skip to next step')">
+                                    <i class="oi" data-icon="skip_next"/>
+                                    <t t-out="this.translate('Skip')"/>
+                                </button>
+                                <button type="button"
+                                        class="ai-chat-dry-run-btn ai-chat-dry-run-btn-delete"
+                                        t-on-click.stop.prevent="this.onChatDryRunDelete"
+                                        t-att-title="this.translate('Delete this step and continue Dry-Run')"
+                                        t-att-aria-label="this.translate('Delete step')">
+                                    <i class="oi" data-icon="delete"/>
+                                    <t t-out="this.translate('Delete')"/>
+                                </button>
+                                <button type="button"
+                                        class="ai-chat-dry-run-opt-pill"
+                                        t-att-class="{ 'is-active': this.dryRunCurrentStep.is_optional }"
+                                        t-on-click.stop.prevent="this.onChatDryRunToggleOptional"
+                                        t-att-title="this.translate('Toggle optional')">
+                                    <t t-out="this.translate('Optional')"/>
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- Keep this as a normal element so libraries can mount into it. -->
                         <div t-ref="this.chatUiRef"
                              id="chat-ui-container"

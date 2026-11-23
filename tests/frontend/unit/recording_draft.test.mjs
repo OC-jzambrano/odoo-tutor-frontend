@@ -27,6 +27,7 @@ import {
     loadPersistedRecordingSession,
     matchDryRunStepIndex,
     recomputeOptionalGroups,
+    reconcileDryRunAfterStepRemoval,
     resolveDomHumanLabel,
     savePersistedRecordingSession,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
@@ -943,5 +944,64 @@ describe("recording_draft helpers", () => {
             { now: 5_005_000 }
         );
         expect(loadPersistedRecordingSession(storage, key, { now: 5_006_000 }).dryRun).toBeUndefined();
+    });
+
+    it("keeps Dry-Run active and aligned when deleting steps in bubble or sidebar mode", () => {
+        const steps = [
+            { id: "s1", instruction: "Open Configuration", target: { action: "click", model: null, field: null, target_key: "menu.config" } },
+            { id: "s2", instruction: "Click Wrong Button", target: { action: "click", model: "sale.order", field: null, target_key: "wrong" } },
+            { id: "s3", instruction: "Click New", target: { action: "click", model: "sale.order", field: null, target_key: "list.create" } },
+            { id: "s4", instruction: "Click Save", target: { action: "click", model: "sale.order", field: null, target_key: "form.save" } },
+        ];
+
+        // 1. Quick-deleting the current middle step (s2 at index 1) advances seamlessly to s3 at index 1.
+        const midRes = reconcileDryRunAfterStepRemoval(
+            steps,
+            ["s2"],
+            { active: true, paused: false, stepIndex: 1, editStepId: null, skippedPromptStepId: null, skippedPromptStepNumber: null },
+            { fromActivePrompt: true }
+        );
+        expect(midRes.completed).toBe(false);
+        expect(midRes.steps.map((s) => s.id)).toEqual(["s1", "s3", "s4"]);
+        expect(midRes.dryRun).toMatchObject({ active: true, paused: false, stepIndex: 1 });
+        expect(midRes.steps[midRes.dryRun.stepIndex].id).toBe("s3");
+
+        // 2. Deleting an earlier step (s1 at index 0) while on s3 (index 2) shifts stepIndex to 1 so s3 stays active.
+        const earlierRes = reconcileDryRunAfterStepRemoval(
+            steps,
+            ["s1"],
+            { active: true, paused: true, stepIndex: 2, editStepId: "s3", skippedPromptStepId: "s2", skippedPromptStepNumber: 2 }
+        );
+        expect(earlierRes.completed).toBe(false);
+        expect(earlierRes.dryRun).toEqual({
+            active: true,
+            paused: true,
+            stepIndex: 1,
+            editStepId: "s3",
+            skippedPromptStepId: "s2",
+            skippedPromptStepNumber: 1,
+        });
+        expect(earlierRes.steps[earlierRes.dryRun.stepIndex].id).toBe("s3");
+
+        // 3. Quick-deleting the final step (s4 at index 3) from bubble/chat completes Dry-Run cleanly.
+        const lastBubbleRes = reconcileDryRunAfterStepRemoval(
+            steps,
+            ["s4"],
+            { active: true, paused: false, stepIndex: 3 },
+            { fromActivePrompt: true }
+        );
+        expect(lastBubbleRes.completed).toBe(true);
+        expect(lastBubbleRes.dryRun).toBeNull();
+        expect(lastBubbleRes.steps.map((s) => s.id)).toEqual(["s1", "s2", "s3"]);
+
+        // 4. Deleting the final step from the Recorder list (not active prompt) keeps Dry-Run alive on the new last step.
+        const lastSidebarRes = reconcileDryRunAfterStepRemoval(
+            steps,
+            ["s4"],
+            { active: true, paused: true, stepIndex: 3, editStepId: "s4" },
+            { fromActivePrompt: false }
+        );
+        expect(lastSidebarRes.completed).toBe(false);
+        expect(lastSidebarRes.dryRun).toMatchObject({ active: true, paused: true, stepIndex: 2, editStepId: null });
     });
 });

@@ -526,6 +526,18 @@
     background: rgba(113, 75, 103, 0.06);
 }
 
+.ai-owl-dry-run-btn-delete {
+    border-color: rgba(220, 38, 38, 0.32);
+    color: #b91c1c;
+    background: rgba(254, 242, 242, 0.85);
+}
+
+.ai-owl-dry-run-btn-delete:hover {
+    background: #fee2e2;
+    border-color: #dc2626;
+    color: #991b1b;
+}
+
 .ai-owl-dry-run-opt-pill {
     margin-left: auto;
     padding: 3px 9px;

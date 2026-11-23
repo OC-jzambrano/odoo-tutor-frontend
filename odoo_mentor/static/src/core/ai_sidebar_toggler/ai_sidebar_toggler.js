@@ -709,6 +709,10 @@ class AiFloatingButton extends Component {
         this.onDryRunEdit = () =>
             this._dispatchDryRunAction("edit", { stepId: this.state.dryRun?.step?.id || null });
         this.onDryRunSkip = () => this._dispatchDryRunAction("skip");
+        this.onDryRunDelete = () =>
+            this._dispatchDryRunAction("delete", {
+                stepId: this.state.dryRun?.step?.id || null,
+            });
         this.onDryRunToggleOptional = () =>
             this._dispatchDryRunAction("toggle_optional", {
                 stepId: this.state.dryRun?.step?.id || null,

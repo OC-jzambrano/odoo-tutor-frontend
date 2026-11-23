@@ -91,6 +91,19 @@
 
                             <button
                                 type="button"
+                                class="ai-owl-dry-run-btn ai-owl-dry-run-btn-delete"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunDelete"
+                                t-att-title="this.translate('Delete this step and continue Dry-Run')"
+                                t-att-aria-label="this.translate('Delete step')"
+                            >
+                                <i class="oi" data-icon="delete"/>
+                                <t t-out="this.translate('Delete')"/>
+                            </button>
+
+                            <button
+                                type="button"
                                 class="ai-owl-dry-run-opt-pill"
                                 t-att-class="{ 'is-active': this.state.dryRun.step.is_optional }"
                                 t-on-mousedown.stop.prevent="this.noop"

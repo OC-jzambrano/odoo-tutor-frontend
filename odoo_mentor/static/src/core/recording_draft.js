@@ -902,6 +902,69 @@ export function getNextIndexAfterSkip(steps = [], currentIndex = 0) {
     return currentIndex + 1;
 }
 
+export function reconcileDryRunAfterStepRemoval(
+    prevSteps = [],
+    removedStepIds = [],
+    dryRunState = null,
+    { fromActivePrompt = false } = {}
+) {
+    const list = Array.isArray(prevSteps) ? prevSteps : [];
+    const idSet = new Set((Array.isArray(removedStepIds) ? removedStepIds : []).filter(Boolean));
+    const remainingSteps = recomputeOptionalGroups(
+        list.filter((step) => step && !idSet.has(step.id))
+    );
+
+    if (!dryRunState?.active) {
+        return { steps: remainingSteps, dryRun: null, completed: false };
+    }
+
+    if (!remainingSteps.length) {
+        return { steps: [], dryRun: null, completed: true };
+    }
+
+    const oldIdx = Math.min(
+        Math.max(0, list.length - 1),
+        Math.max(0, Math.floor(Number(dryRunState.stepIndex) || 0))
+    );
+    let removedBefore = 0;
+    for (let i = 0; i < oldIdx && i < list.length; i += 1) {
+        if (list[i] && idSet.has(list[i].id)) {
+            removedBefore += 1;
+        }
+    }
+
+    let nextIdx = Math.max(0, oldIdx - removedBefore);
+    if (nextIdx >= remainingSteps.length) {
+        if (fromActivePrompt) {
+            return { steps: remainingSteps, dryRun: null, completed: true };
+        }
+        nextIdx = remainingSteps.length - 1;
+    }
+
+    const editStepId =
+        dryRunState.editStepId && !idSet.has(dryRunState.editStepId)
+            ? dryRunState.editStepId
+            : null;
+    const skippedStillExists =
+        dryRunState.skippedPromptStepId && !idSet.has(dryRunState.skippedPromptStepId);
+    const skippedIdx = skippedStillExists
+        ? remainingSteps.findIndex((s) => s.id === dryRunState.skippedPromptStepId)
+        : -1;
+
+    return {
+        steps: remainingSteps,
+        dryRun: {
+            active: true,
+            paused: dryRunState.paused === true,
+            stepIndex: nextIdx,
+            editStepId,
+            skippedPromptStepId: skippedIdx >= 0 ? dryRunState.skippedPromptStepId : null,
+            skippedPromptStepNumber: skippedIdx >= 0 ? skippedIdx + 1 : null,
+        },
+        completed: false,
+    };
+}
+
 function normalizeMatchToken(value) {
     return trimText(value || "", 240).toLowerCase();
 }
