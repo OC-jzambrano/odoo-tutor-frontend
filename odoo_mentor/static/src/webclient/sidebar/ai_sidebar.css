@@ -1672,6 +1672,66 @@
     overflow: auto;
     max-height: 100%;
     padding-right: 2px;
+    transition: opacity 0.2s ease;
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_list.is-polishing {
+    opacity: 0.72;
+}
+
+#offcanvasAiSidebar .o_ai_rec_polish_btn {
+    border-color: rgba(113, 75, 103, 0.35);
+    color: var(--tutor-accent-strong, #714b67);
+    background: rgba(113, 75, 103, 0.06);
+    font-weight: 600;
+}
+
+#offcanvasAiSidebar .o_ai_rec_polish_btn:hover:not(:disabled) {
+    border-color: var(--tutor-accent-strong, #714b67);
+    background: rgba(113, 75, 103, 0.14);
+    color: var(--tutor-accent-strong, #714b67);
+}
+
+#offcanvasAiSidebar .o_ai_rec_polish_banner {
+    padding: 7px 10px;
+    border-radius: var(--tutor-radius-sm);
+    font-size: 12px;
+}
+
+#offcanvasAiSidebar .o_ai_rec_polish_banner.is-loading {
+    background: rgba(113, 75, 103, 0.08);
+    border: 1px solid rgba(113, 75, 103, 0.24);
+    color: var(--tutor-accent-strong, #714b67);
+}
+
+#offcanvasAiSidebar .o_ai_rec_polish_banner.is-done {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.24);
+    color: #065f46;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_polish_btn {
+    border-color: rgba(216, 180, 208, 0.32);
+    color: #e9d5ff;
+    background: rgba(135, 90, 123, 0.18);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_polish_btn:hover:not(:disabled) {
+    border-color: rgba(216, 180, 208, 0.55);
+    background: rgba(135, 90, 123, 0.28);
+    color: #f5f3ff;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_polish_banner.is-loading {
+    background: rgba(135, 90, 123, 0.18);
+    border-color: rgba(216, 180, 208, 0.3);
+    color: #f3e8ff;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_polish_banner.is-done {
+    background: rgba(16, 185, 129, 0.14);
+    border-color: rgba(52, 211, 153, 0.28);
+    color: #a7f3d0;
 }
 
 #offcanvasAiSidebar .o_ai_rec_feed_item {
@@ -1679,6 +1739,236 @@
     border-radius: var(--tutor-radius-sm);
     padding: 8px 10px;
     background: var(--tutor-surface-subtle);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-optional-step {
+    border-style: dashed;
+    border-color: rgba(113, 75, 103, 0.35);
+    background: rgba(113, 75, 103, 0.04);
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-optional-block {
+    border-left: 3px solid var(--tutor-accent, #714b67);
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-suspect-step {
+    border-color: rgba(217, 119, 6, 0.42);
+    border-left: 3px solid #d97706;
+    background: rgba(254, 243, 199, 0.28);
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_count_pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    color: #92400e;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_row {
+    margin-top: 2px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+    border: 1px solid #f3d080;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    align-self: flex-start;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(217, 119, 6, 0.16);
+    color: #92400e;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_reason {
+    font-size: 11.5px;
+    line-height: 1.35;
+    color: #78350f;
+    overflow-wrap: anywhere;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_keep_btn,
+#offcanvasAiSidebar .o_ai_rec_suspect_remove_btn {
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.35;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_keep_btn {
+    border: 1px solid rgba(146, 64, 14, 0.35);
+    background: #ffffff;
+    color: #78350f;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_keep_btn:hover {
+    background: #fef3c7;
+    border-color: #b45309;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_remove_btn {
+    border: 1px solid rgba(220, 38, 38, 0.38);
+    background: #ffffff;
+    color: #b91c1c;
+}
+
+#offcanvasAiSidebar .o_ai_rec_suspect_remove_btn:hover {
+    background: #fee2e2;
+    border-color: #dc2626;
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-dry-run-editing {
+    border: 2px solid var(--tutor-accent, #714b67);
+    border-style: solid;
+    background: rgba(113, 75, 103, 0.08);
+    animation: tutorDryRunCardPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tutorDryRunCardPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 2px rgba(113, 75, 103, 0.22);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(113, 75, 103, 0.08);
+    }
+}
+
+#offcanvasAiSidebar .o_ai_rec_step_num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.07);
+    color: var(--tutor-text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+#offcanvasAiSidebar .o_ai_rec_optional_pill {
+    border: 1px solid var(--tutor-border-strong);
+    background: transparent;
+    color: var(--tutor-text-muted);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+
+#offcanvasAiSidebar .o_ai_rec_optional_pill:hover {
+    border-color: var(--tutor-accent, #714b67);
+    color: var(--tutor-accent, #714b67);
+}
+
+#offcanvasAiSidebar .o_ai_rec_optional_pill.is-active {
+    background: var(--tutor-accent, #714b67);
+    border-color: var(--tutor-accent, #714b67);
+    color: #fff;
+}
+
+#offcanvasAiSidebar .o_ai_rec_optional_group_tag {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--tutor-accent, #714b67);
+    background: rgba(113, 75, 103, 0.1);
+    padding: 1px 6px;
+    border-radius: 999px;
+}
+
+#offcanvasAiSidebar .o_ai_rec_dry_run_banner {
+    padding: 8px 10px;
+    border-radius: var(--tutor-radius-sm);
+    background: rgba(113, 75, 103, 0.1);
+    border: 1px solid rgba(113, 75, 103, 0.28);
+    color: var(--tutor-text);
+}
+
+#offcanvasAiSidebar .o_ai_rec_suggestion_banner {
+    padding: 7px 10px;
+    border-radius: var(--tutor-radius-sm);
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: var(--tutor-text);
+}
+
+#offcanvasAiSidebar .o_ai_rec_step_suggest_row {
+    margin-top: 2px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(245, 158, 11, 0.09);
+    border: 1px solid rgba(245, 158, 11, 0.24);
+    font-size: 11px;
+}
+
+#offcanvasAiSidebar .o_ai_rec_step_suggest_text {
+    color: var(--tutor-text);
+    font-weight: 500;
+}
+
+#offcanvasAiSidebar .o_ai_rec_step_suggest_btn {
+    border: 1px solid rgba(113, 75, 103, 0.35);
+    background: #fff;
+    color: var(--tutor-accent, #714b67);
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#offcanvasAiSidebar .o_ai_rec_step_suggest_dismiss {
+    border: none;
+    background: transparent;
+    color: var(--tutor-text-muted);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 3px;
 }
 
 #offcanvasAiSidebar .o_ai_rec_feed_item .line1,
@@ -1687,6 +1977,20 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+}
+
+#offcanvasAiSidebar .o_ai_rec_locate_btn {
+    flex: 0 0 auto;
+    padding: 0.25rem 0.45rem;
+    line-height: 1;
+}
+
+#offcanvasAiSidebar .o_ai_rec_target_key {
+    max-width: 55%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: right;
 }
 
 #offcanvasAiSidebar .o_ai_rec_feed_item .typ {
@@ -1751,6 +2055,52 @@
     border-color: rgba(148, 163, 184, 0.14);
 }
 
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item.is-suspect-step {
+    background: rgba(120, 53, 15, 0.22);
+    border-color: rgba(245, 158, 11, 0.36);
+    border-left-color: #f59e0b;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_count_pill {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #fde68a;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_row {
+    background: rgba(120, 53, 15, 0.34);
+    border-color: rgba(245, 158, 11, 0.42);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_badge {
+    background: rgba(245, 158, 11, 0.22);
+    color: #fde68a;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_reason {
+    color: #fef3c7;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_keep_btn {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(251, 191, 36, 0.42);
+    color: #fde68a;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_keep_btn:hover {
+    background: rgba(245, 158, 11, 0.22);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_remove_btn {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(248, 113, 113, 0.45);
+    color: #fca5a5;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_suspect_remove_btn:hover {
+    background: rgba(220, 38, 38, 0.24);
+}
+
 #offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_title,
 #offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item .tgt {
     color: var(--tutor-text-muted);
@@ -1768,7 +2118,8 @@
 
 #offcanvasAiSidebar.is-dark-theme .o_ai_recorder_step textarea.form-control,
 #offcanvasAiSidebar.is-dark-theme .o_ai_recorder_meta .form-control,
-#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_meta .form-select {
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_meta .form-select,
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item .form-control {
     background-color: rgba(15, 23, 42, 0.62);
     border-color: rgba(148, 163, 184, 0.22);
     color: var(--tutor-text);

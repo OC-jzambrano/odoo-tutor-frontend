@@ -1,17 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
+    applyPolishedInstructionsToSteps,
     buildDraftStepFromEvent,
+    buildPickedStepInstruction,
+    buildPolishDraftPayload,
     buildRecorderModuleOptions,
     buildRecordingDraftPayload,
+    buildStepInstruction,
+    buildStepLocateActionRequest,
+    buildStepNavSnapshot,
+    buildStepTargetHint,
     clearPersistedRecordingSession,
     DEFAULT_ODOO_MODULE_OPTIONS,
+    detectOptionalBlockSuggestions,
     extractModuleFromApp,
     findAppForModule,
+    getNextIndexAfterSkip,
+    getOptionalBlockRange,
     getRecorderStorageKey,
+    humanizeTechnicalKey,
+    isElementRequiredField,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
     isSensitiveInputElement,
+    isTechnicalKey,
     loadPersistedRecordingSession,
+    matchDryRunStepIndex,
+    recomputeOptionalGroups,
+    resolveDomHumanLabel,
     savePersistedRecordingSession,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
 
@@ -77,7 +93,7 @@ describe("recording_draft helpers", () => {
             },
             { id: "11111111-1111-4111-8111-111111111111" }
         );
-        expect(clickStep).toEqual({
+        expect(clickStep).toMatchObject({
             id: "11111111-1111-4111-8111-111111111111",
             instruction: "Click Confirm",
             target: {
@@ -85,6 +101,11 @@ describe("recording_draft helpers", () => {
                 model: "sale.order",
                 field: null,
                 target_key: "action_confirm",
+            },
+            target_hint: {
+                kind: "button",
+                name: "action_confirm",
+                label: "Confirm",
             },
         });
 
@@ -99,7 +120,7 @@ describe("recording_draft helpers", () => {
             },
             { id: "22222222-2222-4222-8222-222222222222" }
         );
-        expect(changeStep).toEqual({
+        expect(changeStep).toMatchObject({
             id: "22222222-2222-4222-8222-222222222222",
             instruction: "Update Customer",
             target: {
@@ -107,6 +128,11 @@ describe("recording_draft helpers", () => {
                 model: "sale.order",
                 field: "partner_id",
                 target_key: "partner_id",
+            },
+            target_hint: {
+                kind: "field",
+                field: "partner_id",
+                label: "Customer",
             },
         });
         expect(JSON.stringify(changeStep)).not.toContain("SuperSecretCustomerInput");
@@ -221,7 +247,7 @@ describe("recording_draft helpers", () => {
                 moduleRootXmlid: "stock.menu_stock_root",
             }
         );
-        expect(submenuStep).toEqual({
+        expect(submenuStep).toMatchObject({
             id: "55555555-5555-4555-8555-555555555555",
             instruction: "Open Operations",
             target: {
@@ -229,6 +255,11 @@ describe("recording_draft helpers", () => {
                 model: null,
                 field: null,
                 target_key: "menu.stock.menu_stock_warehouse_mgmt",
+            },
+            target_hint: {
+                kind: "menu",
+                xmlid: "stock.menu_stock_warehouse_mgmt",
+                label: "Operations",
             },
         });
     });
@@ -284,6 +315,8 @@ describe("recording_draft helpers", () => {
                 {
                     id: "77777777-7777-4777-8777-777777777777",
                     instruction: "Click Save",
+                    is_optional: false,
+                    optional_group: null,
                     target: {
                         action: "click",
                         model: "res.config.settings",
@@ -328,5 +361,496 @@ describe("recording_draft helpers", () => {
         );
         clearPersistedRecordingSession(storage, key);
         expect(loadPersistedRecordingSession(storage, key, { now: 2_000_000 })).toBeNull();
+    });
+
+    it("captures nav metadata and target hints, builds locate actions, and strips nav/target_hint on draft save", () => {
+        const nav = buildStepNavSnapshot({
+            menuService: {
+                getCurrentApp: () => ({
+                    id: 99,
+                    xmlid: "account.menu_finance",
+                    name: "Invoicing",
+                }),
+            },
+            actionService: {
+                currentController: {
+                    action: {
+                        id: 412,
+                        res_model: "res.config.settings",
+                        context: { module: "account" },
+                    },
+                    props: { resModel: "res.config.settings", viewType: "form", resId: null },
+                },
+            },
+            el: { closest: () => null },
+            breadcrumb: "Configuration / Settings",
+        });
+
+        expect(nav).toEqual({
+            appId: 99,
+            appXmlid: "account.menu_finance",
+            appName: "Invoicing",
+            actionId: 412,
+            resModel: "res.config.settings",
+            viewType: "form",
+            resId: null,
+            settingsModule: "account",
+            inModal: false,
+            breadcrumb: "Configuration / Settings",
+        });
+
+        expect(buildStepLocateActionRequest(nav)).toBe(412);
+        expect(
+            buildStepLocateActionRequest({
+                resModel: "res.partner",
+                viewType: "form",
+                resId: 42,
+                actionId: 100,
+            })
+        ).toEqual({
+            type: "ir.actions.act_window",
+            res_model: "res.partner",
+            res_id: 42,
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "current",
+        });
+
+        const step = buildDraftStepFromEvent(
+            {
+                type: "field_changed",
+                label: "Customer Addresses",
+                field: "group_sale_delivery_address",
+                meta: { model: "res.config.settings", target_name: "group_sale_delivery_address" },
+            },
+            {
+                id: "88888888-8888-4888-8888-888888888888",
+                nav,
+                selector: '[name="group_sale_delivery_address"]',
+            }
+        );
+
+        expect(step.nav).toEqual(nav);
+        expect(step.target_hint).toEqual(
+            buildStepTargetHint(
+                {
+                    type: "field_changed",
+                    label: "Customer Addresses",
+                    field: "group_sale_delivery_address",
+                    meta: {
+                        model: "res.config.settings",
+                        target_name: "group_sale_delivery_address",
+                    },
+                },
+                { selector: '[name="group_sale_delivery_address"]' }
+            )
+        );
+
+        // Backend draft payload strips frontend-only nav and target_hint fields.
+        const draftPayload = buildRecordingDraftPayload({
+            recordingId: "99999999-9999-4999-8999-999999999999",
+            title: "Configure addresses",
+            module: "account",
+            steps: [step],
+        });
+        expect(draftPayload.steps[0]).toEqual({
+            id: "88888888-8888-4888-8888-888888888888",
+            instruction: "Update Customer Addresses",
+            target: {
+                action: "change",
+                model: "res.config.settings",
+                field: "group_sale_delivery_address",
+                target_key: "group_sale_delivery_address",
+            },
+        });
+        expect(draftPayload.steps[0].nav).toBeUndefined();
+        expect(draftPayload.steps[0].target_hint).toBeUndefined();
+        expect(draftPayload.steps[0].is_optional).toBeUndefined();
+        expect(draftPayload.steps[0].optional_group).toBeUndefined();
+    });
+
+    it("groups contiguous optional steps, skips whole blocks, and allows jumping to next required step in Dry-Run", () => {
+        const rawSteps = [
+            {
+                id: "s1",
+                instruction: "Open Configuration",
+                target: { action: "click", model: null, field: null, target_key: "menu.sale.menu_sale_config" },
+                is_optional: true,
+            },
+            {
+                id: "s2",
+                instruction: "Open Settings",
+                target: { action: "click", model: null, field: null, target_key: "menu.sale.menu_sale_general_settings" },
+                is_optional: true,
+            },
+            {
+                id: "s3",
+                instruction: "Enable Customer Addresses",
+                target: { action: "click", model: "res.config.settings", field: "group_delivery_invoice_address", target_key: "group_delivery_invoice_address" },
+                is_optional: true,
+            },
+            {
+                id: "s4",
+                instruction: "Click Save",
+                target: { action: "click", model: "res.config.settings", field: null, target_key: "form.save" },
+                is_optional: true,
+            },
+            {
+                id: "s5",
+                instruction: "Open Orders",
+                target: { action: "click", model: null, field: null, target_key: "menu.sale.sale_order_menu" },
+                is_optional: false,
+            },
+            {
+                id: "s6",
+                instruction: "Update Phone",
+                target: { action: "change", model: "res.partner", field: "phone", target_key: "phone" },
+                is_optional: true,
+            },
+        ];
+
+        const grouped = recomputeOptionalGroups(rawSteps);
+        expect(grouped[0].optional_group).toBe("opt_group_1");
+        expect(grouped[1].optional_group).toBe("opt_group_1");
+        expect(grouped[2].optional_group).toBe("opt_group_1");
+        expect(grouped[3].optional_group).toBe("opt_group_1");
+        expect(grouped[4].optional_group).toBeNull();
+        expect(grouped[5].is_optional).toBe(true);
+        expect(grouped[5].optional_group).toBeNull();
+
+        expect(getOptionalBlockRange(grouped, 0)).toEqual({
+            start: 0,
+            end: 3,
+            count: 4,
+            groupId: "opt_group_1",
+        });
+
+        expect(getNextIndexAfterSkip(grouped, 0)).toBe(4);
+        expect(getNextIndexAfterSkip(grouped, 5)).toBe(6);
+
+        const jumpMatch = matchDryRunStepIndex(grouped, 0, {
+            type: "menu_clicked",
+            label: "Orders",
+            meta: { target_name: "menu.sale.sale_order_menu" },
+        });
+        expect(jumpMatch).toEqual({
+            matchedIndex: 4,
+            nextIndex: 5,
+            skippedOptionalCount: 4,
+        });
+
+        const payload = buildRecordingDraftPayload({
+            recordingId: "88888888-8888-4888-8888-888888888888",
+            title: "Customer Addresses",
+            module: "sale",
+            steps: grouped,
+        });
+        expect(Object.keys(payload.steps[0]).sort()).toEqual(["id", "instruction", "target"]);
+    });
+
+    it("suggests optional for non-required fields and res.config.settings setup blocks without forcing", () => {
+        const optionalInput = {
+            tagName: "INPUT",
+            type: "text",
+            required: false,
+            getAttribute: (attr) => (attr === "name" ? "phone" : null),
+            hasAttribute: () => false,
+            classList: { contains: () => false },
+            closest: () => null,
+        };
+        const requiredInput = {
+            tagName: "INPUT",
+            type: "text",
+            required: false,
+            getAttribute: (attr) => (attr === "name" ? "partner_id" : null),
+            hasAttribute: () => false,
+            classList: { contains: () => false },
+            closest: (sel) => (sel.includes("o_required_modifier") ? {} : null),
+        };
+
+        expect(isElementRequiredField(optionalInput)).toBe(false);
+        expect(isElementRequiredField(requiredInput)).toBe(true);
+
+        const optStep = buildDraftStepFromEvent(
+            {
+                type: "field_changed",
+                label: "Phone",
+                field: "phone",
+                meta: { model: "res.partner", target_name: "phone" },
+            },
+            { id: "opt-1", el: optionalInput }
+        );
+        expect(optStep.is_optional).toBe(false);
+        expect(optStep.suggested_optional).toBe(true);
+        expect(optStep.optional_reason).toBe("Non-required field");
+
+        const reqStep = buildDraftStepFromEvent(
+            {
+                type: "field_changed",
+                label: "Customer",
+                field: "partner_id",
+                meta: { model: "sale.order", target_name: "partner_id" },
+            },
+            { id: "req-1", el: requiredInput }
+        );
+        expect(reqStep.suggested_optional).toBeUndefined();
+
+        const setupSteps = [
+            {
+                id: "a1",
+                instruction: "Open Configuration",
+                target: { action: "click", model: null, field: null, target_key: "menu.sale.menu_sale_config" },
+                is_optional: false,
+            },
+            {
+                id: "a2",
+                instruction: "Open Settings",
+                target: { action: "click", model: null, field: null, target_key: "menu.sale.menu_sale_general_settings" },
+                is_optional: false,
+            },
+            {
+                id: "a3",
+                instruction: "Click Customer Addresses",
+                target: { action: "click", model: "res.config.settings", field: "group_delivery_invoice_address", target_key: "group_delivery_invoice_address" },
+                is_optional: false,
+            },
+            {
+                id: "a4",
+                instruction: "Click Save",
+                target: { action: "click", model: "res.config.settings", field: null, target_key: "form.save" },
+                is_optional: false,
+            },
+        ];
+        const suggestions = detectOptionalBlockSuggestions(setupSteps);
+        expect(suggestions).toHaveLength(1);
+        expect(suggestions[0].startIndex).toBe(0);
+        expect(suggestions[0].endIndex).toBe(3);
+        expect(suggestions[0].stepIds).toEqual(["a1", "a2", "a3", "a4"]);
+        expect(suggestions[0].reason).toContain("Steps 1–4");
+    });
+
+    it("instantly humanizes raw Odoo keys using real DOM labels and known mappings (Stage 1)", () => {
+        expect(isTechnicalKey("form.save")).toBe(true);
+        expect(isTechnicalKey("list.create")).toBe(true);
+        expect(isTechnicalKey("group_sale_delivery_address")).toBe(true);
+        expect(isTechnicalKey("Customer Addresses")).toBe(false);
+
+        expect(humanizeTechnicalKey("form.save")).toBe("Save");
+        expect(humanizeTechnicalKey("list.create")).toBe("New");
+        expect(humanizeTechnicalKey("action_confirm")).toBe("Confirm");
+        expect(humanizeTechnicalKey("partner_id")).toBe("Partner");
+
+        // Icon-only Odoo Save button (form.save -> "Click Save")
+        const saveBtn = {
+            tagName: "BUTTON",
+            innerText: "",
+            textContent: "",
+            getAttribute: (attr) => (attr === "aria-label" ? "Save manually" : null),
+            closest(sel) {
+                return sel.split(",").map((s) => s.trim()).includes("button") ? this : null;
+            },
+        };
+        const saveStep = buildDraftStepFromEvent(
+            {
+                type: "button_clicked",
+                label: "form.save",
+                field: null,
+                meta: { model: "sale.order", target_name: "form.save" },
+                dom: { dom_key: "button.form-save", text_preview: "" },
+            },
+            { id: "h-1", el: saveBtn }
+        );
+        expect(saveStep.instruction).toBe("Click Save");
+        expect(saveStep.target.target_key).toBe("form.save");
+        expect(saveStep.target_hint.label).toBe("Save");
+
+        // List New button (list.create -> "Click New")
+        expect(
+            buildStepInstruction({
+                type: "button_clicked",
+                label: "list.create",
+                field: null,
+                meta: { model: "sale.order", target_name: "list.create" },
+                dom: { text_preview: "" },
+            })
+        ).toBe("Click New");
+
+        // Settings checkbox (group_sale_delivery_address -> "Enable Customer Addresses" using real DOM label)
+        const settingLabelEl = { innerText: "Customer Addresses", textContent: "Customer Addresses" };
+        const settingBoxEl = {
+            querySelector: (sel) => (sel.includes("o_setting_right_pane") ? settingLabelEl : null),
+        };
+        const checkboxEl = {
+            tagName: "INPUT",
+            type: "checkbox",
+            checked: true,
+            id: "group_sale_delivery_address_0",
+            getAttribute: (attr) => (attr === "type" ? "checkbox" : null),
+            closest: (sel) => (sel.includes(".o_setting_box") ? settingBoxEl : null),
+        };
+        expect(resolveDomHumanLabel(checkboxEl)).toBe("Customer Addresses");
+        const enableStep = buildDraftStepFromEvent(
+            {
+                type: "click",
+                label: "group_sale_delivery_address",
+                field: "group_sale_delivery_address",
+                meta: {
+                    model: "res.config.settings",
+                    target_name: "group_sale_delivery_address",
+                },
+            },
+            { id: "h-2", el: checkboxEl }
+        );
+        expect(enableStep.instruction).toBe("Enable Customer Addresses");
+        expect(enableStep.target.field).toBe("group_sale_delivery_address");
+        expect(enableStep.target_hint.label).toBe("Customer Addresses");
+
+        // Unchecking produces "Disable Customer Addresses"
+        const uncheckedEl = { ...checkboxEl, checked: false };
+        expect(
+            buildStepInstruction(
+                {
+                    type: "click",
+                    label: "group_sale_delivery_address",
+                    field: "group_sale_delivery_address",
+                    meta: {
+                        model: "res.config.settings",
+                        target_name: "group_sale_delivery_address",
+                    },
+                },
+                { el: uncheckedEl }
+            )
+        ).toBe("Disable Customer Addresses");
+
+        // Action button with raw normalized.label ("action_confirm") uses real DOM text
+        const confirmBtn = {
+            tagName: "BUTTON",
+            innerText: "Confirm Order",
+            textContent: "Confirm Order",
+            getAttribute: () => null,
+            closest(sel) {
+                return sel.split(",").map((s) => s.trim()).includes("button") ? this : null;
+            },
+        };
+        expect(
+            buildStepInstruction(
+                {
+                    type: "button_clicked",
+                    label: "action_confirm",
+                    field: null,
+                    meta: { model: "sale.order", target_name: "action_confirm" },
+                },
+                { el: confirmBtn }
+            )
+        ).toBe("Click Confirm Order");
+
+        // Manual Pick Element humanizer
+        expect(
+            buildPickedStepInstruction({ target_key: "button.action_confirm", text: "Confirm" })
+        ).toBe("Click Confirm");
+        expect(
+            buildPickedStepInstruction({ target_key: "button.o_form_button_save", text: "" })
+        ).toBe("Click Save");
+    });
+
+    it("builds a single batched polish payload without raw input values and merges polished instructions safely (Stage 2)", () => {
+        const steps = [
+            {
+                id: "step-1",
+                instruction: "Click New",
+                target: { action: "click", model: "sale.order", field: null, target_key: "list.create" },
+                target_hint: { kind: "button", label: "New", actionLabel: "Click New" },
+                nav: { breadcrumb: "Quotations" },
+                is_optional: false,
+            },
+            {
+                id: "step-2",
+                instruction: "Update Customer",
+                target: { action: "change", model: "sale.order", field: "partner_id", target_key: "partner_id" },
+                target_hint: { kind: "field", label: "Customer", actionLabel: "Update Customer" },
+                nav: { breadcrumb: "Quotations / New" },
+                is_optional: false,
+            },
+            {
+                id: "step-3",
+                instruction: "Click Save",
+                target: { action: "click", model: "sale.order", field: null, target_key: "form.save" },
+                target_hint: { kind: "button", label: "Save", actionLabel: "Click Save" },
+                nav: { breadcrumb: "Quotations / New" },
+                is_optional: false,
+            },
+        ];
+
+        const polishPayload = buildPolishDraftPayload({
+            title: "  Create a Sales Quotation  ",
+            module: " sale ",
+            steps,
+        });
+        expect(polishPayload).toEqual({
+            title: "Create a Sales Quotation",
+            module: "sale",
+            steps: [
+                {
+                    id: "step-1",
+                    instruction: "Click New",
+                    target: { action: "click", model: "sale.order", field: null, target_key: "list.create" },
+                    label: "New",
+                    breadcrumb: "Quotations",
+                },
+                {
+                    id: "step-2",
+                    instruction: "Update Customer",
+                    target: { action: "change", model: "sale.order", field: "partner_id", target_key: "partner_id" },
+                    label: "Customer",
+                    breadcrumb: "Quotations / New",
+                },
+                {
+                    id: "step-3",
+                    instruction: "Click Save",
+                    target: { action: "click", model: "sale.order", field: null, target_key: "form.save" },
+                    label: "Save",
+                    breadcrumb: "Quotations / New",
+                },
+            ],
+        });
+
+        expect(() => buildPolishDraftPayload({ title: "Empty", module: "sale", steps: [] })).toThrow(
+            /at least one step/
+        );
+
+        // Merges polished instructions by ID while respecting skipStepIds (manually edited steps)
+        const { steps: merged, changedCount } = applyPolishedInstructionsToSteps(
+            steps,
+            {
+                steps: [
+                    { id: "step-1", instruction: "Click New to start a new sales quotation." },
+                    { id: "step-2", instruction: "Choose the Customer for this quotation." },
+                    { id: "step-3", instruction: "Click Save to store the quotation." },
+                ],
+            },
+            { skipStepIds: new Set(["step-2"]) }
+        );
+
+        expect(changedCount).toBe(2);
+        expect(merged[0].instruction).toBe("Click New to start a new sales quotation.");
+        expect(merged[0].ai_polished).toBe(true);
+        expect(merged[0].target_hint.actionLabel).toBe("Click New to start a new sales quotation.");
+        // step-2 skipped because author manually edited it while polish was in flight
+        expect(merged[1].instruction).toBe("Update Customer");
+        expect(merged[1].ai_polished).toBeUndefined();
+        expect(merged[2].instruction).toBe("Click Save to store the quotation.");
+        // Target metadata preserved untouched
+        expect(merged[2].target).toEqual(steps[2].target);
+
+        // Index-aligned fallback when backend returns { instructions: [...] }
+        const fallbackRes = applyPolishedInstructionsToSteps(steps, {
+            instructions: [
+                "Click New to create a quotation.",
+                "Select a Customer.",
+                "Click Save.",
+            ],
+        });
+        expect(fallbackRes.changedCount).toBe(3);
+        expect(fallbackRes.steps[1].instruction).toBe("Select a Customer.");
     });
 });

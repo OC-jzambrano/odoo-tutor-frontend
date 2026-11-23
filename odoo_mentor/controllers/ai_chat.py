@@ -294,6 +294,85 @@ class AiChatController(http.Controller):
             }
         return {"ok": True, "data": body}
 
+    @http.route("/ai_chat/recording_drafts/polish", type="jsonrpc", auth="user", methods=["POST"])
+    def polish_recording_draft_proxy(self, draft=None, **kwargs):
+        err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_expert")
+        if err:
+            return err
+        if not isinstance(draft, dict):
+            return {"error": "Recording draft payload is required", "status": 422}
+
+        raw_steps = draft.get("steps")
+        if not isinstance(raw_steps, list) or not raw_steps:
+            return {"error": "At least one step is required to polish", "status": 422}
+
+        clean_steps = []
+        for item in raw_steps[:200]:
+            if not isinstance(item, dict):
+                continue
+            step_id = str(item.get("id") or "").strip()[:128]
+            instruction = str(item.get("instruction") or "").strip()[:2000]
+            if not step_id or not instruction:
+                continue
+            raw_target = item.get("target") if isinstance(item.get("target"), dict) else {}
+            action = "change" if raw_target.get("action") == "change" else "click"
+            clean_step = {
+                "id": step_id,
+                "instruction": instruction,
+                "target": {
+                    "action": action,
+                    "model": (str(raw_target.get("model") or "").strip()[:240] or None),
+                    "field": (str(raw_target.get("field") or "").strip()[:240] or None),
+                    "target_key": (str(raw_target.get("target_key") or "").strip()[:240] or None),
+                },
+            }
+            label = str(item.get("label") or "").strip()[:120]
+            if label:
+                clean_step["label"] = label
+            breadcrumb = str(item.get("breadcrumb") or "").strip()[:240]
+            if breadcrumb:
+                clean_step["breadcrumb"] = breadcrumb
+            app_name = str(item.get("app_name") or "").strip()[:120]
+            if app_name:
+                clean_step["app_name"] = app_name
+            if item.get("is_optional") is True:
+                clean_step["is_optional"] = True
+            clean_steps.append(clean_step)
+
+        if not clean_steps:
+            return {"error": "At least one valid step is required to polish", "status": 422}
+
+        payload = {
+            "title": str(draft.get("title") or "").strip()[:240],
+            "module": str(draft.get("module") or "").strip()[:240],
+            "steps": clean_steps,
+            "include_suspect_review": True,
+        }
+
+        params = request.env["ir.config_parameter"].sudo()
+        provider_key = params.get_str("odoo_tutor.llm_api_key", "").strip()
+        if provider_key:
+            provider = params.get_str("odoo_tutor.llm_provider", "openai")
+            if provider not in {"openai", "anthropic", "google"}:
+                return {"error": "Configured AI provider is invalid", "status": 400}
+            payload["provider_config"] = {
+                "provider": provider,
+                "api_key": provider_key,
+            }
+
+        base_path, headers = ctx
+        try:
+            response = requests.post(
+                f"{base_path}/polish",
+                json=payload,
+                headers=headers,
+                timeout=(3, 25),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "AI polish service is unavailable", "status": 503}
+
     @http.route("/ai_chat/recording_drafts/save", type="jsonrpc", auth="user", methods=["POST"])
     def save_recording_draft_proxy(self, draft=None, **kwargs):
         err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_expert")

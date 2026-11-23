@@ -21,16 +21,32 @@ import {
 } from "../../core/copy_targets";
 import { shouldQueueTutorMessage } from "../../core/tutor_message_delivery";
 import {
+    applyPolishedInstructionsToSteps,
     buildDraftStepFromEvent,
+    buildPickedStepInstruction,
+    buildPolishDraftPayload,
     buildRecorderModuleOptions,
     buildRecordingDraftPayload,
+    buildStepLocateActionRequest,
+    detectOptionalBlockSuggestions,
     extractModuleFromApp,
     findAppForModule,
+    getNextIndexAfterSkip,
+    getOptionalBlockRange,
+    isRecorderUiElement,
+    matchDryRunStepIndex,
+    recomputeOptionalGroups,
 } from "../../core/recording_draft";
+import {
+    buildActiveSuspectWarnings,
+    dismissStepSuspectWarning,
+} from "../../core/mistake_detection";
+import { normalizeDomEvent } from "../../core/normalize_event";
 import { TUTOR_PLANS_URL } from "../../core/settings_navigation";
 import { renderInlineMarkdownHtml } from "../../core/format_markdown";
 import {
     extractTargetHint,
+    resolveTargetElement,
     shouldAutoShowTargetHint,
 } from "../../core/target_hint_resolver";
 import {
@@ -198,6 +214,8 @@ const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
+const DRY_RUN_UPDATE_EVENT = "ai:dry_run_update";
+const DRY_RUN_ACTION_EVENT = "ai:dry_run_action";
 
 function getExerciseCtaState() {
     window[EXERCISE_CTA_STATE_KEY] = window[EXERCISE_CTA_STATE_KEY] || {
@@ -218,6 +236,7 @@ export class AiSidebar extends Component {
         this.contextService = useService("context_service");
         this.notification = useService("notification");
         this.menuService = useService("menu");
+        this.actionService = useService("action");
         this.aiWs = useService("ai_ws");
         this.aiRecorder = useService("ai_recorder");
         this.aiChatStore = useService("ai_chat_store");
@@ -259,6 +278,8 @@ export class AiSidebar extends Component {
 
         // recorder step dedupe
         this._savedStepHashes = new Set();
+        this._polishRequestSeq = 0;
+        this._editedDuringPolishStepIds = new Set();
 
         // placeholders per model
         this.modelPlaceholders = {
@@ -310,11 +331,22 @@ export class AiSidebar extends Component {
             recorderModuleOptions: buildRecorderModuleOptions(),
             recorderSteps: [],
             recorderSaving: false,
+            recorderPolishing: false,
+            recorderPrePolishSnapshot: null,
             recorderFeed: [],
             recorderStepIndex: 0,
             recorderNote: "",
             recorderPicked: null,
             recorderPicking: false,
+
+            dryRunActive: false,
+            dryRunPaused: false,
+            dryRunStepIndex: 0,
+            dryRunEditStepId: null,
+            dryRunSkippedPromptStepId: null,
+            dryRunSkippedPromptStepNumber: null,
+            dismissedBlockSuggestionIds: [],
+            recorderLocatingStepId: null,
 
             wsStatus: "unknown",
             showRecorderPanel: false,
@@ -681,6 +713,11 @@ export class AiSidebar extends Component {
 
             window.addEventListener(EXERCISE_SKIP_STEP_EVENT, this._onExerciseSkipStepEvent);
 
+            this._onDryRunActionEvent = (e) => {
+                this._handleDryRunAction(e?.detail || {});
+            };
+            window.addEventListener(DRY_RUN_ACTION_EVENT, this._onDryRunActionEvent);
+
             requestAnimationFrame(() => {
                 this._startCopyButtonsObserver?.();
                 this._installManualSelectionGuard?.();
@@ -752,6 +789,12 @@ export class AiSidebar extends Component {
                 window.removeEventListener(EXERCISE_SKIP_STEP_EVENT, this._onExerciseSkipStepEvent);
                 this._onExerciseSkipStepEvent = null;
             }
+
+            if (this._onDryRunActionEvent) {
+                window.removeEventListener(DRY_RUN_ACTION_EVENT, this._onDryRunActionEvent);
+                this._onDryRunActionEvent = null;
+            }
+            this._detachDryRunListeners();
 
             if (this.state.timerInterval) {
                 clearInterval(this.state.timerInterval);
@@ -2559,8 +2602,159 @@ export class AiSidebar extends Component {
         this.state.recorderStatus = "paused";
     }
 
+    async onRecorderFinishCapture() {
+        if (this.state.recorderStatus === "recording") {
+            await this.aiRecorder.pauseRecording();
+            this.state.recorderStatus = "paused";
+        }
+        if ((this.state.recorderSteps || []).length > 0) {
+            // Fire a single batched AI polish pass non-blockingly so Save stays usable.
+            this.onRecorderPolishSteps({ trigger: "finish" });
+        }
+    }
+
+    async onRecorderPolishSteps({ trigger = "button" } = {}) {
+        if (this.state.recorderPolishing) return;
+        const steps = this.state.recorderSteps || [];
+        if (!steps.length) {
+            if (trigger === "button") {
+                this.notification.add(_t("Record at least one step before polishing."), {
+                    type: "warning",
+                });
+            }
+            return;
+        }
+
+        let draft;
+        try {
+            draft = buildPolishDraftPayload({
+                title: this.state.recorderTitle,
+                module: this.state.recorderModule,
+                steps,
+            });
+        } catch (err) {
+            if (trigger === "button") {
+                this.notification.add(err?.message || _t("Record at least one step before polishing."), {
+                    type: "warning",
+                });
+            }
+            return;
+        }
+
+        const requestSeq = ++this._polishRequestSeq;
+        this._editedDuringPolishStepIds = new Set();
+        const prePolishSnapshot = {};
+        for (const step of steps) {
+            if (step?.id) {
+                prePolishSnapshot[step.id] = step.instruction;
+            }
+        }
+
+        this.state.recorderPolishing = true;
+        try {
+            const result = await rpc("/ai_chat/recording_drafts/polish", { draft });
+            if (requestSeq !== this._polishRequestSeq) {
+                return;
+            }
+            if (result?.error) {
+                this.notification.add(
+                    trigger === "finish"
+                        ? _t("Capture finished. AI polish unavailable — kept instant step labels.")
+                        : result.error,
+                    { type: trigger === "finish" ? "info" : "warning" }
+                );
+                return;
+            }
+
+            const { steps: updatedSteps, changedCount, flaggedCount } = applyPolishedInstructionsToSteps(
+                this.state.recorderSteps || [],
+                result?.data,
+                { skipStepIds: this._editedDuringPolishStepIds }
+            );
+            this.state.recorderSteps = updatedSteps;
+            this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+            if (this.state.dryRunActive) {
+                this._emitDryRunState();
+            }
+
+            const totalFlagged = this.recorderSuspectCount;
+            if (changedCount > 0 && totalFlagged > 0) {
+                this.state.recorderPrePolishSnapshot = prePolishSnapshot;
+                this.notification.add(
+                    _t(
+                        "Polished %s step(s) and flagged %s possible extra step(s) for review.",
+                        changedCount,
+                        totalFlagged
+                    ),
+                    { type: "info" }
+                );
+            } else if (changedCount > 0) {
+                this.state.recorderPrePolishSnapshot = prePolishSnapshot;
+                this.notification.add(
+                    _t("Polished %s step instruction(s) with AI.", changedCount),
+                    { type: "success" }
+                );
+            } else if (flaggedCount > 0) {
+                this.notification.add(
+                    _t("AI flagged %s possible extra step(s) for your review.", flaggedCount),
+                    { type: "info" }
+                );
+            } else if (trigger === "button") {
+                this.notification.add(_t("Step instructions are already clear."), { type: "info" });
+            }
+        } catch (err) {
+            if (requestSeq !== this._polishRequestSeq) {
+                return;
+            }
+            this.notification.add(
+                trigger === "finish"
+                    ? _t("Capture finished. AI polish unavailable — kept instant step labels.")
+                    : err?.message || _t("Could not polish step instructions."),
+                { type: trigger === "finish" ? "info" : "warning" }
+            );
+        } finally {
+            if (requestSeq === this._polishRequestSeq) {
+                this.state.recorderPolishing = false;
+                this._editedDuringPolishStepIds = new Set();
+            }
+        }
+    }
+
+    onRecorderUndoPolish() {
+        const snapshot = this.state.recorderPrePolishSnapshot;
+        if (!snapshot || typeof snapshot !== "object") return;
+        this.state.recorderSteps = (this.state.recorderSteps || []).map((step) => {
+            if (!step?.id || !Object.prototype.hasOwnProperty.call(snapshot, step.id)) {
+                return step;
+            }
+            const restoredInstruction = snapshot[step.id];
+            const restoredStep = {
+                ...step,
+                instruction: restoredInstruction,
+            };
+            delete restoredStep.ai_polished;
+            if (restoredStep.target_hint) {
+                restoredStep.target_hint = {
+                    ...restoredStep.target_hint,
+                    actionLabel: restoredInstruction,
+                };
+            }
+            return restoredStep;
+        });
+        this.state.recorderPrePolishSnapshot = null;
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+        if (this.state.dryRunActive) {
+            this._emitDryRunState();
+        }
+    }
+
     async onRecorderFinish() {
         const sid = this.state.recorderSessionId;
+        this._polishRequestSeq += 1;
+        this.state.recorderPolishing = false;
+        this.state.recorderPrePolishSnapshot = null;
+        this._editedDuringPolishStepIds = new Set();
+        this.onRecorderStopDryRun();
         try {
             await this.aiRecorder.finishRecording();
         } finally {
@@ -2574,6 +2768,7 @@ export class AiSidebar extends Component {
             this.state.recorderNote = "";
             this.state.recorderStepIndex = 0;
             this.state.recorderFeed = [];
+            this.state.dismissedBlockSuggestionIds = [];
             this._savedStepHashes = new Set();
             this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
@@ -2587,18 +2782,478 @@ export class AiSidebar extends Component {
         }
     }
 
+    get recorderOptionalBlockSuggestions() {
+        const dismissed = new Set(this.state.dismissedBlockSuggestionIds || []);
+        return detectOptionalBlockSuggestions(this.state.recorderSteps || []).filter(
+            (suggestion) => !dismissed.has(suggestion.id)
+        );
+    }
+
+    get recorderSuspectWarnings() {
+        return buildActiveSuspectWarnings(this.state.recorderSteps || []);
+    }
+
+    get recorderSuspectCount() {
+        return Object.keys(this.recorderSuspectWarnings).length;
+    }
+
+    get dryRunCurrentStep() {
+        const steps = this.state.recorderSteps || [];
+        const idx = this.state.dryRunStepIndex || 0;
+        return idx >= 0 && idx < steps.length ? steps[idx] : null;
+    }
+
     onRecorderUpdateStepInstruction(stepId, value) {
-        this.state.recorderSteps = (this.state.recorderSteps || []).map((step) =>
-            step.id === stepId ? { ...step, instruction: value } : step
+        if (this.state.recorderPolishing && stepId) {
+            this._editedDuringPolishStepIds?.add(stepId);
+        }
+        this.state.recorderSteps = (this.state.recorderSteps || []).map((step) => {
+            if (step.id !== stepId) return step;
+            const nextStep = { ...step, instruction: value };
+            delete nextStep.ai_polished;
+            return nextStep;
+        });
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+        if (this.state.dryRunActive) {
+            this._emitDryRunState();
+        }
+    }
+
+    onRecorderRemoveStep(stepId) {
+        this.onRecorderRemoveStepIds([stepId]);
+    }
+
+    onRecorderRemoveStepIds(stepIds = []) {
+        const idSet = new Set((Array.isArray(stepIds) ? stepIds : []).filter(Boolean));
+        if (!idSet.size) return;
+        this.state.recorderSteps = recomputeOptionalGroups(
+            (this.state.recorderSteps || []).filter((step) => !idSet.has(step.id))
+        );
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+        if (this.state.dryRunActive) {
+            if (!this.state.recorderSteps.length) {
+                this.onRecorderStopDryRun();
+            } else {
+                this.state.dryRunStepIndex = Math.min(
+                    this.state.dryRunStepIndex,
+                    this.state.recorderSteps.length - 1
+                );
+                this._emitDryRunState();
+            }
+        }
+    }
+
+    onRecorderKeepSuspectStep(stepId) {
+        const warning = this.recorderSuspectWarnings[stepId];
+        if (!warning?.signature) return;
+        this.state.recorderSteps = dismissStepSuspectWarning(
+            this.state.recorderSteps || [],
+            stepId,
+            warning.signature
         );
         this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
     }
 
-    onRecorderRemoveStep(stepId) {
-        this.state.recorderSteps = (this.state.recorderSteps || []).filter(
-            (step) => step.id !== stepId
+    onRecorderToggleStepOptional(stepId) {
+        this.state.recorderSteps = recomputeOptionalGroups(
+            (this.state.recorderSteps || []).map((step) => {
+                if (step.id !== stepId) return step;
+                const nextOptional = !step.is_optional;
+                return {
+                    ...step,
+                    is_optional: nextOptional,
+                    suggested_optional: nextOptional ? false : step.suggested_optional,
+                };
+            })
         );
         this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+        if (this.state.dryRunActive) {
+            this._emitDryRunState();
+        }
+    }
+
+    onRecorderAcceptStepOptionalSuggestion(stepId) {
+        this.state.recorderSteps = recomputeOptionalGroups(
+            (this.state.recorderSteps || []).map((step) =>
+                step.id === stepId
+                    ? { ...step, is_optional: true, suggested_optional: false }
+                    : step
+            )
+        );
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+        if (this.state.dryRunActive) {
+            this._emitDryRunState();
+        }
+    }
+
+    onRecorderDismissStepOptionalSuggestion(stepId) {
+        this.state.recorderSteps = (this.state.recorderSteps || []).map((step) =>
+            step.id === stepId
+                ? { ...step, optional_suggestion_dismissed: true }
+                : step
+        );
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+    }
+
+    onRecorderAcceptBlockSuggestion(suggestion) {
+        if (!suggestion?.stepIds?.length) return;
+        const idSet = new Set(suggestion.stepIds);
+        this.state.recorderSteps = recomputeOptionalGroups(
+            (this.state.recorderSteps || []).map((step) =>
+                idSet.has(step.id)
+                    ? { ...step, is_optional: true, suggested_optional: false }
+                    : step
+            )
+        );
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+        if (this.state.dryRunActive) {
+            this._emitDryRunState();
+        }
+        this.notification.add(
+            _t("Marked steps %s–%s as an optional block.", suggestion.startIndex + 1, suggestion.endIndex + 1),
+            { type: "success" }
+        );
+    }
+
+    onRecorderDismissBlockSuggestion(suggestionId) {
+        if (!suggestionId) return;
+        const current = this.state.dismissedBlockSuggestionIds || [];
+        if (!current.includes(suggestionId)) {
+            this.state.dismissedBlockSuggestionIds = [...current, suggestionId];
+        }
+    }
+
+    _emitDryRunState() {
+        const steps = this.state.recorderSteps || [];
+        const stepIndex = this.state.dryRunStepIndex || 0;
+        const step = this.state.dryRunActive && stepIndex < steps.length ? steps[stepIndex] : null;
+        const blockRange = step ? getOptionalBlockRange(steps, stepIndex) : null;
+        window.dispatchEvent(
+            new CustomEvent(DRY_RUN_UPDATE_EVENT, {
+                detail: {
+                    active: !!this.state.dryRunActive,
+                    paused: !!this.state.dryRunPaused,
+                    stepIndex,
+                    totalSteps: steps.length,
+                    step: step ? { ...step } : null,
+                    blockRange,
+                    skippedPromptStepId: this.state.dryRunSkippedPromptStepId || null,
+                    skippedPromptStepNumber: this.state.dryRunSkippedPromptStepNumber || null,
+                },
+            })
+        );
+    }
+
+    _attachDryRunListeners() {
+        this._detachDryRunListeners();
+        this._onDryRunDomClick = (e) => this._handleDryRunDomEvent("click", e);
+        this._onDryRunDomChange = (e) => {
+            const el = e?.target;
+            if (!el || el.type === "checkbox") return;
+            const tag = (el.tagName || "").toUpperCase();
+            if (!["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+            this._handleDryRunDomEvent("change", e);
+        };
+        document.addEventListener("click", this._onDryRunDomClick, true);
+        document.addEventListener("change", this._onDryRunDomChange, true);
+    }
+
+    _detachDryRunListeners() {
+        if (this._onDryRunDomClick) {
+            document.removeEventListener("click", this._onDryRunDomClick, true);
+            this._onDryRunDomClick = null;
+        }
+        if (this._onDryRunDomChange) {
+            document.removeEventListener("change", this._onDryRunDomChange, true);
+            this._onDryRunDomChange = null;
+        }
+    }
+
+    _handleDryRunDomEvent(domEventType, e) {
+        if (!this.state.dryRunActive || this.state.dryRunPaused) return;
+        if (isRecorderUiElement(e?.target)) return;
+
+        const normalized = normalizeDomEvent({
+            domEventType,
+            originalEvent: e,
+            contextService: this.contextService,
+        });
+        const steps = this.state.recorderSteps || [];
+        const match = matchDryRunStepIndex(steps, this.state.dryRunStepIndex, normalized);
+        if (!match) return;
+
+        hideTargetHintOverlay();
+        this.state.dryRunSkippedPromptStepId = null;
+        this.state.dryRunSkippedPromptStepNumber = null;
+
+        if (match.skippedOptionalCount > 0) {
+            this.notification.add(
+                _t("Skipped %s optional step(s).", match.skippedOptionalCount),
+                { type: "info" }
+            );
+        }
+
+        if (match.nextIndex >= steps.length) {
+            this.onRecorderStopDryRun();
+            this.notification.add(_t("Dry-Run completed! All steps verified."), { type: "success" });
+            return;
+        }
+
+        this.state.dryRunStepIndex = match.nextIndex;
+        this._emitDryRunState();
+    }
+
+    async onRecorderStartDryRun() {
+        const steps = this.state.recorderSteps || [];
+        if (!steps.length) {
+            this.notification.add(_t("Record at least one step before testing."), { type: "warning" });
+            return;
+        }
+        if (this.state.recorderStatus === "recording") {
+            await this.onRecorderPause();
+        }
+        this.state.dryRunActive = true;
+        this.state.dryRunPaused = false;
+        this.state.dryRunStepIndex = 0;
+        this.state.dryRunEditStepId = null;
+        this.state.dryRunSkippedPromptStepId = null;
+        this.state.dryRunSkippedPromptStepNumber = null;
+        this._attachDryRunListeners();
+        await this.hideSidebar();
+        this._emitDryRunState();
+    }
+
+    async onRecorderResumeDryRun() {
+        if (!this.state.dryRunActive) return;
+        this.state.dryRunPaused = false;
+        this.state.dryRunEditStepId = null;
+        this._attachDryRunListeners();
+        await this.hideSidebar();
+        this._emitDryRunState();
+    }
+
+    onRecorderStopDryRun() {
+        this._detachDryRunListeners();
+        hideTargetHintOverlay();
+        const wasActive = this.state.dryRunActive;
+        this.state.dryRunActive = false;
+        this.state.dryRunPaused = false;
+        this.state.dryRunStepIndex = 0;
+        this.state.dryRunEditStepId = null;
+        this.state.dryRunSkippedPromptStepId = null;
+        this.state.dryRunSkippedPromptStepNumber = null;
+        if (wasActive) {
+            this._emitDryRunState();
+        }
+    }
+
+    async _handleDryRunAction(detail = {}) {
+        if (!this.state.dryRunActive) return;
+        const action = detail.action;
+        const step = this.dryRunCurrentStep;
+
+        if (action === "locate") {
+            if (!step) return;
+            const hint = step.target_hint || extractTargetHint({ target: step.target });
+            const shown = hint
+                ? showTargetHintOverlay(hint, { caption: step.instruction || hint.actionLabel })
+                : false;
+            if (!shown) {
+                this.notification.add(
+                    _t("The target element is not visible on this screen yet."),
+                    { type: "info" }
+                );
+            }
+            return;
+        }
+
+        if (action === "edit") {
+            const targetStepId = detail.stepId || step?.id || null;
+            this._detachDryRunListeners();
+            hideTargetHintOverlay();
+            this.state.dryRunPaused = true;
+            this.state.dryRunEditStepId = targetStepId;
+            this.state.showRecorderPanel = true;
+            this.state.recorderReviewTab = false;
+            this._emitDryRunState();
+            await this.showSidebar();
+            if (targetStepId) {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        const root = this.containerRef?.el || document;
+                        const safeId = window.CSS?.escape ? CSS.escape(targetStepId) : targetStepId;
+                        const card = root.querySelector(`[data-recorder-step-id="${safeId}"]`);
+                        if (card) {
+                            try {
+                                card.scrollIntoView({ behavior: "smooth", block: "center" });
+                            } catch {}
+                            const input = card.querySelector(".o_ai_rec_step_input");
+                            if (input) {
+                                input.focus();
+                                try {
+                                    input.select();
+                                } catch {}
+                            }
+                        }
+                    });
+                });
+            }
+            return;
+        }
+
+        if (action === "skip") {
+            if (!step) return;
+            const steps = this.state.recorderSteps || [];
+            const currentIdx = this.state.dryRunStepIndex || 0;
+            const nextIdx = getNextIndexAfterSkip(steps, currentIdx);
+            hideTargetHintOverlay();
+            if (!step.is_optional) {
+                this.state.dryRunSkippedPromptStepId = step.id;
+                this.state.dryRunSkippedPromptStepNumber = currentIdx + 1;
+            } else {
+                this.state.dryRunSkippedPromptStepId = null;
+                this.state.dryRunSkippedPromptStepNumber = null;
+            }
+            if (nextIdx >= steps.length) {
+                this.onRecorderStopDryRun();
+                this.notification.add(_t("Dry-Run reached the end of the exercise."), {
+                    type: "info",
+                });
+                return;
+            }
+            this.state.dryRunStepIndex = nextIdx;
+            this._emitDryRunState();
+            return;
+        }
+
+        if (action === "toggle_optional") {
+            const targetStepId = detail.stepId || step?.id;
+            if (targetStepId) {
+                this.onRecorderToggleStepOptional(targetStepId);
+            }
+            return;
+        }
+
+        if (action === "mark_skipped_optional") {
+            const targetStepId = detail.stepId || this.state.dryRunSkippedPromptStepId;
+            if (targetStepId) {
+                this.onRecorderAcceptStepOptionalSuggestion(targetStepId);
+                this.state.dryRunSkippedPromptStepId = null;
+                this.state.dryRunSkippedPromptStepNumber = null;
+                this._emitDryRunState();
+                this.notification.add(_t("Marked step as optional."), { type: "success" });
+            }
+            return;
+        }
+
+        if (action === "dismiss_skipped_prompt") {
+            this.state.dryRunSkippedPromptStepId = null;
+            this.state.dryRunSkippedPromptStepNumber = null;
+            this._emitDryRunState();
+            return;
+        }
+
+        if (action === "stop") {
+            this.onRecorderStopDryRun();
+        }
+    }
+
+    async _waitForTargetElement(hint, { timeoutMs = 2600, intervalMs = 100 } = {}) {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() <= deadline) {
+            const el = resolveTargetElement(hint, document);
+            if (el) return el;
+            await new Promise((r) => setTimeout(r, intervalMs));
+        }
+        return resolveTargetElement(hint, document);
+    }
+
+    async onRecorderLocateStep(step) {
+        if (!step || this.state.recorderLocatingStepId) return;
+
+        const hint = step.target_hint || extractTargetHint({ target: step.target });
+        if (!hint) {
+            this.notification.add(
+                _t("No target element information is available for this step."),
+                { type: "info" }
+            );
+            return;
+        }
+
+        const caption = (step.instruction || "").trim() || undefined;
+        this.state.recorderLocatingStepId = step.id;
+        try {
+            if (this.state.recorderStatus === "recording") {
+                await this.onRecorderPause();
+            }
+
+            if (resolveTargetElement(hint, document)) {
+                await this.hideSidebar();
+                showTargetHintOverlay(hint, { caption });
+                return;
+            }
+
+            const nav = step.nav || null;
+            let redirected = false;
+
+            if (nav?.appId && this.menuService?.selectMenu) {
+                const currentAppId = this.menuService?.getCurrentApp?.()?.id;
+                if (currentAppId !== nav.appId) {
+                    const apps = this.menuService?.getApps?.() || [];
+                    const targetApp = apps.find((a) => a?.id === nav.appId);
+                    if (targetApp) {
+                        try {
+                            await this.menuService.selectMenu(targetApp);
+                            redirected = true;
+                        } catch {}
+                    }
+                }
+            }
+
+            const actionReq = buildStepLocateActionRequest(nav);
+            if (actionReq && this.actionService?.doAction) {
+                try {
+                    await this.actionService.doAction(actionReq);
+                    redirected = true;
+                } catch {}
+            }
+
+            await this.hideSidebar();
+
+            const el = await this._waitForTargetElement(hint, {
+                timeoutMs: redirected ? 2800 : 400,
+                intervalMs: 100,
+            });
+            if (el) {
+                showTargetHintOverlay(el, { caption });
+                return;
+            }
+
+            const screenLabel = nav?.breadcrumb || nav?.appName || nav?.resModel || "";
+            if (nav?.inModal && screenLabel) {
+                this.notification.add(
+                    _t("Opened %s — open the dialog/modal to view this element.", screenLabel),
+                    { type: "info" }
+                );
+            } else if (hint.kind === "menu" && screenLabel) {
+                this.notification.add(
+                    _t("Opened %s — open its parent menu to view \"%s\".", screenLabel, caption || hint.label || ""),
+                    { type: "info" }
+                );
+            } else if (screenLabel) {
+                this.notification.add(
+                    _t("This element belongs to %s and is not currently visible on screen.", screenLabel),
+                    { type: "info" }
+                );
+            } else {
+                this.notification.add(
+                    _t("The target element is not visible on this screen yet."),
+                    { type: "info" }
+                );
+            }
+        } finally {
+            this.state.recorderLocatingStepId = null;
+        }
     }
 
     async onRecorderSaveForReview() {
@@ -2628,6 +3283,10 @@ export class AiSidebar extends Component {
             if (this.state.recorderStatus !== "idle") {
                 await this.aiRecorder.finishRecording();
             }
+            this._polishRequestSeq += 1;
+            this.state.recorderPolishing = false;
+            this.state.recorderPrePolishSnapshot = null;
+            this._editedDuringPolishStepIds = new Set();
             this.state.recorderStatus = "idle";
             this.state.recorderSessionId = null;
             this.state.recorderTitle = "";
@@ -2834,7 +3493,7 @@ export class AiSidebar extends Component {
                 ...(this.state.recorderSteps || []),
                 {
                     id: stepId,
-                    instruction: instruction || (picked?.target_key ? `Click ${picked.target_key}` : "Click element"),
+                    instruction: instruction || buildPickedStepInstruction(picked),
                     target: {
                         action: "click",
                         model: this.state.currentContext?.model || null,

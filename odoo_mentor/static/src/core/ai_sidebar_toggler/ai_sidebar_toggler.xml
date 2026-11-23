@@ -11,7 +11,7 @@
                     'is-open': this.state.chatOpen,
                     'is-recording': this.state.recorderStatus === 'recording',
                     'is-recording-paused': this.state.recorderStatus === 'paused',
-                    'has-preview': this.state.previewVisible &amp;&amp; this.state.previewMessage &amp;&amp; !this.state.chatOpen &amp;&amp; !this.state.dragging,
+                    'has-preview': (this.dryRunBubbleVisible || (this.state.previewVisible &amp;&amp; this.state.previewMessage)) &amp;&amp; !this.state.chatOpen &amp;&amp; !this.state.dragging,
                     'has-exercise-cta': this.launcherExerciseCtaVisible,
                     'has-attention': this.launcherHasAttention,
                     'is-fresh': this.isPreviewFresh,
@@ -21,7 +21,118 @@
                     (this.state.chatOpen ? ' opacity:0; pointer-events:none;' : '')
                 "
             >
-                <t t-if="this.state.previewVisible and this.state.previewMessage and !this.state.chatOpen and !this.state.dragging">
+                <t t-if="this.dryRunBubbleVisible">
+                    <div class="ai-owl-preview ai-owl-dry-run-bubble"
+                         data-ai-tutor-ignore-event="true"
+                         t-on-mousedown.stop="this.noop"
+                         t-on-touchstart.stop="this.noop"
+                         t-on-click.stop="this.noop">
+                        <button
+                            type="button"
+                            class="ai-owl-preview-close"
+                            t-on-mousedown.stop.prevent="this.noop"
+                            t-on-touchstart.stop.prevent="this.noop"
+                            t-on-click.stop.prevent="this.onDryRunStop"
+                            t-att-title="this.translate('Stop Dry-Run')"
+                            t-att-aria-label="this.translate('Stop Dry-Run')"
+                        >×</button>
+
+                        <div class="ai-owl-dry-run-header">
+                            <span class="ai-owl-dry-run-badge">
+                                <t t-out="this.translate('Dry-Run')"/>
+                                <t t-out="' · ' + (this.state.dryRun.stepIndex + 1) + '/' + this.state.dryRun.totalSteps"/>
+                            </span>
+                            <span t-if="this.state.dryRun.step.is_optional" class="ai-owl-dry-run-opt-tag">
+                                <t t-if="this.state.dryRun.blockRange and this.state.dryRun.blockRange.count >= 2"
+                                   t-out="this.translate('Optional block') + ' (' + this.state.dryRun.blockRange.count + ')'"/>
+                                <t t-else="" t-out="this.translate('Optional')"/>
+                            </span>
+                        </div>
+
+                        <div class="ai-owl-preview-text ai-owl-dry-run-instruction"
+                             t-out="this.state.dryRun.step.instruction"/>
+
+                        <div class="ai-owl-dry-run-actions" role="group" t-att-aria-label="this.translate('Dry-Run actions')">
+                            <button
+                                type="button"
+                                class="ai-owl-dry-run-btn"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunLocate"
+                                t-att-title="this.translate('Locate element on this screen')"
+                            >
+                                <i class="oi" data-icon="my_location"/>
+                                <t t-out="this.translate('Locate')"/>
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ai-owl-dry-run-btn ai-owl-dry-run-btn-edit"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunEdit"
+                                t-att-title="this.translate('Pause and edit this step in the sidebar')"
+                            >
+                                <i class="oi" data-icon="edit"/>
+                                <t t-out="this.translate('Edit')"/>
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ai-owl-dry-run-btn"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunSkip"
+                                t-att-title="this.translate('Skip to next step')"
+                            >
+                                <i class="oi" data-icon="skip_next"/>
+                                <t t-out="this.translate('Skip')"/>
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ai-owl-dry-run-opt-pill"
+                                t-att-class="{ 'is-active': this.state.dryRun.step.is_optional }"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunToggleOptional"
+                                t-att-title="this.translate('Toggle optional')"
+                            >
+                                <t t-out="this.translate('Optional')"/>
+                            </button>
+                        </div>
+
+                        <div t-if="this.state.dryRun.skippedPromptStepId" class="ai-owl-dry-run-skip-prompt">
+                            <span>
+                                <t t-out="this.translate('Skipped Step')"/>
+                                <t t-out="' ' + this.state.dryRun.skippedPromptStepNumber + ' — '"/>
+                                <t t-out="this.translate('Mark as optional?')"/>
+                            </span>
+                            <div class="ai-owl-dry-run-skip-prompt-actions">
+                                <button
+                                    type="button"
+                                    class="ai-owl-dry-run-skip-confirm"
+                                    t-on-mousedown.stop.prevent="this.noop"
+                                    t-on-touchstart.stop.prevent="this.noop"
+                                    t-on-click.stop.prevent="this.onDryRunMarkSkippedOptional"
+                                >
+                                    <t t-out="this.translate('Mark optional')"/>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="ai-owl-dry-run-skip-dismiss"
+                                    t-on-mousedown.stop.prevent="this.noop"
+                                    t-on-touchstart.stop.prevent="this.noop"
+                                    t-on-click.stop.prevent="this.onDryRunDismissSkippedPrompt"
+                                    t-att-aria-label="this.translate('Dismiss')"
+                                >×</button>
+                            </div>
+                        </div>
+
+                        <div class="ai-owl-preview-tail"/>
+                    </div>
+                </t>
+                <t t-elif="this.state.previewVisible and this.state.previewMessage and !this.state.chatOpen and !this.state.dragging">
                     <div class="ai-owl-preview"
                          role="button"
                          tabindex="0"
@@ -135,17 +246,7 @@
                     <span class="ai-owl-trigger-halo"/>
                     <span class="ai-owl-trigger-shell">
                         <span class="ai-owl-trigger-core">
-                            <span t-if="this.state.recorderStatus === 'recording' or this.state.recorderStatus === 'paused'"
-                                  class="ai-owl-trigger-rec-icon"
-                                  aria-hidden="true">
-                                <span t-if="this.state.recorderStatus === 'recording'" class="ai-owl-trigger-rec-dot"/>
-                                <span t-else="" class="ai-owl-trigger-rec-pause">
-                                    <span/>
-                                    <span/>
-                                </span>
-                            </span>
                             <img
-                                t-else=""
                                 t-att-src="'/odoo_mentor/static/images/iabotv2.png'"
                                 alt="Asistente IA"
                                 class="ai-owl-trigger-img"
@@ -154,8 +255,15 @@
                     </span>
 
                     <span class="ai-owl-trigger-badge">
-                        <t t-if="this.state.recorderStatus === 'recording'" t-out="this.translate('REC')"/>
-                        <t t-elif="this.state.recorderStatus === 'paused'" t-out="this.translate('PAUSED')"/>
+                        <span t-if="this.state.recorderStatus === 'recording'"
+                              class="ai-owl-trigger-rec-dot"
+                              aria-hidden="true"/>
+                        <span t-elif="this.state.recorderStatus === 'paused'"
+                              class="ai-owl-trigger-rec-pause"
+                              aria-hidden="true">
+                            <span/>
+                            <span/>
+                        </span>
                         <t t-else="">AI</t>
                     </span>
                     <span t-if="!this.state.optionalStepVisible and this.state.hintBadgeVisible" class="ai-owl-trigger-hint" title="Nueva pista">

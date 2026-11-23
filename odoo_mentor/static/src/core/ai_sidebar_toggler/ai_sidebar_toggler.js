@@ -27,6 +27,8 @@ const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
+const DRY_RUN_UPDATE_EVENT = "ai:dry_run_update";
+const DRY_RUN_ACTION_EVENT = "ai:dry_run_action";
 const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
 const HINT_BADGE_AUTO_HIDE_MS = 15000;
 
@@ -455,6 +457,7 @@ class AiFloatingButton extends Component {
             optionalStepLoading: false,
             optionalStepExerciseId: null,
             recorderStatus: this.aiRecorder?.status || "idle",
+            dryRun: null,
         });
 
         const previewState = getOwlPreviewState();
@@ -695,6 +698,28 @@ class AiFloatingButton extends Component {
             }));
         };
 
+        this._dispatchDryRunAction = (action, extra = {}) => {
+            window.dispatchEvent(new CustomEvent(DRY_RUN_ACTION_EVENT, {
+                detail: { action, ...extra },
+            }));
+        };
+
+        this.onDryRunLocate = () => this._dispatchDryRunAction("locate");
+        this.onDryRunEdit = () =>
+            this._dispatchDryRunAction("edit", { stepId: this.state.dryRun?.step?.id || null });
+        this.onDryRunSkip = () => this._dispatchDryRunAction("skip");
+        this.onDryRunToggleOptional = () =>
+            this._dispatchDryRunAction("toggle_optional", {
+                stepId: this.state.dryRun?.step?.id || null,
+            });
+        this.onDryRunMarkSkippedOptional = () =>
+            this._dispatchDryRunAction("mark_skipped_optional", {
+                stepId: this.state.dryRun?.skippedPromptStepId || null,
+            });
+        this.onDryRunDismissSkippedPrompt = () =>
+            this._dispatchDryRunAction("dismiss_skipped_prompt");
+        this.onDryRunStop = () => this._dispatchDryRunAction("stop");
+
         this._dedup = new Map();
         this.DEDUP_MS = 650;
 
@@ -773,6 +798,12 @@ class AiFloatingButton extends Component {
                 this.state.recorderStatus = this.aiRecorder?.status || "idle";
             };
             this.aiRecorder?.subscribe?.(this._onRecorderStatusChange);
+
+            this._onDryRunUpdate = (e) => {
+                const detail = e?.detail;
+                this.state.dryRun = detail?.active ? detail : null;
+            };
+            window.addEventListener(DRY_RUN_UPDATE_EVENT, this._onDryRunUpdate);
 
             // Intercept copy-chip clicks at window capture phase (registered at Odoo boot,
             // before any KanbanColumnQuickCreate / KanbanQuickCreateController / Dropdown
@@ -1732,6 +1763,16 @@ class AiFloatingButton extends Component {
         );
     }
 
+    get dryRunBubbleVisible() {
+        return !!(
+            this.state.dryRun?.active &&
+            !this.state.dryRun?.paused &&
+            this.state.dryRun?.step &&
+            !this.state.chatOpen &&
+            !this.state.dragging
+        );
+    }
+
     get launcherExerciseCtaVisible() {
         return (
             !!this.state.exerciseCtaVisible &&
@@ -2103,6 +2144,10 @@ class AiFloatingButton extends Component {
 
         if (this._onRecorderStatusChange) {
             this.aiRecorder?.unsubscribe?.(this._onRecorderStatusChange);
+            if (this._onDryRunUpdate) {
+                window.removeEventListener(DRY_RUN_UPDATE_EVENT, this._onDryRunUpdate);
+                this._onDryRunUpdate = null;
+            }
             this._onRecorderStatusChange = null;
         }
 

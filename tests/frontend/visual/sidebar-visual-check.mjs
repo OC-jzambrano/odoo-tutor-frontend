@@ -257,12 +257,10 @@ function buildFloatingRecordingHtml({ viewportWidth = 320, viewportHeight = 220 
       <span class="ai-owl-trigger-halo"></span>
       <span class="ai-owl-trigger-shell">
         <span class="ai-owl-trigger-core">
-          <span class="ai-owl-trigger-rec-icon" aria-hidden="true">
-            <span class="ai-owl-trigger-rec-dot"></span>
-          </span>
+          <img src="${avatarDataUrl}" alt="AI Assistant" class="ai-owl-trigger-img" />
         </span>
       </span>
-      <span class="ai-owl-trigger-badge">REC</span>
+      <span class="ai-owl-trigger-badge"><span class="ai-owl-trigger-rec-dot" aria-hidden="true"></span></span>
     </button>
   </div>
 
@@ -271,12 +269,10 @@ function buildFloatingRecordingHtml({ viewportWidth = 320, viewportHeight = 220 
       <span class="ai-owl-trigger-halo"></span>
       <span class="ai-owl-trigger-shell">
         <span class="ai-owl-trigger-core">
-          <span class="ai-owl-trigger-rec-icon" aria-hidden="true">
-            <span class="ai-owl-trigger-rec-pause"><span></span><span></span></span>
-          </span>
+          <img src="${avatarDataUrl}" alt="AI Assistant" class="ai-owl-trigger-img" />
         </span>
       </span>
-      <span class="ai-owl-trigger-badge">PAUSED</span>
+      <span class="ai-owl-trigger-badge"><span class="ai-owl-trigger-rec-pause" aria-hidden="true"><span></span><span></span></span></span>
     </button>
   </div>
 </body>
@@ -459,7 +455,82 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
           </div>
           <div class="o_ai_rec_meta_row">
             <span class="lbl">Session ID:</span>
-            <span class="val">-</span>
+            <span class="val">694dd5de-0c7f-4c68</span>
+          </div>
+        </div>
+        <div class="o_ai_recorder_feed">
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-1 flex-wrap" style="justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div class="d-flex align-items-center gap-2 flex-wrap" style="align-items: center; flex-wrap: wrap;">
+              <div class="o_ai_rec_feed_title" style="margin-bottom: 0;">Generated steps</div>
+              <span class="o_ai_rec_suspect_count_pill" data-testid="recorder-suspect-count">⚠ 2 possible extra steps</span>
+            </div>
+            <div class="d-flex gap-1 align-items-center flex-wrap" style="gap: 4px; align-items: center;">
+              <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_polish_btn" data-testid="recorder-polish-btn" style="border-radius: 6px; padding: 2px 8px; font-size: 12px;">✨ Polish with AI</button>
+              <button type="button" class="btn btn-sm btn-outline-primary" style="border: 1px solid #3b82f6; border-radius: 6px; padding: 2px 8px; font-size: 12px; color: ${isDark ? '#93c5fd' : '#1d4ed8'};">▶ Test exercise</button>
+            </div>
+          </div>
+          <div class="o_ai_rec_polish_banner is-loading d-flex align-items-center gap-2 mb-2" style="align-items: center; gap: 6px; margin-bottom: 8px;">
+            <span>↻</span>
+            <span class="small" style="font-weight: 600;">Polishing step instructions with AI...</span>
+          </div>
+          <div class="o_ai_rec_feed_list">
+            <div class="o_ai_rec_feed_item is-suspect-step d-flex flex-column gap-1" data-testid="recorder-suspect-card">
+              <div class="d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
+                <span class="o_ai_rec_step_num">1</span>
+                <input type="text" class="form-control form-control-sm" value="Open Accounting" />
+                <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn" data-testid="recorder-locate-btn" title="Locate element on screen" style="border: 1px solid #94a3b8; border-radius: 4px; color: ${isDark ? '#cbd5e1' : '#475569'};">⌖</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" title="Remove step" style="border: 1px solid #ef4444; border-radius: 4px; padding: 0.25rem 0.45rem; line-height: 1; color: #ef4444;">×</button>
+              </div>
+              <div class="line2 small" style="color: ${isDark ? '#94a3b8' : '#64748b'}; font-size: 12px;">
+                <span>click · Accounting</span>
+                <span class="o_ai_rec_target_key">menu.account.menu_finance</span>
+              </div>
+              <div class="o_ai_rec_suspect_row" data-testid="recorder-suspect-badge">
+                <div class="o_ai_rec_suspect_copy">
+                  <span class="o_ai_rec_suspect_badge">⚠ AI review · Possible extra step</span>
+                  <span class="o_ai_rec_suspect_reason">Opened Accounting menu right before switching to Sales — likely unnecessary</span>
+                </div>
+                <div class="o_ai_rec_suspect_actions">
+                  <button type="button" class="o_ai_rec_suspect_keep_btn">Keep</button>
+                  <button type="button" class="o_ai_rec_suspect_remove_btn">Remove</button>
+                </div>
+              </div>
+            </div>
+            <div class="o_ai_rec_feed_item is-suspect-step d-flex flex-column gap-1">
+              <div class="d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
+                <span class="o_ai_rec_step_num">2</span>
+                <input type="text" class="form-control form-control-sm" value="Click New" />
+                <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn" title="Locate element on screen" style="border: 1px solid #94a3b8; border-radius: 4px; color: ${isDark ? '#cbd5e1' : '#475569'};">⌖</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" title="Remove step" style="border: 1px solid #ef4444; border-radius: 4px; padding: 0.25rem 0.45rem; line-height: 1; color: #ef4444;">×</button>
+              </div>
+              <div class="line2 small" style="color: ${isDark ? '#94a3b8' : '#64748b'}; font-size: 12px;">
+                <span>click · Sales / Quotations</span>
+                <span class="o_ai_rec_target_key">list.create</span>
+              </div>
+              <div class="o_ai_rec_suspect_row">
+                <div class="o_ai_rec_suspect_copy">
+                  <span class="o_ai_rec_suspect_badge">⚠ Possible extra step</span>
+                  <span class="o_ai_rec_suspect_reason">Immediately undone by "Discard".</span>
+                </div>
+                <div class="o_ai_rec_suspect_actions">
+                  <button type="button" class="o_ai_rec_suspect_keep_btn">Keep</button>
+                  <button type="button" class="o_ai_rec_suspect_remove_btn">Remove pair</button>
+                  <button type="button" class="o_ai_rec_suspect_remove_btn">Remove</button>
+                </div>
+              </div>
+            </div>
+            <div class="o_ai_rec_feed_item d-flex flex-column gap-1">
+              <div class="d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
+                <span class="o_ai_rec_step_num">3</span>
+                <input type="text" class="form-control form-control-sm" value="Click Save" />
+                <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn" title="Locate element on screen" style="border: 1px solid #94a3b8; border-radius: 4px; color: ${isDark ? '#cbd5e1' : '#475569'};">⌖</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" title="Remove step" style="border: 1px solid #ef4444; border-radius: 4px; padding: 0.25rem 0.45rem; line-height: 1; color: #ef4444;">×</button>
+              </div>
+              <div class="line2 small" style="color: ${isDark ? '#94a3b8' : '#64748b'}; font-size: 12px;">
+                <span>click · Configuration / Settings</span>
+                <span class="o_ai_rec_target_key">form.save</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -562,18 +633,20 @@ async function run() {
         await page.screenshot({ path: screenshotPath });
         metrics = await page.evaluate(() => {
           const recBadge = document.querySelector(".is-recording .ai-owl-trigger-badge");
-          const recIcon = document.querySelector(".is-recording .ai-owl-trigger-rec-icon");
+          const recDot = document.querySelector(".is-recording .ai-owl-trigger-rec-dot");
+          const owlImg = document.querySelector(".is-recording .ai-owl-trigger-img");
           const badgeStyle = getComputedStyle(recBadge);
-          const iconRect = recIcon.getBoundingClientRect();
+          const badgeRect = recBadge.getBoundingClientRect();
+          const owlRect = owlImg.getBoundingClientRect();
           return {
             quotaBtn: {
               color: badgeStyle.color,
               backgroundColor: badgeStyle.backgroundColor,
               whiteSpace: "normal",
-              height: Math.round(recBadge.getBoundingClientRect().height),
-              width: Math.round(iconRect.width),
-              fitsBubble: recBadge.textContent.trim() === "REC",
-              fitsSidebar: iconRect.width >= 56 && iconRect.height >= 56,
+              height: Math.round(badgeRect.height),
+              width: Math.round(badgeRect.width),
+              fitsBubble: !!recDot && owlRect.width >= 60,
+              fitsSidebar: badgeRect.width === 24 && badgeRect.height === 24,
             },
             horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
           };

@@ -134,6 +134,15 @@
                                             <i class="oi" data-icon="pause"/> <t t-out="this.translate('Pause')"/>
                                         </button>
 
+                                        <button t-if="this.state.recorderStatus === 'recording'"
+                                                type="button"
+                                                class="btn btn-sm btn-success"
+                                                t-att-disabled="this.state.recorderPolishing"
+                                                t-att-title="this.translate('Stop capture and polish instructions with AI')"
+                                                t-on-click.stop.prevent="this.onRecorderFinishCapture">
+                                            <i class="oi" data-icon="check"/> <t t-out="this.translate('Finish')"/>
+                                        </button>
+
                                         <button t-if="this.state.recorderStatus !== 'idle'"
                                                 type="button"
                                                 class="btn btn-sm btn-danger"
@@ -285,27 +294,149 @@
                                 </div>
 
                                 <div class="o_ai_recorder_feed">
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <div class="o_ai_rec_feed_title" t-out="this.translate('Generated steps')"/>
+                                    <div t-if="this.state.dryRunActive and this.state.dryRunPaused"
+                                         class="o_ai_rec_dry_run_banner d-flex align-items-center justify-content-between gap-2 mb-2">
+                                        <span class="small fw-semibold">
+                                            <t t-out="this.translate('Dry-Run paused on Step')"/>
+                                            <t t-out="' ' + (this.state.dryRunStepIndex + 1)"/>
+                                        </span>
+                                        <div class="d-flex gap-1">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-primary"
+                                                    t-on-click.stop.prevent="this.onRecorderResumeDryRun">
+                                                <i class="oi" data-icon="play_arrow"/>
+                                                <t t-out="this.translate('Resume test')"/>
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    t-on-click.stop.prevent="this.onRecorderStopDryRun">
+                                                <t t-out="this.translate('Stop')"/>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex justify-content-between align-items-center gap-2 mb-1 flex-wrap">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <div class="o_ai_rec_feed_title mb-0" t-out="this.translate('Generated steps')"/>
+                                            <span t-if="this.recorderSuspectCount > 0"
+                                                  class="o_ai_rec_suspect_count_pill"
+                                                  t-att-title="this.translate('Possible extra steps flagged for your review')">
+                                                <i class="oi" data-icon="warning"/>
+                                                <t t-out="this.recorderSuspectCount"/>
+                                                <t t-if="this.recorderSuspectCount === 1" t-out="' ' + this.translate('possible extra step')"/>
+                                                <t t-else="" t-out="' ' + this.translate('possible extra steps')"/>
+                                            </span>
+                                        </div>
+                                        <div class="d-flex gap-1 align-items-center flex-wrap">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary o_ai_rec_polish_btn"
+                                                    t-att-disabled="this.state.recorderPolishing or !(this.state.recorderSteps || []).length"
+                                                    t-att-title="this.translate('Polish step instructions and flag possible extra steps with AI')"
+                                                    t-on-click.stop.prevent="this.onRecorderPolishSteps">
+                                                <t t-if="this.state.recorderPolishing">
+                                                    <i class="oi tutor-oi-spinner" data-icon="refresh"/> <t t-out="this.translate('Polishing...')"/>
+                                                </t>
+                                                <t t-else="">
+                                                    <i class="oi" data-icon="auto_awesome"/> <t t-out="this.translate('Polish with AI')"/>
+                                                </t>
+                                            </button>
+                                            <button t-if="!this.state.dryRunActive"
+                                                    type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    t-att-disabled="!(this.state.recorderSteps || []).length"
+                                                    t-on-click.stop.prevent="this.onRecorderStartDryRun">
+                                                <i class="oi" data-icon="play_arrow"/> <t t-out="this.translate('Test exercise')"/>
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-success"
+                                                    t-att-disabled="this.state.recorderSaving or !(this.state.recorderSteps || []).length"
+                                                    t-on-click.stop.prevent="this.onRecorderSaveForReview">
+                                                <i class="oi" data-icon="save"/> <t t-out="this.translate('Save for later review')"/>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div t-if="this.state.recorderPolishing"
+                                         class="o_ai_rec_polish_banner is-loading d-flex align-items-center gap-2 mb-2"
+                                         role="status"
+                                         aria-live="polite">
+                                        <i class="oi tutor-oi-spinner" data-icon="refresh"/>
+                                        <span class="small fw-semibold" t-out="this.translate('Polishing step instructions with AI...')"/>
+                                    </div>
+
+                                    <div t-elif="this.state.recorderPrePolishSnapshot"
+                                         class="o_ai_rec_polish_banner is-done d-flex align-items-center justify-content-between gap-2 mb-2">
+                                        <span class="small">
+                                            <i class="oi me-1" data-icon="auto_awesome"/>
+                                            <t t-out="this.translate('Instructions polished with AI')"/>
+                                        </span>
                                         <button type="button"
-                                                class="btn btn-sm btn-success"
-                                                t-att-disabled="this.state.recorderSaving or !(this.state.recorderSteps || []).length"
-                                                t-on-click.stop.prevent="this.onRecorderSaveForReview">
-                                            <i class="oi" data-icon="save"/> <t t-out="this.translate('Save for later review')"/>
+                                                class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                                t-on-click.stop.prevent="this.onRecorderUndoPolish">
+                                            <t t-out="this.translate('Undo')"/>
                                         </button>
                                     </div>
 
-                                    <div class="o_ai_rec_feed_list">
+                                    <t t-foreach="this.recorderOptionalBlockSuggestions" t-as="sug" t-key="sug.id">
+                                        <div class="o_ai_rec_suggestion_banner d-flex align-items-center justify-content-between gap-2 mb-2">
+                                            <span class="small">
+                                                <i class="oi me-1" data-icon="lightbulb"/>
+                                                <t t-out="sug.reason"/>
+                                            </span>
+                                            <div class="d-flex gap-1 flex-shrink-0">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                        t-on-click.stop.prevent="() => this.onRecorderAcceptBlockSuggestion(sug)">
+                                                    <t t-out="this.translate('Mark optional')"/>
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                        t-att-aria-label="this.translate('Dismiss suggestion')"
+                                                        t-on-click.stop.prevent="() => this.onRecorderDismissBlockSuggestion(sug.id)">
+                                                    ×
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <div class="o_ai_rec_feed_list"
+                                         t-att-class="this.state.recorderPolishing ? 'is-polishing' : ''"
+                                         t-att-aria-busy="this.state.recorderPolishing ? 'true' : 'false'">
                                         <div t-if="!(this.state.recorderSteps || []).length" class="text-muted small">
                                             <t t-out="this.translate('Start capture and interact with Odoo to generate editable steps.')"/>
                                         </div>
                                         <t t-foreach="this.state.recorderSteps" t-as="step" t-key="step.id">
-                                            <div class="o_ai_rec_feed_item d-flex flex-column gap-1">
+                                            <t t-set="suspect" t-value="this.recorderSuspectWarnings[step.id]"/>
+                                            <div class="o_ai_rec_feed_item d-flex flex-column gap-1"
+                                                 t-att-data-recorder-step-id="step.id"
+                                                 t-att-class="{
+                                                     'is-optional-step': step.is_optional,
+                                                     'is-optional-block': !!step.optional_group,
+                                                     'is-suspect-step': !!suspect,
+                                                     'is-dry-run-editing': this.state.dryRunEditStepId === step.id,
+                                                 }">
                                                 <div class="d-flex gap-1 align-items-center">
+                                                    <span class="o_ai_rec_step_num" t-out="step_index + 1"/>
                                                     <input type="text"
-                                                           class="form-control form-control-sm"
+                                                           class="form-control form-control-sm o_ai_rec_step_input"
                                                            t-att-value="step.instruction"
                                                            t-on-input="(ev) => this.onRecorderUpdateStepInstruction(step.id, ev.target.value)"/>
+                                                    <button type="button"
+                                                            class="o_ai_rec_optional_pill"
+                                                            t-att-class="{ 'is-active': step.is_optional }"
+                                                            t-att-title="step.is_optional ? this.translate('Step is optional (click to make required)') : this.translate('Mark step as optional')"
+                                                            t-on-click.stop.prevent="() => this.onRecorderToggleStepOptional(step.id)">
+                                                        <t t-out="this.translate('Optional')"/>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn"
+                                                            t-att-disabled="!!this.state.recorderLocatingStepId"
+                                                            t-att-title="this.translate('Locate element on screen')"
+                                                            t-att-aria-label="this.translate('Locate element on screen')"
+                                                            t-on-click.stop.prevent="() => this.onRecorderLocateStep(step)">
+                                                        <i t-att-class="this.state.recorderLocatingStepId === step.id ? 'oi tutor-oi-spinner' : 'oi'"
+                                                           t-att-data-icon="this.state.recorderLocatingStepId === step.id ? 'refresh' : 'my_location'"/>
+                                                    </button>
                                                     <button type="button"
                                                             class="btn btn-sm btn-outline-danger"
                                                             t-att-aria-label="this.translate('Remove step')"
@@ -314,7 +445,66 @@
                                                     </button>
                                                 </div>
                                                 <div class="line2 small text-muted">
-                                                    <span t-out="step.target.action"/> · <span t-out="step.target.target_key || step.target.field || '-'"/>
+                                                    <span>
+                                                        <t t-out="step.target.action"/>
+                                                        <t t-if="step.nav and step.nav.breadcrumb"> · <t t-out="step.nav.breadcrumb"/></t>
+                                                    </span>
+                                                    <span class="d-inline-flex align-items-center gap-1">
+                                                        <span t-if="step.optional_group" class="o_ai_rec_optional_group_tag">
+                                                            <t t-out="this.translate('Optional block')"/>
+                                                        </span>
+                                                        <span class="o_ai_rec_target_key" t-out="step.target.target_key || step.target.field || '-'"/>
+                                                    </span>
+                                                </div>
+                                                <div t-if="suspect"
+                                                     class="o_ai_rec_suspect_row"
+                                                     role="status">
+                                                    <div class="o_ai_rec_suspect_copy">
+                                                        <span class="o_ai_rec_suspect_badge">
+                                                            <i class="oi" data-icon="warning"/>
+                                                            <t t-if="suspect.source === 'llm'" t-out="this.translate('AI review · Possible extra step')"/>
+                                                            <t t-else="" t-out="this.translate('Possible extra step')"/>
+                                                        </span>
+                                                        <span class="o_ai_rec_suspect_reason" t-out="suspect.reason"/>
+                                                    </div>
+                                                    <div class="o_ai_rec_suspect_actions">
+                                                        <button type="button"
+                                                                class="o_ai_rec_suspect_keep_btn"
+                                                                t-on-click.stop.prevent="() => this.onRecorderKeepSuspectStep(step.id)">
+                                                            <t t-out="this.translate('Keep')"/>
+                                                        </button>
+                                                        <button t-if="suspect.pairStepIds and suspect.pairStepIds.length === 2"
+                                                                type="button"
+                                                                class="o_ai_rec_suspect_remove_btn"
+                                                                t-on-click.stop.prevent="() => this.onRecorderRemoveStepIds(suspect.pairStepIds)">
+                                                            <t t-out="this.translate('Remove pair')"/>
+                                                        </button>
+                                                        <button type="button"
+                                                                class="o_ai_rec_suspect_remove_btn"
+                                                                t-on-click.stop.prevent="() => this.onRecorderRemoveStep(step.id)">
+                                                            <t t-out="this.translate('Remove')"/>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div t-if="step.suggested_optional and !step.is_optional and !step.optional_suggestion_dismissed"
+                                                     class="o_ai_rec_step_suggest_row d-flex align-items-center justify-content-between gap-2">
+                                                    <span class="o_ai_rec_step_suggest_text">
+                                                        <i class="oi me-1" data-icon="lightbulb"/>
+                                                        <t t-out="step.optional_reason || this.translate('Suggested optional')"/>
+                                                    </span>
+                                                    <div class="d-flex gap-1">
+                                                        <button type="button"
+                                                                class="o_ai_rec_step_suggest_btn"
+                                                                t-on-click.stop.prevent="() => this.onRecorderAcceptStepOptionalSuggestion(step.id)">
+                                                            <t t-out="this.translate('Mark optional')"/>
+                                                        </button>
+                                                        <button type="button"
+                                                                class="o_ai_rec_step_suggest_dismiss"
+                                                                t-att-aria-label="this.translate('Dismiss')"
+                                                                t-on-click.stop.prevent="() => this.onRecorderDismissStepOptionalSuggestion(step.id)">
+                                                            ×
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </t>
