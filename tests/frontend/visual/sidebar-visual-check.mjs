@@ -473,9 +473,23 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
             <span>↻</span>
             <span class="small" style="font-weight: 600;">Polishing step instructions with AI...</span>
           </div>
+          <div class="o_ai_rec_batch_bar d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span class="o_ai_rec_batch_count">2 selected</span>
+            <div class="d-flex align-items-center gap-1 flex-wrap" style="gap: 4px; align-items: center;">
+              <button type="button" class="o_ai_rec_batch_btn is-primary">Mark optional</button>
+              <button type="button" class="o_ai_rec_batch_btn">Make required</button>
+              <button type="button" class="o_ai_rec_batch_btn is-danger">Delete</button>
+              <button type="button" class="o_ai_rec_batch_clear">×</button>
+            </div>
+          </div>
           <div class="o_ai_rec_feed_list">
-            <div class="o_ai_rec_feed_item is-suspect-step d-flex flex-column gap-1" data-testid="recorder-suspect-card">
+            <div class="o_ai_rec_feed_item is-dry-run-editing is-selected-step d-flex flex-column gap-1" data-testid="recorder-suspect-card">
+              <div class="o_ai_rec_dry_run_current_pill">
+                <span class="o_ai_rec_dry_run_current_dot" aria-hidden="true"></span>
+                Current Dry-Run step
+              </div>
               <div class="d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
+                <input type="checkbox" class="o_ai_rec_step_checkbox" checked />
                 <span class="o_ai_rec_step_num">1</span>
                 <input type="text" class="form-control form-control-sm" value="Open Accounting" />
                 <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn" data-testid="recorder-locate-btn" title="Locate element on screen" style="border: 1px solid #94a3b8; border-radius: 4px; color: ${isDark ? '#cbd5e1' : '#475569'};">⌖</button>
@@ -573,7 +587,11 @@ function buildFloatingDryRunHtml({ viewportWidth = 1280, viewportHeight = 760 } 
         <span class="ai-owl-dry-run-badge">Dry-Run · 2/4</span>
         <span class="ai-owl-dry-run-opt-tag">Optional</span>
       </div>
-      <div class="ai-owl-preview-text ai-owl-dry-run-instruction">Click Enable Customer Addresses</div>
+      <div class="ai-owl-preview-text ai-owl-dry-run-instruction">Enable Customer Addresses</div>
+      <div class="ai-owl-dry-run-satisfied" role="status">
+        <span class="ai-owl-dry-run-satisfied-text">✓ Already enabled</span>
+        <button type="button" class="ai-owl-dry-run-satisfied-btn">Continue (skip Save)</button>
+      </div>
       <div class="ai-owl-dry-run-actions" role="group" aria-label="Dry-Run actions">
         <button type="button" class="ai-owl-dry-run-btn">⌖ Locate</button>
         <button type="button" class="ai-owl-dry-run-btn ai-owl-dry-run-btn-edit">✎ Edit</button>

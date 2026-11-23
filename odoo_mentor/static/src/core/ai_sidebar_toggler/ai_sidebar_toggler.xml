@@ -52,6 +52,26 @@
                         <div class="ai-owl-preview-text ai-owl-dry-run-instruction"
                              t-out="this.state.dryRun.step.instruction"/>
 
+                        <div t-if="this.state.dryRun.alreadySatisfied"
+                             class="ai-owl-dry-run-satisfied"
+                             role="status">
+                            <span class="ai-owl-dry-run-satisfied-text">
+                                <i class="oi" data-icon="check_circle"/>
+                                <t t-out="this.translate(this.state.dryRun.alreadySatisfied.label)"/>
+                            </span>
+                            <button
+                                type="button"
+                                class="ai-owl-dry-run-satisfied-btn"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunContinueSatisfied"
+                            >
+                                <t t-if="this.state.dryRun.alreadySatisfied.skipSaveStep"
+                                   t-out="this.translate('Continue (skip Save)')"/>
+                                <t t-else="" t-out="this.translate('Continue')"/>
+                            </button>
+                        </div>
+
                         <div class="ai-owl-dry-run-actions" role="group" t-att-aria-label="this.translate('Dry-Run actions')">
                             <button
                                 type="button"

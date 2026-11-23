@@ -28,6 +28,7 @@ import {
     buildRecorderModuleOptions,
     buildRecordingDraftPayload,
     buildStepLocateActionRequest,
+    checkDryRunToggleAlreadySatisfied,
     detectOptionalBlockSuggestions,
     extractModuleFromApp,
     findAppForModule,
@@ -347,6 +348,8 @@ export class AiSidebar extends Component {
             dryRunEditStepId: null,
             dryRunSkippedPromptStepId: null,
             dryRunSkippedPromptStepNumber: null,
+            dryRunAlreadySatisfied: null,
+            selectedRecorderStepIds: [],
             dismissedBlockSuggestionIds: [],
             recorderLocatingStepId: null,
 
@@ -2399,6 +2402,13 @@ export class AiSidebar extends Component {
             requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
         }
 
+        if (this.state.dryRunActive && this.dryRunCurrentStep?.id) {
+            this._refreshDryRunAlreadySatisfied();
+            if (this.state.showRecorderPanel) {
+                this._scrollToRecorderStep(this.dryRunCurrentStep.id);
+            }
+        }
+
         this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
 
         this._sendCurrentLiveContext();
@@ -2573,6 +2583,9 @@ export class AiSidebar extends Component {
 
         if (this.state.showRecorderPanel) {
             this._loadRecorderModuleOptions();
+            if (this.state.dryRunActive && this.dryRunCurrentStep?.id) {
+                this._scrollToRecorderStep(this.dryRunCurrentStep.id);
+            }
         } else {
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
             window.dispatchEvent(new Event("resize"));
@@ -2792,11 +2805,15 @@ export class AiSidebar extends Component {
             this.state.recorderTitle = "";
             this.state.recorderModule = "";
             this.state.recorderSteps = [];
+            this.state.selectedRecorderStepIds = [];
+            this._lastSelectedRecorderStepId = null;
             this.state.recorderPicked = null;
             this.state.recorderPicking = false;
             this.state.recorderNote = "";
             this.state.recorderStepIndex = 0;
             this.state.recorderFeed = [];
+            this.state.selectedRecorderStepIds = [];
+            this._lastSelectedRecorderStepId = null;
             this.state.dismissedBlockSuggestionIds = [];
             this._savedStepHashes = new Set();
             this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
@@ -2874,6 +2891,9 @@ export class AiSidebar extends Component {
         );
 
         this.state.recorderSteps = reconciled.steps;
+        this.state.selectedRecorderStepIds = (this.state.selectedRecorderStepIds || []).filter(
+            (id) => !idSet.has(id)
+        );
         this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
 
         if (!this.state.dryRunActive) {
@@ -2919,6 +2939,119 @@ export class AiSidebar extends Component {
             warning.signature
         );
         this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+    }
+
+    isRecorderStepSelected(stepId) {
+        return (this.state.selectedRecorderStepIds || []).includes(stepId);
+    }
+
+    onRecorderToggleStepSelected(stepId, ev = null) {
+        if (!stepId) return;
+        const steps = this.state.recorderSteps || [];
+        const current = new Set(this.state.selectedRecorderStepIds || []);
+        const isChecked = current.has(stepId);
+
+        if (ev?.shiftKey && this._lastSelectedRecorderStepId) {
+            const idxA = steps.findIndex((s) => s?.id === this._lastSelectedRecorderStepId);
+            const idxB = steps.findIndex((s) => s?.id === stepId);
+            if (idxA >= 0 && idxB >= 0) {
+                const start = Math.min(idxA, idxB);
+                const end = Math.max(idxA, idxB);
+                for (let i = start; i <= end; i += 1) {
+                    if (steps[i]?.id) {
+                        if (isChecked) current.delete(steps[i].id);
+                        else current.add(steps[i].id);
+                    }
+                }
+                this.state.selectedRecorderStepIds = Array.from(current);
+                this._lastSelectedRecorderStepId = stepId;
+                return;
+            }
+        }
+
+        if (isChecked) {
+            current.delete(stepId);
+        } else {
+            current.add(stepId);
+        }
+        this.state.selectedRecorderStepIds = Array.from(current);
+        this._lastSelectedRecorderStepId = stepId;
+    }
+
+    onRecorderSelectAllSteps() {
+        const allIds = (this.state.recorderSteps || []).map((s) => s?.id).filter(Boolean);
+        const current = this.state.selectedRecorderStepIds || [];
+        if (current.length === allIds.length) {
+            this.state.selectedRecorderStepIds = [];
+        } else {
+            this.state.selectedRecorderStepIds = allIds;
+        }
+    }
+
+    onRecorderClearSelectedSteps() {
+        this.state.selectedRecorderStepIds = [];
+        this._lastSelectedRecorderStepId = null;
+    }
+
+    onRecorderBatchSetOptional(makeOptional) {
+        const selectedIds = this.state.selectedRecorderStepIds || [];
+        if (!selectedIds.length) return;
+        const idSet = new Set(selectedIds);
+        this.state.recorderSteps = recomputeOptionalGroups(
+            (this.state.recorderSteps || []).map((step) =>
+                idSet.has(step.id)
+                    ? {
+                          ...step,
+                          is_optional: !!makeOptional,
+                          suggested_optional: makeOptional ? false : step.suggested_optional,
+                      }
+                    : step
+            )
+        );
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+        this.state.selectedRecorderStepIds = [];
+        this._lastSelectedRecorderStepId = null;
+        if (this.state.dryRunActive) {
+            this._emitDryRunState();
+        }
+        this.notification.add(
+            makeOptional
+                ? _t("Marked %s step(s) as optional.", idSet.size)
+                : _t("Marked %s step(s) as required.", idSet.size),
+            { type: "success" }
+        );
+    }
+
+    onRecorderBatchDeleteSelected() {
+        const selectedIds = (this.state.selectedRecorderStepIds || []).slice();
+        if (!selectedIds.length) return;
+        this.onRecorderRemoveStepIds(selectedIds);
+        this.state.selectedRecorderStepIds = [];
+        this._lastSelectedRecorderStepId = null;
+    }
+
+    _scrollToRecorderStep(stepId, { focusInput = false } = {}) {
+        if (!stepId) return;
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const root = this.containerRef?.el || document;
+                const safeId = window.CSS?.escape ? CSS.escape(stepId) : stepId;
+                const card = root.querySelector(`[data-recorder-step-id="${safeId}"]`);
+                if (!card) return;
+                try {
+                    card.scrollIntoView({ behavior: "smooth", block: "center" });
+                } catch {}
+                if (focusInput) {
+                    const input = card.querySelector(".o_ai_rec_step_input");
+                    if (input) {
+                        input.focus();
+                        try {
+                            input.select();
+                        } catch {}
+                    }
+                }
+            });
+        });
     }
 
     onRecorderToggleStepOptional(stepId) {
@@ -3002,11 +3135,44 @@ export class AiSidebar extends Component {
         };
     }
 
-    _emitDryRunState({ persist = true } = {}) {
+    _computeDryRunAlreadySatisfied() {
+        if (!this.state.dryRunActive) return null;
+        return checkDryRunToggleAlreadySatisfied(
+            this.state.recorderSteps || [],
+            this.state.dryRunStepIndex || 0,
+            {
+                resolveElement: resolveTargetElement,
+                root: document,
+            }
+        );
+    }
+
+    _refreshDryRunAlreadySatisfied() {
+        if (!this.state.dryRunActive) {
+            this.state.dryRunAlreadySatisfied = null;
+            return;
+        }
+        const next = this._computeDryRunAlreadySatisfied();
+        const prev = this.state.dryRunAlreadySatisfied;
+        const changed =
+            (prev?.stepId || null) !== (next?.stepId || null) ||
+            (prev?.satisfied || false) !== (next?.satisfied || false) ||
+            (prev?.skipSaveStep || false) !== (next?.skipSaveStep || false) ||
+            (prev?.expectedChecked ?? null) !== (next?.expectedChecked ?? null);
+        if (changed) {
+            this.state.dryRunAlreadySatisfied = next;
+            this._emitDryRunState({ persist: false, skipSatisfiedRecalc: true });
+        }
+    }
+
+    _emitDryRunState({ persist = true, skipSatisfiedRecalc = false } = {}) {
         const steps = this.state.recorderSteps || [];
         const stepIndex = this.state.dryRunStepIndex || 0;
         const step = this.state.dryRunActive && stepIndex < steps.length ? steps[stepIndex] : null;
         const blockRange = step ? getOptionalBlockRange(steps, stepIndex) : null;
+        if (!skipSatisfiedRecalc) {
+            this.state.dryRunAlreadySatisfied = this._computeDryRunAlreadySatisfied();
+        }
         const detail = {
             active: !!this.state.dryRunActive,
             paused: !!this.state.dryRunPaused,
@@ -3014,6 +3180,9 @@ export class AiSidebar extends Component {
             totalSteps: steps.length,
             step: step ? { ...step } : null,
             blockRange,
+            alreadySatisfied: this.state.dryRunAlreadySatisfied
+                ? { ...this.state.dryRunAlreadySatisfied }
+                : null,
             skippedPromptStepId: this.state.dryRunSkippedPromptStepId || null,
             skippedPromptStepNumber: this.state.dryRunSkippedPromptStepNumber || null,
         };
@@ -3036,6 +3205,9 @@ export class AiSidebar extends Component {
         };
         document.addEventListener("click", this._onDryRunDomClick, true);
         document.addEventListener("change", this._onDryRunDomChange, true);
+        this._dryRunSatisfiedTimer = setInterval(() => {
+            this._refreshDryRunAlreadySatisfied();
+        }, 500);
     }
 
     _detachDryRunListeners() {
@@ -3046,6 +3218,10 @@ export class AiSidebar extends Component {
         if (this._onDryRunDomChange) {
             document.removeEventListener("change", this._onDryRunDomChange, true);
             this._onDryRunDomChange = null;
+        }
+        if (this._dryRunSatisfiedTimer) {
+            clearInterval(this._dryRunSatisfiedTimer);
+            this._dryRunSatisfiedTimer = null;
         }
     }
 
@@ -3122,6 +3298,7 @@ export class AiSidebar extends Component {
         this.state.dryRunEditStepId = null;
         this.state.dryRunSkippedPromptStepId = null;
         this.state.dryRunSkippedPromptStepNumber = null;
+        this.state.dryRunAlreadySatisfied = null;
         if (wasActive) {
             this._emitDryRunState();
         }
@@ -3158,6 +3335,24 @@ export class AiSidebar extends Component {
             return;
         }
 
+        if (action === "continue_satisfied") {
+            const satisfied = this._computeDryRunAlreadySatisfied() || this.state.dryRunAlreadySatisfied;
+            const steps = this.state.recorderSteps || [];
+            const nextIdx = satisfied?.nextIndex ?? (this.state.dryRunStepIndex || 0) + 1;
+            hideTargetHintOverlay();
+            this.state.dryRunSkippedPromptStepId = null;
+            this.state.dryRunSkippedPromptStepNumber = null;
+            this.state.dryRunAlreadySatisfied = null;
+            if (nextIdx >= steps.length) {
+                this.onRecorderStopDryRun();
+                this.notification.add(_t("Dry-Run completed! All steps verified."), { type: "success" });
+                return;
+            }
+            this.state.dryRunStepIndex = nextIdx;
+            this._emitDryRunState();
+            return;
+        }
+
         if (action === "edit") {
             const targetStepId = detail.stepId || step?.id || null;
             this._detachDryRunListeners();
@@ -3168,27 +3363,7 @@ export class AiSidebar extends Component {
             this.state.recorderReviewTab = false;
             this._emitDryRunState();
             await this.showSidebar();
-            if (targetStepId) {
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        const root = this.containerRef?.el || document;
-                        const safeId = window.CSS?.escape ? CSS.escape(targetStepId) : targetStepId;
-                        const card = root.querySelector(`[data-recorder-step-id="${safeId}"]`);
-                        if (card) {
-                            try {
-                                card.scrollIntoView({ behavior: "smooth", block: "center" });
-                            } catch {}
-                            const input = card.querySelector(".o_ai_rec_step_input");
-                            if (input) {
-                                input.focus();
-                                try {
-                                    input.select();
-                                } catch {}
-                            }
-                        }
-                    });
-                });
-            }
+            this._scrollToRecorderStep(targetStepId, { focusInput: true });
             return;
         }
 
@@ -3263,6 +3438,10 @@ export class AiSidebar extends Component {
 
     onChatDryRunDelete() {
         this._handleDryRunAction({ action: "delete", stepId: this.dryRunCurrentStep?.id || null });
+    }
+
+    onChatDryRunContinueSatisfied() {
+        this._handleDryRunAction({ action: "continue_satisfied" });
     }
 
     onChatDryRunToggleOptional() {
@@ -3416,6 +3595,8 @@ export class AiSidebar extends Component {
             this.state.recorderTitle = "";
             this.state.recorderModule = "";
             this.state.recorderSteps = [];
+            this.state.selectedRecorderStepIds = [];
+            this._lastSelectedRecorderStepId = null;
             this.state.recorderPicked = null;
             this.state.recorderNote = "";
             this.state.recorderFeed = [];

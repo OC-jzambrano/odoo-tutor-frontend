@@ -335,6 +335,46 @@ function resolveToggleVerb(el, normalized = null) {
     return "Enable";
 }
 
+export function resolveExpectedCheckedState(el, normalized = null) {
+    if (!isCheckboxOrToggleTarget(el, normalized)) return null;
+    return resolveToggleVerb(el, normalized) === "Enable";
+}
+
+export function readElementCheckedState(el) {
+    if (!el) return null;
+    const assoc = resolveAssociatedCheckbox(el);
+    const control =
+        assoc?.control ||
+        el.querySelector?.('input[type="checkbox"], [role="checkbox"], [role="switch"]') ||
+        null;
+    if (!control) return null;
+    if (typeof control.checked === "boolean") return control.checked;
+    const aria = (control.getAttribute?.("aria-checked") || "").toLowerCase();
+    if (aria === "true") return true;
+    if (aria === "false") return false;
+    return null;
+}
+
+export function getStepExpectedChecked(step) {
+    if (!step || typeof step !== "object") return null;
+    if (typeof step.expected_checked === "boolean") {
+        return step.expected_checked;
+    }
+    const instr = trimText(step.instruction || "", 240);
+    if (/^(?:enable|activate|check|turn on|activar|habilitar)\b/i.test(instr)) {
+        return true;
+    }
+    if (/^(?:disable|deactivate|uncheck|turn off|desactivar|deshabilitar)\b/i.test(instr)) {
+        return false;
+    }
+    const model = trimText(step.target?.model || "", 240).toLowerCase();
+    const key = trimText(step.target?.field || step.target?.target_key || "", 240).toLowerCase();
+    if (model === "res.config.settings" && key && SETTINGS_TOGGLE_PREFIX_RE.test(key)) {
+        return true;
+    }
+    return null;
+}
+
 function pickCleanLabel(candidate, rawTechnical = "") {
     const clean = trimText(candidate || "", 120);
     if (!clean) return "";
@@ -821,6 +861,11 @@ export function buildDraftStepFromEvent(
         step.optional_reason = "Non-required field";
     }
 
+    const expectedChecked = resolveExpectedCheckedState(el, normalized);
+    if (typeof expectedChecked === "boolean") {
+        step.expected_checked = expectedChecked;
+    }
+
     const targetHint = buildStepTargetHint(normalized, { el, selector });
     if (targetHint) {
         step.target_hint = targetHint;
@@ -1059,6 +1104,50 @@ function isSettingsSaveStep(step) {
         key.includes("save") ||
         /\bsave\b/.test(instr)
     );
+}
+
+export function checkDryRunToggleAlreadySatisfied(
+    steps = [],
+    stepIndex = 0,
+    { resolveElement = null, root = null } = {}
+) {
+    const list = Array.isArray(steps) ? steps : [];
+    if (stepIndex < 0 || stepIndex >= list.length || typeof resolveElement !== "function") {
+        return null;
+    }
+    const step = list[stepIndex];
+    const expectedChecked = getStepExpectedChecked(step);
+    if (typeof expectedChecked !== "boolean") return null;
+
+    const hint =
+        step.target_hint ||
+        (step.target?.field || step.target?.target_key
+            ? {
+                  kind: "field",
+                  field: step.target?.field || step.target?.target_key,
+                  label: step.instruction || null,
+              }
+            : null);
+    if (!hint) return null;
+
+    const el = resolveElement(hint, root);
+    if (!el) return null;
+
+    const actualChecked = readElementCheckedState(el);
+    if (typeof actualChecked !== "boolean" || actualChecked !== expectedChecked) {
+        return null;
+    }
+
+    const nextIsSettingsSave =
+        stepIndex + 1 < list.length && isSettingsSaveStep(list[stepIndex + 1]);
+    return {
+        satisfied: true,
+        stepId: step.id || null,
+        expectedChecked,
+        label: expectedChecked ? "Already enabled" : "Already disabled",
+        skipSaveStep: !!nextIsSettingsSave,
+        nextIndex: nextIsSettingsSave ? stepIndex + 2 : stepIndex + 1,
+    };
 }
 
 function isSettingsToggleOrControlStep(step) {
@@ -1434,6 +1523,9 @@ export function sanitizePersistedRecordingSession(
                 }
                 if (step.optional_suggestion_dismissed === true) {
                     cleanStep.optional_suggestion_dismissed = true;
+                }
+                if (typeof step.expected_checked === "boolean") {
+                    cleanStep.expected_checked = step.expected_checked;
                 }
                 if (typeof step.llm_suspect_reason === "string") {
                     const cleanSuspect = trimText(step.llm_suspect_reason, 320);

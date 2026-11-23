@@ -411,6 +411,38 @@
                                         </div>
                                     </t>
 
+                                    <div t-if="(this.state.selectedRecorderStepIds || []).length > 0"
+                                         class="o_ai_rec_batch_bar d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap"
+                                         role="region"
+                                         t-att-aria-label="this.translate('Batch step actions')">
+                                        <span class="o_ai_rec_batch_count">
+                                            <t t-out="(this.state.selectedRecorderStepIds || []).length"/>
+                                            <t t-out="' ' + this.translate('selected')"/>
+                                        </span>
+                                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                                            <button type="button"
+                                                    class="o_ai_rec_batch_btn is-primary"
+                                                    t-on-click.stop.prevent="() => this.onRecorderBatchSetOptional(true)">
+                                                <t t-out="this.translate('Mark optional')"/>
+                                            </button>
+                                            <button type="button"
+                                                    class="o_ai_rec_batch_btn"
+                                                    t-on-click.stop.prevent="() => this.onRecorderBatchSetOptional(false)">
+                                                <t t-out="this.translate('Make required')"/>
+                                            </button>
+                                            <button type="button"
+                                                    class="o_ai_rec_batch_btn is-danger"
+                                                    t-on-click.stop.prevent="this.onRecorderBatchDeleteSelected">
+                                                <t t-out="this.translate('Delete')"/>
+                                            </button>
+                                            <button type="button"
+                                                    class="o_ai_rec_batch_clear"
+                                                    t-att-title="this.translate('Clear selection')"
+                                                    t-att-aria-label="this.translate('Clear selection')"
+                                                    t-on-click.stop.prevent="this.onRecorderClearSelectedSteps">×</button>
+                                        </div>
+                                    </div>
+
                                     <div class="o_ai_rec_feed_list"
                                          t-att-class="this.state.recorderPolishing ? 'is-polishing' : ''"
                                          t-att-aria-busy="this.state.recorderPolishing ? 'true' : 'false'">
@@ -419,15 +451,27 @@
                                         </div>
                                         <t t-foreach="this.state.recorderSteps" t-as="step" t-key="step.id">
                                             <t t-set="suspect" t-value="this.recorderSuspectWarnings[step.id]"/>
+                                            <t t-set="isCurrentDryRun" t-value="this.state.dryRunActive and this.dryRunCurrentStep and this.dryRunCurrentStep.id === step.id"/>
                                             <div class="o_ai_rec_feed_item d-flex flex-column gap-1"
                                                  t-att-data-recorder-step-id="step.id"
                                                  t-att-class="{
                                                      'is-optional-step': step.is_optional,
                                                      'is-optional-block': !!step.optional_group,
                                                      'is-suspect-step': !!suspect,
-                                                     'is-dry-run-editing': this.state.dryRunEditStepId === step.id or (this.state.dryRunActive and this.dryRunCurrentStep and this.dryRunCurrentStep.id === step.id),
+                                                     'is-selected-step': this.isRecorderStepSelected(step.id),
+                                                     'is-dry-run-editing': this.state.dryRunEditStepId === step.id or isCurrentDryRun,
                                                  }">
+                                                <div t-if="isCurrentDryRun" class="o_ai_rec_dry_run_current_pill">
+                                                    <span class="o_ai_rec_dry_run_current_dot" aria-hidden="true"/>
+                                                    <t t-out="this.translate('Current Dry-Run step')"/>
+                                                </div>
                                                 <div class="d-flex gap-1 align-items-center">
+                                                    <input type="checkbox"
+                                                           class="o_ai_rec_step_checkbox"
+                                                           t-att-checked="this.isRecorderStepSelected(step.id)"
+                                                           t-att-title="this.translate('Select step for batch actions (Shift+click for range)')"
+                                                           t-att-aria-label="this.translate('Select step')"
+                                                           t-on-click.stop="(ev) => this.onRecorderToggleStepSelected(step.id, ev)"/>
                                                     <span class="o_ai_rec_step_num" t-out="step_index + 1"/>
                                                     <input type="text"
                                                            class="form-control form-control-sm o_ai_rec_step_input"
@@ -565,6 +609,21 @@
                                 </div>
                             </div>
                             <div class="ai-chat-dry-run-instruction" t-out="this.dryRunCurrentStep.instruction"/>
+                            <div t-if="this.state.dryRunAlreadySatisfied"
+                                 class="ai-chat-dry-run-satisfied"
+                                 role="status">
+                                <span class="ai-chat-dry-run-satisfied-text">
+                                    <i class="oi" data-icon="check_circle"/>
+                                    <t t-out="this.translate(this.state.dryRunAlreadySatisfied.label)"/>
+                                </span>
+                                <button type="button"
+                                        class="ai-chat-dry-run-satisfied-btn"
+                                        t-on-click.stop.prevent="this.onChatDryRunContinueSatisfied">
+                                    <t t-if="this.state.dryRunAlreadySatisfied.skipSaveStep"
+                                       t-out="this.translate('Continue (skip Save)')"/>
+                                    <t t-else="" t-out="this.translate('Continue')"/>
+                                </button>
+                            </div>
                             <div class="ai-chat-dry-run-actions" role="group" t-att-aria-label="this.translate('Dry-Run actions')">
                                 <button type="button"
                                         class="ai-chat-dry-run-btn"

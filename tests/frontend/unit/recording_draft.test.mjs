@@ -10,6 +10,7 @@ import {
     buildStepLocateActionRequest,
     buildStepNavSnapshot,
     buildStepTargetHint,
+    checkDryRunToggleAlreadySatisfied,
     clearPersistedRecordingSession,
     DEFAULT_ODOO_MODULE_OPTIONS,
     detectOptionalBlockSuggestions,
@@ -18,6 +19,7 @@ import {
     getNextIndexAfterSkip,
     getOptionalBlockRange,
     getRecorderStorageKey,
+    getStepExpectedChecked,
     humanizeTechnicalKey,
     isElementRequiredField,
     isModuleEntryNavigationEvent,
@@ -26,9 +28,11 @@ import {
     isTechnicalKey,
     loadPersistedRecordingSession,
     matchDryRunStepIndex,
+    readElementCheckedState,
     recomputeOptionalGroups,
     reconcileDryRunAfterStepRemoval,
     resolveDomHumanLabel,
+    resolveExpectedCheckedState,
     savePersistedRecordingSession,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
 
@@ -1003,5 +1007,82 @@ describe("recording_draft helpers", () => {
         );
         expect(lastSidebarRes.completed).toBe(false);
         expect(lastSidebarRes.dryRun).toMatchObject({ active: true, paused: true, stepIndex: 2, editStepId: null });
+    });
+
+    it("records expected_checked for boolean toggles and detects Already enabled during Dry-Run (offering to skip Settings Save)", () => {
+        const checkedBox = {
+            tagName: "INPUT",
+            type: "checkbox",
+            checked: true,
+            getAttribute: (attr) => (attr === "type" ? "checkbox" : null),
+            closest: () => null,
+        };
+        const uncheckedBox = {
+            tagName: "INPUT",
+            type: "checkbox",
+            checked: false,
+            getAttribute: (attr) => (attr === "type" ? "checkbox" : null),
+            closest: () => null,
+        };
+
+        expect(resolveExpectedCheckedState(checkedBox, { type: "click" })).toBe(true);
+        expect(resolveExpectedCheckedState(uncheckedBox, { type: "click" })).toBe(false);
+        expect(readElementCheckedState(checkedBox)).toBe(true);
+        expect(readElementCheckedState(uncheckedBox)).toBe(false);
+
+        const toggleStep = buildDraftStepFromEvent(
+            {
+                type: "click",
+                label: "Customer Addresses",
+                field: "group_delivery_invoice_address",
+                meta: { model: "res.config.settings", target_name: "group_delivery_invoice_address" },
+            },
+            { id: "t1", el: checkedBox }
+        );
+        expect(toggleStep.expected_checked).toBe(true);
+        expect(getStepExpectedChecked(toggleStep)).toBe(true);
+
+        const steps = [
+            toggleStep,
+            {
+                id: "t2",
+                instruction: "Click Save",
+                target: { action: "click", model: "res.config.settings", field: null, target_key: "form.save" },
+            },
+            {
+                id: "t3",
+                instruction: "Open Orders",
+                target: { action: "click", model: null, field: null, target_key: "menu.sale.sale_order_menu" },
+            },
+        ];
+
+        // When checkbox is already checked on screen, Dry-Run detects it and offers Continue (skip Save).
+        const satisfied = checkDryRunToggleAlreadySatisfied(steps, 0, {
+            resolveElement: () => checkedBox,
+        });
+        expect(satisfied).toEqual({
+            satisfied: true,
+            stepId: "t1",
+            expectedChecked: true,
+            label: "Already enabled",
+            skipSaveStep: true,
+            nextIndex: 2,
+        });
+
+        // When checkbox is NOT yet checked on screen, returns null so user completes the step normally.
+        expect(
+            checkDryRunToggleAlreadySatisfied(steps, 0, {
+                resolveElement: () => uncheckedBox,
+            })
+        ).toBeNull();
+
+        // Also infers expected_checked from instruction text on older recorded steps without expected_checked.
+        expect(
+            getStepExpectedChecked({
+                id: "legacy-1",
+                instruction: "Enable Customer Addresses",
+                target: { action: "click", model: "res.config.settings", field: "group_delivery_invoice_address", target_key: "group_delivery_invoice_address" },
+            })
+        ).toBe(true);
     });
 });
