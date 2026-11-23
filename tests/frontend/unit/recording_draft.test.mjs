@@ -853,4 +853,95 @@ describe("recording_draft helpers", () => {
         expect(fallbackRes.changedCount).toBe(3);
         expect(fallbackRes.steps[1].instruction).toBe("Select a Customer.");
     });
+
+    it("persists and restores active Dry-Run progress across page reloads", () => {
+        const store = new Map();
+        const storage = {
+            getItem: (k) => (store.has(k) ? store.get(k) : null),
+            setItem: (k, v) => store.set(k, String(v)),
+            removeItem: (k) => store.delete(k),
+        };
+        const key = getRecorderStorageKey({ db: "odoo_demo", uid: 2 });
+
+        const saved = savePersistedRecordingSession(
+            storage,
+            key,
+            {
+                status: "paused",
+                sessionId: "sess-dry-run-1",
+                title: "Activate Customer Addresses",
+                module: "sale",
+                steps: [
+                    {
+                        id: "d1",
+                        instruction: "Click Save",
+                        target: { action: "click", model: "res.config.settings", field: null, target_key: "form.save" },
+                    },
+                    {
+                        id: "d2",
+                        instruction: "Open Orders",
+                        target: { action: "click", model: null, field: null, target_key: "menu.sale.sale_order_menu" },
+                    },
+                ],
+                dryRun: {
+                    active: true,
+                    paused: false,
+                    stepIndex: 1,
+                    editStepId: null,
+                    skippedPromptStepId: "d1",
+                    skippedPromptStepNumber: 1,
+                },
+            },
+            { now: 5_000_000 }
+        );
+        expect(saved).toBe(true);
+
+        const restored = loadPersistedRecordingSession(storage, key, { now: 5_002_000 });
+        expect(restored.dryRun).toEqual({
+            active: true,
+            paused: false,
+            stepIndex: 1,
+            editStepId: null,
+            skippedPromptStepId: "d1",
+            skippedPromptStepNumber: 1,
+        });
+
+        // Clamps out-of-range stepIndex safely and omits dryRun once inactive.
+        savePersistedRecordingSession(
+            storage,
+            key,
+            {
+                status: "paused",
+                sessionId: "sess-dry-run-1",
+                title: "Activate Customer Addresses",
+                module: "sale",
+                steps: restored.steps,
+                dryRun: { active: true, paused: true, stepIndex: 99, editStepId: "d2" },
+            },
+            { now: 5_003_000 }
+        );
+        expect(loadPersistedRecordingSession(storage, key, { now: 5_004_000 }).dryRun).toEqual({
+            active: true,
+            paused: true,
+            stepIndex: 1,
+            editStepId: "d2",
+            skippedPromptStepId: null,
+            skippedPromptStepNumber: null,
+        });
+
+        savePersistedRecordingSession(
+            storage,
+            key,
+            {
+                status: "paused",
+                sessionId: "sess-dry-run-1",
+                title: "Activate Customer Addresses",
+                module: "sale",
+                steps: restored.steps,
+                dryRun: null,
+            },
+            { now: 5_005_000 }
+        );
+        expect(loadPersistedRecordingSession(storage, key, { now: 5_006_000 }).dryRun).toBeUndefined();
+    });
 });

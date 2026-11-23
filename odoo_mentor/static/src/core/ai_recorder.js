@@ -185,6 +185,7 @@ export const aiRecorderService = {
         let recordedFeed = [];
         let recordedStepIndex = 0;
         let recordedNote = "";
+        let recordedDryRun = null;
 
         const listeners = new Set();
         const logs = [];
@@ -205,7 +206,7 @@ export const aiRecorderService = {
         }
 
         function getSessionState() {
-            return {
+            const state = {
                 status,
                 sessionId,
                 exerciseId,
@@ -217,6 +218,10 @@ export const aiRecorderService = {
                 stepIndex: recordedStepIndex,
                 note: recordedNote,
             };
+            if (recordedDryRun?.active) {
+                state.dryRun = { ...recordedDryRun };
+            }
+            return state;
         }
 
         function persistSessionState() {
@@ -242,6 +247,10 @@ export const aiRecorderService = {
                 recordedStepIndex = Math.max(0, Math.floor(Number(patch.stepIndex) || 0));
             }
             if (patch.note !== undefined) recordedNote = (patch.note || "").toString();
+            if (patch.dryRun !== undefined) {
+                recordedDryRun =
+                    patch.dryRun && patch.dryRun.active === true ? { ...patch.dryRun } : null;
+            }
             persistSessionState();
         }
 
@@ -484,6 +493,7 @@ export const aiRecorderService = {
                 recordedFeed = [];
                 recordedStepIndex = 0;
                 recordedNote = "";
+                recordedDryRun = null;
             }
             exerciseId = opts.exerciseId || exerciseId || null;
             if (opts.title !== undefined) {
@@ -559,6 +569,7 @@ export const aiRecorderService = {
             recordedFeed = [];
             recordedStepIndex = 0;
             recordedNote = "";
+            recordedDryRun = null;
             lastSeen.clear();
             clearPersistedRecordingSession(getStorage(), getStorageKey());
         }
@@ -685,6 +696,7 @@ export const aiRecorderService = {
             recordedFeed = restored.feed;
             recordedStepIndex = restored.stepIndex;
             recordedNote = restored.note;
+            recordedDryRun = restored.dryRun ? { ...restored.dryRun } : null;
             if (status === "recording") {
                 attachDomListeners();
             }

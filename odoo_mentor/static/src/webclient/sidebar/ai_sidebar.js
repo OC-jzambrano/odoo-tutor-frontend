@@ -214,6 +214,7 @@ const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
+const DRY_RUN_STATE_KEY = "__AI_TUTOR_DRY_RUN_STATE__";
 const DRY_RUN_UPDATE_EVENT = "ai:dry_run_update";
 const DRY_RUN_ACTION_EVENT = "ai:dry_run_action";
 
@@ -2501,6 +2502,23 @@ export class AiSidebar extends Component {
         this.state.recorderFeed = Array.isArray(restored.feed) ? restored.feed : [];
         this.state.recorderStepIndex = Number(restored.stepIndex) || 0;
         this.state.recorderNote = restored.note || "";
+
+        if (restored.dryRun?.active && this.state.recorderSteps.length > 0) {
+            this.state.dryRunActive = true;
+            this.state.dryRunPaused = restored.dryRun.paused === true;
+            this.state.dryRunStepIndex = Math.min(
+                this.state.recorderSteps.length - 1,
+                Math.max(0, Math.floor(Number(restored.dryRun.stepIndex) || 0))
+            );
+            this.state.dryRunEditStepId = restored.dryRun.editStepId || null;
+            this.state.dryRunSkippedPromptStepId = restored.dryRun.skippedPromptStepId || null;
+            this.state.dryRunSkippedPromptStepNumber =
+                restored.dryRun.skippedPromptStepNumber || null;
+            if (!this.state.dryRunPaused) {
+                this._attachDryRunListeners();
+            }
+            this._emitDryRunState({ persist: false });
+        }
     }
 
     async _loadRecorderPermission() {
@@ -2555,6 +2573,9 @@ export class AiSidebar extends Component {
     }
 
     async onRecorderStart() {
+        if (this.state.dryRunActive) {
+            this.onRecorderStopDryRun();
+        }
         if (this.state.recorderStatus === "paused") {
             await this.hideSidebar();
             const sid = await this.aiRecorder.resumeRecording();
@@ -2923,25 +2944,38 @@ export class AiSidebar extends Component {
         }
     }
 
-    _emitDryRunState() {
+    _getDryRunPersistState() {
+        if (!this.state.dryRunActive) return null;
+        return {
+            active: true,
+            paused: !!this.state.dryRunPaused,
+            stepIndex: Math.max(0, Math.floor(Number(this.state.dryRunStepIndex) || 0)),
+            editStepId: this.state.dryRunEditStepId || null,
+            skippedPromptStepId: this.state.dryRunSkippedPromptStepId || null,
+            skippedPromptStepNumber: this.state.dryRunSkippedPromptStepNumber || null,
+        };
+    }
+
+    _emitDryRunState({ persist = true } = {}) {
         const steps = this.state.recorderSteps || [];
         const stepIndex = this.state.dryRunStepIndex || 0;
         const step = this.state.dryRunActive && stepIndex < steps.length ? steps[stepIndex] : null;
         const blockRange = step ? getOptionalBlockRange(steps, stepIndex) : null;
-        window.dispatchEvent(
-            new CustomEvent(DRY_RUN_UPDATE_EVENT, {
-                detail: {
-                    active: !!this.state.dryRunActive,
-                    paused: !!this.state.dryRunPaused,
-                    stepIndex,
-                    totalSteps: steps.length,
-                    step: step ? { ...step } : null,
-                    blockRange,
-                    skippedPromptStepId: this.state.dryRunSkippedPromptStepId || null,
-                    skippedPromptStepNumber: this.state.dryRunSkippedPromptStepNumber || null,
-                },
-            })
-        );
+        const detail = {
+            active: !!this.state.dryRunActive,
+            paused: !!this.state.dryRunPaused,
+            stepIndex,
+            totalSteps: steps.length,
+            step: step ? { ...step } : null,
+            blockRange,
+            skippedPromptStepId: this.state.dryRunSkippedPromptStepId || null,
+            skippedPromptStepNumber: this.state.dryRunSkippedPromptStepNumber || null,
+        };
+        window[DRY_RUN_STATE_KEY] = detail.active ? detail : null;
+        if (persist) {
+            this.aiRecorder?.syncSessionMeta?.({ dryRun: this._getDryRunPersistState() });
+        }
+        window.dispatchEvent(new CustomEvent(DRY_RUN_UPDATE_EVENT, { detail }));
     }
 
     _attachDryRunListeners() {
@@ -3280,6 +3314,7 @@ export class AiSidebar extends Component {
                 this.notification.add(result.error, { type: "danger" });
                 return;
             }
+            this.onRecorderStopDryRun();
             if (this.state.recorderStatus !== "idle") {
                 await this.aiRecorder.finishRecording();
             }

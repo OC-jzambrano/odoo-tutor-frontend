@@ -27,6 +27,7 @@ const EXERCISE_CTA_EVENT = "ai:exercise_cta_update";
 const EXERCISE_CHOICE_EVENT = "ai:exercise_choice";
 const SIDEBAR_CLOSED_EVENT = "ai:sidebar_closed";
 const EXERCISE_SKIP_STEP_EVENT = "ai:exercise_skip_step";
+const DRY_RUN_STATE_KEY = "__AI_TUTOR_DRY_RUN_STATE__";
 const DRY_RUN_UPDATE_EVENT = "ai:dry_run_update";
 const DRY_RUN_ACTION_EVENT = "ai:dry_run_action";
 const OWL_NAVIGATION_VISIBILITY_GRACE_MS = 1800;
@@ -457,7 +458,7 @@ class AiFloatingButton extends Component {
             optionalStepLoading: false,
             optionalStepExerciseId: null,
             recorderStatus: this.aiRecorder?.status || "idle",
-            dryRun: null,
+            dryRun: window[DRY_RUN_STATE_KEY]?.active ? window[DRY_RUN_STATE_KEY] : null,
         });
 
         const previewState = getOwlPreviewState();
@@ -804,6 +805,9 @@ class AiFloatingButton extends Component {
                 this.state.dryRun = detail?.active ? detail : null;
             };
             window.addEventListener(DRY_RUN_UPDATE_EVENT, this._onDryRunUpdate);
+            if (window[DRY_RUN_STATE_KEY]?.active) {
+                this.state.dryRun = window[DRY_RUN_STATE_KEY];
+            }
 
             // Intercept copy-chip clicks at window capture phase (registered at Odoo boot,
             // before any KanbanColumnQuickCreate / KanbanQuickCreateController / Dropdown

@@ -1442,7 +1442,28 @@ export function sanitizePersistedRecordingSession(
         .filter(Boolean)
         .slice(0, 60);
 
-    return {
+    let dryRun = null;
+    if (
+        raw.dryRun &&
+        typeof raw.dryRun === "object" &&
+        raw.dryRun.active === true &&
+        steps.length > 0
+    ) {
+        const clampedIndex = Math.min(
+            steps.length - 1,
+            Math.max(0, Math.floor(Number(raw.dryRun.stepIndex) || 0))
+        );
+        dryRun = {
+            active: true,
+            paused: raw.dryRun.paused === true,
+            stepIndex: clampedIndex,
+            editStepId: trimText(raw.dryRun.editStepId || "", 128) || null,
+            skippedPromptStepId: trimText(raw.dryRun.skippedPromptStepId || "", 128) || null,
+            skippedPromptStepNumber: normalizePositiveId(raw.dryRun.skippedPromptStepNumber),
+        };
+    }
+
+    const sanitized = {
         status,
         sessionId,
         exerciseId: trimText(raw.exerciseId || "", 128) || null,
@@ -1455,6 +1476,10 @@ export function sanitizePersistedRecordingSession(
         note: trimText(raw.note || "", 2000),
         updatedAt: Number.isFinite(updatedAt) ? updatedAt : now,
     };
+    if (dryRun) {
+        sanitized.dryRun = dryRun;
+    }
+    return sanitized;
 }
 
 export function clearPersistedRecordingSession(storage, key) {
