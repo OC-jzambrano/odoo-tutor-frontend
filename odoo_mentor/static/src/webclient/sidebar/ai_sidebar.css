@@ -3064,3 +3064,11 @@
 #offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel .btn-outline-primary,
 #offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel .btn-outline-secondary { color: var(--tutor-text); border-color: rgba(148, 163, 184, .3); }
 #offcanvasAiSidebar.is-dark-theme .o_ai_recorder_tabs .btn-outline-secondary { border-color: transparent; color: var(--tutor-text-muted); }
+#offcanvasAiSidebar .o_ai_rec_batch_bar > div { flex-wrap: wrap; min-width: 0; }
+#offcanvasAiSidebar .o_ai_rec_batch_bar { gap: 6px; }
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_review_detail .form-control {
+    background-color: rgba(15, 23, 42, .62);
+    border-color: rgba(148, 163, 184, .22);
+    color: var(--tutor-text);
+}
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_review_detail .form-control::placeholder { color: var(--tutor-text-soft); }

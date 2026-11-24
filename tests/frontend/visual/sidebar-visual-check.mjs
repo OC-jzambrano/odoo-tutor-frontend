@@ -492,10 +492,11 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
                 <span class="o_ai_rec_dry_run_current_dot" aria-hidden="true"></span>
                 Current Dry-Run step
               </div>
-              <div class="d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
+              <div class="o_ai_rec_step_row d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
                 <input type="checkbox" class="o_ai_rec_step_checkbox" checked />
                 <span class="o_ai_rec_step_num">1</span>
-                <input type="text" class="form-control form-control-sm" value="Open Accounting" />
+                <input type="text" class="form-control form-control-sm o_ai_rec_step_input" value="Open Accounting" />
+                <button class="o_ai_rec_optional_pill">Optional</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn" data-testid="recorder-locate-btn" title="Locate element on screen" style="border: 1px solid #94a3b8; border-radius: 4px; color: ${isDark ? '#cbd5e1' : '#475569'};">⌖</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" title="Remove step" style="border: 1px solid #ef4444; border-radius: 4px; padding: 0.25rem 0.45rem; line-height: 1; color: #ef4444;">×</button>
               </div>
@@ -678,6 +679,9 @@ const SCENARIOS = [
   },
   {
     name: "recorder-panel-mobile", kind: "recorder", theme: "light", viewport: { width: 320, height: 760 }, sidebarWidth: "320px",
+  },
+  {
+    name: "recorder-steps-mobile", kind: "recorder", theme: "light", viewport: { width: 320, height: 1200 }, sidebarWidth: "320px",
   },
   {
     name: "recorder-review-dark", kind: "recorder", review: true, theme: "dark", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
