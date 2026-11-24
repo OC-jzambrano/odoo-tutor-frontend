@@ -94,7 +94,7 @@
                                         <i class="oi oi-filled" data-icon="circle"/>
                                         <t t-out="this.translate('Recording')"/>
                                     </span>
-                                    <span t-elif="this.state.recorderStatus === 'paused'" class="badge text-bg-warning">
+                                    <span t-elif="this.state.recorderStatus === 'paused'" class="o_ai_rec_paused_badge">
                                         <t t-out="this.translate('Paused')"/>
                                     </span>
                                     <span class="o_ai_rec_title" t-out="this.translate('Recorder')"/>
@@ -116,45 +116,12 @@
                                         </button>
                                     </div>
 
-                                    <div t-if="!this.state.recorderReviewTab" class="o_ai_recorder_capture_actions">
-                                        <button t-if="this.state.recorderStatus !== 'recording'"
-                                                type="button"
-                                                class="btn btn-sm btn-primary"
-                                                t-att-disabled="this.state.recorderStatus === 'idle' and (!(this.state.recorderTitle || '').trim() or !(this.state.recorderModule || '').trim())"
-                                                t-on-click.stop.prevent="this.onRecorderStart">
-                                            <i class="oi" data-icon="play_arrow"/>
-                                            <t t-if="this.state.recorderStatus === 'paused'" t-out="this.translate('Resume')"/>
-                                            <t t-else="" t-out="this.translate('Start')"/>
-                                        </button>
 
-                                        <button t-if="this.state.recorderStatus === 'recording'"
-                                                type="button"
-                                                class="btn btn-sm btn-secondary"
-                                                t-on-click.stop.prevent="this.onRecorderPause">
-                                            <i class="oi" data-icon="pause"/> <t t-out="this.translate('Pause')"/>
-                                        </button>
-
-                                        <button t-if="this.state.recorderStatus === 'recording'"
-                                                type="button"
-                                                class="btn btn-sm btn-success"
-                                                t-att-disabled="this.state.recorderPolishing"
-                                                t-att-title="this.translate('Stop capture and polish instructions with AI')"
-                                                t-on-click.stop.prevent="this.onRecorderFinishCapture">
-                                            <i class="oi" data-icon="check"/> <t t-out="this.translate('Finish')"/>
-                                        </button>
-
-                                        <button t-if="this.state.recorderStatus !== 'idle'"
-                                                type="button"
-                                                class="btn btn-sm btn-danger"
-                                                t-on-click.stop.prevent="this.onRecorderFinish">
-                                            <i class="oi" data-icon="stop"/> <t t-out="this.translate('Discard')"/>
-                                        </button>
-                                    </div>
                                 </div>
                             </div>
 
                             <t t-if="this.state.recorderReviewTab and this.state.canReviewRecordings">
-                                <div class="d-flex flex-column gap-2 p-2">
+                                <div class="o_ai_rec_review d-flex flex-column gap-2">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <strong t-out="this.translate('Pending Drafts')"/>
                                         <button type="button"
@@ -203,7 +170,7 @@
                                     <div class="d-flex flex-column gap-1" t-if="this.state.reviewQueue.length">
                                         <t t-foreach="this.state.reviewQueue" t-as="item" t-key="item.recording_id + '_' + item.author_id">
                                             <button type="button"
-                                                    class="btn btn-sm btn-outline-secondary text-start d-flex justify-content-between align-items-center"
+                                                    class="btn btn-sm btn-outline-secondary text-start d-flex justify-content-between align-items-center o_ai_rec_review_item"
                                                     t-on-click.stop.prevent="() => this.inspectReviewDraft(item.recording_id, item.author_id)">
                                                 <span>
                                                     <strong t-out="item.title"/> (<span t-out="item.module"/>)
@@ -213,7 +180,7 @@
                                         </t>
                                     </div>
 
-                                    <div t-if="this.state.reviewDetail" class="border rounded p-2 d-flex flex-column gap-2 mt-2">
+                                    <div t-if="this.state.reviewDetail" class="o_ai_rec_review_detail d-flex flex-column gap-2 mt-2">
                                         <div>
                                             <div class="fw-bold" t-out="this.state.reviewDetail.draft.title"/>
                                             <div class="small text-muted">
@@ -231,7 +198,7 @@
                                                t-att-value="this.state.reviewComment"
                                                t-on-input="(ev) => this.state.reviewComment = ev.target.value"
                                                t-att-placeholder="this.translate('Review comment (optional)...')"/>
-                                        <div class="d-flex gap-2 flex-wrap">
+                                        <div class="o_ai_rec_review_actions d-flex gap-2 flex-wrap">
                                             <button type="button"
                                                     class="btn btn-sm btn-success"
                                                     t-att-disabled="this.state.reviewLoading"
@@ -287,6 +254,41 @@
                                         <span class="val" t-out="this.state.recorderSessionId || '-'"/>
                                     </div>
                                 </div>
+
+                                <div class="o_ai_recorder_capture_actions">
+                                        <button t-if="this.state.recorderStatus !== 'recording'"
+                                                type="button"
+                                                class="btn btn-sm btn-primary"
+                                                t-att-disabled="this.state.recorderStatus === 'idle' and (!(this.state.recorderTitle || '').trim() or !(this.state.recorderModule || '').trim())"
+                                                t-on-click.stop.prevent="this.onRecorderStart">
+                                            <i class="oi" data-icon="play_arrow"/>
+                                            <t t-if="this.state.recorderStatus === 'paused'" t-out="this.translate('Resume')"/>
+                                            <t t-else="" t-out="this.translate('Start recording')"/>
+                                        </button>
+
+                                        <button t-if="this.state.recorderStatus === 'recording'"
+                                                type="button"
+                                                class="btn btn-sm btn-secondary"
+                                                t-on-click.stop.prevent="this.onRecorderPause">
+                                            <i class="oi" data-icon="pause"/> <t t-out="this.translate('Pause')"/>
+                                        </button>
+
+                                        <button t-if="this.state.recorderStatus === 'recording'"
+                                                type="button"
+                                                class="btn btn-sm btn-success"
+                                                t-att-disabled="this.state.recorderPolishing"
+                                                t-att-title="this.translate('Stop capture and polish instructions with AI')"
+                                                t-on-click.stop.prevent="this.onRecorderFinishCapture">
+                                            <i class="oi" data-icon="check"/> <t t-out="this.translate('Finish capture')"/>
+                                        </button>
+
+                                        <button t-if="this.state.recorderStatus !== 'idle'"
+                                                type="button"
+                                                class="btn btn-sm btn-danger"
+                                                t-on-click.stop.prevent="this.onRecorderFinish">
+                                            <i class="oi" data-icon="stop"/> <t t-out="this.translate('Discard')"/>
+                                        </button>
+                                    </div>
 
                                 <div class="o_ai_recorder_controls">
                                     <button type="button"
@@ -502,7 +504,7 @@
                                                     <span class="o_ai_rec_dry_run_current_dot" aria-hidden="true"/>
                                                     <t t-out="this.translate('Current Dry-Run step')"/>
                                                 </div>
-                                                <div class="d-flex gap-1 align-items-center">
+                                                <div class="o_ai_rec_step_row d-flex gap-1 align-items-center">
                                                     <input type="checkbox"
                                                            class="o_ai_rec_step_checkbox"
                                                            t-att-checked="this.isRecorderStepSelected(step.id)"
