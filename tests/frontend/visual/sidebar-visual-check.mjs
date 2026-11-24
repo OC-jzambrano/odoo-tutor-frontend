@@ -440,6 +440,7 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
           <div class="o_ai_recorder_left">
             <span class="o_ai_rec_title">Recorder</span>
           </div>
+          <div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-dark">Record</button><button class="btn btn-sm btn-outline-secondary">Review</button></div></div>
         </div>
         <div class="o_ai_recorder_meta d-flex flex-column gap-2">
           <div>
@@ -458,15 +459,18 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
             <span class="val">694dd5de-0c7f-4c68</span>
           </div>
         </div>
+        <div class="o_ai_recorder_capture_actions"><button class="btn btn-sm btn-success">✓ Finish capture</button><button class="btn btn-sm btn-secondary">Ⅱ Pause</button><button class="btn btn-sm btn-danger">Discard</button></div>
+        <div class="o_ai_recorder_controls"><button class="btn btn-sm btn-outline-secondary">⌖ Pick element</button></div>
         <div class="o_ai_recorder_feed">
           <div class="d-flex justify-content-between align-items-center gap-2 mb-1 flex-wrap" style="justify-content: space-between; align-items: center; flex-wrap: wrap;">
             <div class="d-flex align-items-center gap-2 flex-wrap" style="align-items: center; flex-wrap: wrap;">
               <div class="o_ai_rec_feed_title" style="margin-bottom: 0;">Generated steps</div>
               <span class="o_ai_rec_suspect_count_pill" data-testid="recorder-suspect-count">⚠ 2 possible extra steps</span>
             </div>
-            <div class="d-flex gap-1 align-items-center flex-wrap" style="gap: 4px; align-items: center;">
+            <div class="o_ai_recorder_draft_actions">
               <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_polish_btn" data-testid="recorder-polish-btn" style="border-radius: 6px; padding: 2px 8px; font-size: 12px;">✨ Polish with AI</button>
               <button type="button" class="btn btn-sm btn-outline-primary" style="border: 1px solid #3b82f6; border-radius: 6px; padding: 2px 8px; font-size: 12px; color: ${isDark ? '#93c5fd' : '#1d4ed8'};">▶ Test exercise</button>
+              <button class="btn btn-sm btn-success">Save for later review</button>
             </div>
           </div>
           <div class="o_ai_rec_polish_banner is-loading d-flex align-items-center gap-2 mb-2" style="align-items: center; gap: 6px; margin-bottom: 8px;">
@@ -673,6 +677,12 @@ const SCENARIOS = [
     sidebarWidth: "420px",
   },
   {
+    name: "recorder-panel-mobile", kind: "recorder", theme: "light", viewport: { width: 320, height: 760 }, sidebarWidth: "320px",
+  },
+  {
+    name: "recorder-review-dark", kind: "recorder", review: true, theme: "dark", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
+  },
+  {
     name: "recorder-panel-dark",
     kind: "recorder",
     theme: "dark",
@@ -712,6 +722,12 @@ async function run() {
               ? buildRecorderPanelHtml(scenario)
               : buildFixtureHtml(scenario);
       await page.setContent(html, { waitUntil: "load" });
+      if (scenario.review) {
+        await page.evaluate(() => {
+          const panel = document.querySelector('.o_ai_recorder_panel');
+          panel.innerHTML = `<div class="o_ai_recorder_header"><div class="o_ai_recorder_left"><span class="o_ai_rec_title">Recorder</span></div><div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-outline-secondary">Record</button><button class="btn btn-sm btn-dark">Review</button></div></div></div><div class="o_ai_rec_review d-flex flex-column gap-2"><div class="d-flex justify-content-between align-items-center"><strong>Pending drafts</strong><button class="btn btn-sm btn-outline-secondary">Refresh</button></div><button class="btn btn-sm btn-outline-secondary o_ai_rec_review_item">Create a sales quotation · Sales <span>2 steps</span></button><div class="o_ai_rec_review_detail"><strong>Draft details</strong><p>Sales · Pending review</p><ol><li>Open Sales</li><li>Create a quotation</li></ol><input class="form-control" placeholder="Review comment (optional)"><div class="o_ai_rec_review_actions d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success">Approve</button><button class="btn btn-sm btn-outline-primary">Edit</button><button class="btn btn-sm btn-outline-danger">Reject</button></div></div></div><select data-testid="recorder-module-select" hidden><option>Sales</option></select>`;
+        });
+      }
       await page.waitForTimeout(300);
 
       const screenshotPath = path.join(OUT_DIR, `${scenario.name}.png`);
