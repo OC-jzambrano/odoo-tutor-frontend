@@ -947,6 +947,13 @@ export function getNextIndexAfterSkip(steps = [], currentIndex = 0) {
     return currentIndex + 1;
 }
 
+export function getPreviousDryRunIndex(steps = [], currentIndex = 0) {
+    const list = Array.isArray(steps) ? steps : [];
+    const idx = Math.floor(Number(currentIndex) || 0);
+    if (!list.length || idx <= 0) return null;
+    return Math.min(list.length - 1, idx - 1);
+}
+
 export function reconcileDryRunAfterStepRemoval(
     prevSteps = [],
     removedStepIds = [],

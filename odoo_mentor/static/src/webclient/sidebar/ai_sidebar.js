@@ -35,6 +35,7 @@ import {
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
+    getPreviousDryRunIndex,
     hydrateDraftForEditing,
     isRecorderUiElement,
     matchDryRunStepIndex,
