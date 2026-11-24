@@ -101,7 +101,7 @@
                                 </div>
 
                                 <div class="o_ai_recorder_right">
-                                    <t t-if="this.state.canReviewRecordings">
+                                    <div t-if="this.state.canReviewRecordings" class="o_ai_recorder_tabs">
                                         <button type="button"
                                                 class="btn btn-sm"
                                                 t-att-class="!this.state.recorderReviewTab ? 'btn-dark' : 'btn-outline-secondary'"
@@ -114,9 +114,9 @@
                                                 t-on-click.stop.prevent="() => this.toggleRecorderReviewTab(true)">
                                             <t t-out="this.translate('Review')"/>
                                         </button>
-                                    </t>
+                                    </div>
 
-                                    <t t-if="!this.state.recorderReviewTab">
+                                    <div t-if="!this.state.recorderReviewTab" class="o_ai_recorder_capture_actions">
                                         <button t-if="this.state.recorderStatus !== 'recording'"
                                                 type="button"
                                                 class="btn btn-sm btn-primary"
@@ -149,7 +149,7 @@
                                                 t-on-click.stop.prevent="this.onRecorderFinish">
                                             <i class="oi" data-icon="stop"/> <t t-out="this.translate('Discard')"/>
                                         </button>
-                                    </t>
+                                    </div>
                                 </div>
                             </div>
 
@@ -376,7 +376,7 @@
                                                 <t t-else="" t-out="' ' + this.translate('possible extra steps')"/>
                                             </span>
                                         </div>
-                                        <div class="d-flex gap-1 align-items-center flex-wrap">
+                                        <div class="o_ai_recorder_draft_actions">
                                             <button type="button"
                                                     class="btn btn-sm btn-outline-secondary o_ai_rec_polish_btn"
                                                     t-att-disabled="this.state.recorderPolishing or !(this.state.recorderSteps || []).length"
