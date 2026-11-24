@@ -725,7 +725,7 @@ async function run() {
       if (scenario.review) {
         await page.evaluate(() => {
           const panel = document.querySelector('.o_ai_recorder_panel');
-          panel.innerHTML = `<div class="o_ai_recorder_header"><div class="o_ai_recorder_left"><span class="o_ai_rec_title">Recorder</span></div><div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-outline-secondary">Record</button><button class="btn btn-sm btn-dark">Review</button></div></div></div><div class="o_ai_rec_review d-flex flex-column gap-2"><div class="d-flex justify-content-between align-items-center"><strong>Pending drafts</strong><button class="btn btn-sm btn-outline-secondary">Refresh</button></div><button class="btn btn-sm btn-outline-secondary o_ai_rec_review_item">Create a sales quotation · Sales <span>2 steps</span></button><div class="o_ai_rec_review_detail"><strong>Draft details</strong><p>Sales · Pending review</p><ol><li>Open Sales</li><li>Create a quotation</li></ol><input class="form-control" placeholder="Review comment (optional)"><div class="o_ai_rec_review_actions d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success">Approve</button><button class="btn btn-sm btn-outline-primary">Edit</button><button class="btn btn-sm btn-outline-danger">Reject</button></div></div></div><select data-testid="recorder-module-select" hidden><option>Sales</option></select>`;
+          panel.innerHTML = `<div class="o_ai_recorder_header"><div class="o_ai_recorder_left"><span class="o_ai_rec_title">Recorder</span></div><div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-outline-secondary">Record</button><button class="btn btn-sm btn-dark">Review</button></div></div></div><div class="o_ai_rec_review d-flex flex-column gap-2"><div class="d-flex justify-content-between align-items-center"><strong>Pending drafts</strong><button class="btn btn-sm btn-outline-secondary">Refresh</button></div><button class="btn btn-sm btn-outline-secondary o_ai_rec_review_item">Create a sales quotation · Sales <span>2 steps</span></button><div class="o_ai_rec_review_detail"><strong>Draft details</strong><p>Sales · Pending review</p><ol><li>Open Sales</li><li>Create a quotation</li></ol><input class="form-control" placeholder="Review comment (optional)"><div class="o_ai_rec_review_actions d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success">Approve</button><button class="btn btn-sm btn-outline-primary">Edit</button><button class="btn btn-sm btn-outline-danger">Reject</button></div></div></div>`;
         });
       }
       await page.waitForTimeout(300);
@@ -793,7 +793,9 @@ async function run() {
         metrics = await page.evaluate(() => {
           const sidebar = document.querySelector("#offcanvasAiSidebar");
           const select = document.querySelector('[data-testid="recorder-module-select"]');
-          const selectRect = select.getBoundingClientRect();
+          const reviewItem = document.querySelector(".o_ai_rec_review_item");
+          const measured = select || reviewItem;
+          const selectRect = measured.getBoundingClientRect();
           const sidebarRect = sidebar.getBoundingClientRect();
           return {
             quotaBtn: {
@@ -802,10 +804,10 @@ async function run() {
               whiteSpace: "normal",
               height: Math.round(selectRect.height),
               width: Math.round(selectRect.width),
-              fitsBubble: select.options.length > 5,
+              fitsBubble: select ? select.options.length > 5 : selectRect.width > 0,
               fitsSidebar: selectRect.right <= sidebarRect.right + 1,
             },
-            optionCount: select.options.length,
+            optionCount: select ? select.options.length : null,
             horizontalOverflow: sidebar.scrollWidth > sidebar.clientWidth + 1,
           };
         });
