@@ -373,6 +373,31 @@ class AiChatController(http.Controller):
         except requests.RequestException:
             return {"error": "AI polish service is unavailable", "status": 503}
 
+    @staticmethod
+    def _strip_rejected_draft_step_fields(draft, error_text):
+        steps = draft.get("steps")
+        if not isinstance(steps, list):
+            return None
+        lower = (error_text or "").lower()
+        drop_keys = set()
+        if "label" in lower:
+            drop_keys.add("label")
+        if "is_optional" in lower:
+            drop_keys.add("is_optional")
+        if not drop_keys:
+            drop_keys = {"label", "is_optional"}
+        stripped_steps = []
+        changed = False
+        for step in steps:
+            if isinstance(step, dict) and any(k in step for k in drop_keys):
+                changed = True
+                stripped_steps.append({k: v for k, v in step.items() if k not in drop_keys})
+            else:
+                stripped_steps.append(step)
+        if not changed:
+            return None
+        return {**draft, "steps": stripped_steps}
+
     @http.route("/ai_chat/recording_drafts/save", type="jsonrpc", auth="user", methods=["POST"])
     def save_recording_draft_proxy(self, draft=None, **kwargs):
         err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_expert")
@@ -389,6 +414,16 @@ class AiChatController(http.Controller):
                 timeout=(3, 10),
                 allow_redirects=False,
             )
+            if response.status_code == 422 and "extra" in (response.text or "").lower():
+                fallback_draft = self._strip_rejected_draft_step_fields(draft, response.text)
+                if fallback_draft is not None:
+                    response = requests.put(
+                        base_path,
+                        json=fallback_draft,
+                        headers=headers,
+                        timeout=(3, 10),
+                        allow_redirects=False,
+                    )
             return self._proxy_backend_response(response)
         except requests.RequestException:
             return {"error": "Recording service is unavailable", "status": 503}
