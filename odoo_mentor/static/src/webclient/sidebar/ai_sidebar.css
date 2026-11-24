@@ -2989,3 +2989,78 @@
     outline: 2px solid var(--tutor-accent-strong, #714b67);
     outline-offset: 2px;
 }
+
+/* A consistent, restrained visual hierarchy throughout the recorder. */
+#offcanvasAiSidebar .o_ai_recorder_panel {
+    background: var(--tutor-surface, #fff);
+    box-shadow: none;
+    padding: 16px;
+    gap: 12px;
+    min-height: 0;
+    overflow-y: auto;
+}
+#offcanvasAiSidebar .o_ai_recorder_panel.is-recording { box-shadow: none; }
+#offcanvasAiSidebar .o_ai_recorder_left { width: 100%; justify-content: space-between; }
+#offcanvasAiSidebar .o_ai_rec_title { order: -1; font-size: 18px; line-height: 1.3; }
+#offcanvasAiSidebar .o_ai_rec_badge,
+#offcanvasAiSidebar .o_ai_rec_paused_badge {
+    border: 0; border-radius: 999px; padding: 4px 9px; font-size: 11px;
+    font-weight: 600; letter-spacing: 0; text-transform: none;
+}
+#offcanvasAiSidebar .o_ai_rec_paused_badge { background: var(--tutor-surface-soft); color: var(--tutor-text-muted); }
+#offcanvasAiSidebar .o_ai_recorder_tabs .btn-dark,
+#offcanvasAiSidebar .o_ai_recorder_capture_actions .btn-primary,
+#offcanvasAiSidebar .o_ai_recorder_capture_actions .btn-success,
+#offcanvasAiSidebar .o_ai_recorder_draft_actions .btn-success,
+#offcanvasAiSidebar .o_ai_rec_review_actions .btn-success,
+#offcanvasAiSidebar .o_ai_rec_step_actions .btn-success {
+    background: var(--tutor-accent, #714b67); border-color: var(--tutor-accent, #714b67); color: #fff;
+}
+#offcanvasAiSidebar .o_ai_recorder_capture_actions {
+    padding: 0 0 12px; border-bottom: 1px solid var(--tutor-border); width: 100%;
+}
+#offcanvasAiSidebar .o_ai_recorder_panel .btn-outline-primary,
+#offcanvasAiSidebar .o_ai_recorder_panel .btn-outline-secondary {
+    background: transparent; border-color: var(--tutor-border-strong); color: var(--tutor-text);
+}
+#offcanvasAiSidebar .o_ai_recorder_tabs .btn-outline-secondary { border-color: transparent; color: var(--tutor-text-muted); }
+#offcanvasAiSidebar .o_ai_recorder_panel .btn-outline-danger { background: transparent; }
+#offcanvasAiSidebar .o_ai_recorder_panel .btn:disabled { opacity: .55; }
+#offcanvasAiSidebar .o_ai_recorder_meta { gap: 10px; }
+#offcanvasAiSidebar .o_ai_recorder_meta .form-control,
+#offcanvasAiSidebar .o_ai_recorder_meta .form-select { min-height: 36px; border-radius: 7px; }
+#offcanvasAiSidebar .o_ai_rec_meta_row { padding: 3px 0; background: transparent; border: 0; }
+#offcanvasAiSidebar .o_ai_rec_meta_row .lbl,
+#offcanvasAiSidebar .o_ai_rec_meta_row .val { font-size: 11px; font-weight: 500; text-transform: none; color: var(--tutor-text-muted); }
+#offcanvasAiSidebar .o_ai_rec_meta_row .val { overflow-wrap: anywhere; text-align: right; }
+#offcanvasAiSidebar .o_ai_recorder_feed { border-top: 1px solid var(--tutor-border); padding-top: 14px; }
+#offcanvasAiSidebar .o_ai_rec_feed_title { font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--tutor-text); }
+#offcanvasAiSidebar .o_ai_recorder_draft_actions .btn-success { margin-left: 0; }
+#offcanvasAiSidebar .o_ai_rec_feed_list { gap: 0; }
+#offcanvasAiSidebar .o_ai_rec_feed_item {
+    border: 0; border-bottom: 1px solid var(--tutor-border); border-radius: 0;
+    padding: 10px 0; background: transparent; box-shadow: none;
+}
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-selected-step,
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-optional-step,
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-suspect-step,
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-dry-run-editing { border-radius: 8px; padding: 10px; margin: 3px 0; }
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-dry-run-editing { animation: none; }
+#offcanvasAiSidebar .o_ai_rec_step_row { flex-wrap: wrap; }
+#offcanvasAiSidebar .o_ai_rec_step_input { min-width: 90px; flex: 1 1 120px; }
+#offcanvasAiSidebar .o_ai_rec_review { min-width: 0; }
+#offcanvasAiSidebar .o_ai_rec_review_item { width: 100%; gap: 8px; padding: 11px; }
+#offcanvasAiSidebar .o_ai_rec_review_item > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+#offcanvasAiSidebar .o_ai_rec_review_detail { border-top: 1px solid var(--tutor-border); padding-top: 14px; }
+#offcanvasAiSidebar .o_ai_rec_review_actions .btn-outline-danger { border-color: transparent; }
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel { background: #1d2533; box-shadow: none; }
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel.is-recording { box-shadow: none; }
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_meta_row,
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item { background: transparent; }
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item.is-selected-step,
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item.is-optional-step,
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item.is-dry-run-editing { background: rgba(135, 90, 123, .16); }
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item.is-suspect-step { background: rgba(120, 53, 15, .22); }
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel .btn-outline-primary,
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel .btn-outline-secondary { color: var(--tutor-text); border-color: rgba(148, 163, 184, .3); }
+#offcanvasAiSidebar.is-dark-theme .o_ai_recorder_tabs .btn-outline-secondary { border-color: transparent; color: var(--tutor-text-muted); }
