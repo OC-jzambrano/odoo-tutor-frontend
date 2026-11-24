@@ -679,6 +679,14 @@
                                 <button type="button"
                                         class="ai-chat-dry-run-btn"
                                         t-att-disabled="this.state.dryRunStepIndex &lt;= 0"
+                                        t-on-click.stop.prevent="this.onChatDryRunRestart"
+                                        t-att-title="this.translate('Restart Dry-Run from step 1')">
+                                    <i class="oi" data-icon="refresh"/>
+                                    <t t-out="this.translate('Restart')"/>
+                                </button>
+                                <button type="button"
+                                        class="ai-chat-dry-run-btn"
+                                        t-att-disabled="this.state.dryRunStepIndex &lt;= 0"
                                         t-on-click.stop.prevent="this.onChatDryRunBack"
                                         t-att-title="this.translate('Go back to previous step')">
                                     <i class="oi" data-icon="skip_previous"/>

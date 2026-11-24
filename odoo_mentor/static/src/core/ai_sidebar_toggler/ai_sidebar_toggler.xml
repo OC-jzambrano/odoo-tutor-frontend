@@ -103,6 +103,19 @@
                                 t-att-disabled="this.state.dryRun.stepIndex &lt;= 0"
                                 t-on-mousedown.stop.prevent="this.noop"
                                 t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunRestart"
+                                t-att-title="this.translate('Restart Dry-Run from step 1')"
+                            >
+                                <i class="oi" data-icon="refresh"/>
+                                <t t-out="this.translate('Restart')"/>
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ai-owl-dry-run-btn"
+                                t-att-disabled="this.state.dryRun.stepIndex &lt;= 0"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
                                 t-on-click.stop.prevent="this.onDryRunBack"
                                 t-att-title="this.translate('Go back to previous step')"
                             >

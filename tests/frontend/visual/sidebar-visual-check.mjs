@@ -595,6 +595,8 @@ function buildFloatingDryRunHtml({ viewportWidth = 1280, viewportHeight = 760 } 
       <div class="ai-owl-dry-run-actions" role="group" aria-label="Dry-Run actions">
         <button type="button" class="ai-owl-dry-run-btn">⌖ Locate</button>
         <button type="button" class="ai-owl-dry-run-btn ai-owl-dry-run-btn-edit">✎ Edit</button>
+        <button type="button" class="ai-owl-dry-run-btn">↻ Restart</button>
+        <button type="button" class="ai-owl-dry-run-btn">⏮ Back</button>
         <button type="button" class="ai-owl-dry-run-btn">⏭ Skip</button>
         <button type="button" class="ai-owl-dry-run-btn ai-owl-dry-run-btn-delete" data-testid="dry-run-delete-btn">🗑 Delete</button>
         <button type="button" class="ai-owl-dry-run-opt-pill is-active">Optional</button>
