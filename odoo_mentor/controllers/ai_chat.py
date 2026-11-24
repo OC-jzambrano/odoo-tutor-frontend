@@ -480,7 +480,32 @@ class AiChatController(http.Controller):
                 f"{base_path}/review/{safe_id}",
                 json=payload,
                 headers=headers,
-                timeout=(3, 10),
+                timeout=(3, 25),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Recording service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/recording_drafts/review_publish", type="jsonrpc", auth="user", methods=["POST"])
+    def review_draft_publish_proxy(self, recording_id=None, author_id=None, **kwargs):
+        err, ctx = self._recording_proxy_context("odoo_mentor.group_odoo_tutor_reviewer")
+        if err:
+            return err
+        try:
+            safe_id = str(uuid.UUID(str(recording_id)))
+        except (TypeError, ValueError):
+            return {"error": "Invalid recording ID", "status": 422}
+        payload = {}
+        if author_id is not None and str(author_id).strip():
+            payload["author_id"] = str(author_id).strip()[:240]
+        base_path, headers = ctx
+        try:
+            response = requests.post(
+                f"{base_path}/review/{safe_id}/publish",
+                json=payload,
+                headers=headers,
+                timeout=(3, 25),
                 allow_redirects=False,
             )
             return self._proxy_backend_response(response)

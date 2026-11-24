@@ -66,3 +66,22 @@ def test_polish_proxy_checks_permissions_and_sanitizes_batched_steps():
     assert 'f"{base_path}/polish"' in polish_route
     assert "allow_redirects=False" in polish_route
     assert '"value"' not in polish_route
+
+
+def test_review_decision_and_publish_proxies_use_extended_timeout_and_reviewer_group():
+    controller = (ROOT / "odoo_mentor/controllers/ai_chat.py").read_text(
+        encoding="utf-8"
+    )
+    decision_route = controller.split("def review_draft_decision_proxy", 1)[1].split(
+        "@http.route", 1
+    )[0]
+    assert 'self._recording_proxy_context("odoo_mentor.group_odoo_tutor_reviewer")' in decision_route
+    assert "timeout=(3, 25)" in decision_route
+    assert "allow_redirects=False" in decision_route
+
+    assert "/ai_chat/recording_drafts/review_publish" in controller
+    publish_route = controller.split("def review_draft_publish_proxy", 1)[1]
+    assert 'self._recording_proxy_context("odoo_mentor.group_odoo_tutor_reviewer")' in publish_route
+    assert 'f"{base_path}/review/{safe_id}/publish"' in publish_route
+    assert "timeout=(3, 25)" in publish_route
+    assert "allow_redirects=False" in publish_route

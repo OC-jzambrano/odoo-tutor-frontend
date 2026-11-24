@@ -546,6 +546,30 @@ export const aiRecorderService = {
             await sendWS("recording_paused", payload).catch(() => {});
         }
 
+        function loadDraftSession({
+            sessionId: nextSessionId = null,
+            title = "",
+            module = null,
+            moduleRootXmlid = null,
+            steps = [],
+        } = {}) {
+            detachDomListeners();
+            status = "paused";
+            sessionId = nextSessionId || uuid();
+            exerciseId = null;
+            recordingTitle = (title || "").toString();
+            recordingModule = module || null;
+            recordingModuleRootXmlid = moduleRootXmlid || null;
+            recordedSteps = Array.isArray(steps) ? steps.slice() : [];
+            recordedFeed = [];
+            recordedStepIndex = recordedSteps.length;
+            recordedNote = "";
+            recordedDryRun = null;
+            lastSeen.clear();
+            persistSessionState();
+            return sessionId;
+        }
+
         async function finishRecording() {
             detachDomListeners();
             status = "idle";
@@ -710,6 +734,7 @@ export const aiRecorderService = {
 
             getSessionState,
             syncSessionMeta,
+            loadDraftSession,
 
             startRecording,
             resumeRecording,

@@ -1287,7 +1287,7 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
             const instruction = trimText(step?.instruction || "", 2000);
             const action = step?.target?.action === "change" ? "change" : "click";
             if (!instruction) return null;
-            return {
+            const item = {
                 id: step.id || generateUuid(),
                 instruction,
                 target: {
@@ -1297,6 +1297,14 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
                     target_key: trimText(step?.target?.target_key || "", 240) || null,
                 },
             };
+            const label = trimText(step?.target_hint?.label || step?.label || "", 120);
+            if (label) {
+                item.label = label;
+            }
+            if (step?.is_optional === true) {
+                item.is_optional = true;
+            }
+            return item;
         })
         .filter(Boolean)
         .slice(0, 200);
@@ -1310,6 +1318,89 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
         title: cleanTitle,
         module: cleanModule,
         steps: validSteps,
+    };
+}
+
+export function hydrateDraftForEditing(draft) {
+    if (!draft || typeof draft !== "object") return null;
+    const recordingId = trimText(draft.recording_id || "", 128) || generateUuid();
+    const title = trimText(draft.title || "", 240);
+    const module = trimText(draft.module || "", 240);
+    const rawSteps = Array.isArray(draft.steps) ? draft.steps : [];
+
+    const hydratedSteps = rawSteps
+        .map((step) => {
+            if (!step || typeof step !== "object") return null;
+            const instruction = trimText(step.instruction || "", 2000);
+            if (!instruction) return null;
+            const action = step?.target?.action === "change" ? "change" : "click";
+            const model = trimText(step?.target?.model || "", 240) || null;
+            const field = trimText(step?.target?.field || "", 240) || null;
+            const targetKey = trimText(step?.target?.target_key || "", 240) || null;
+            const label = trimText(step.label || step?.target_hint?.label || "", 120) || null;
+
+            let targetHint = null;
+            if (targetKey && targetKey.startsWith("menu.")) {
+                targetHint = {
+                    kind: "menu",
+                    field: null,
+                    name: null,
+                    xmlid: targetKey.slice(5) || null,
+                    label: label || instruction,
+                    selector: null,
+                    actionLabel: instruction,
+                };
+            } else if (action === "change" || field) {
+                targetHint = {
+                    kind: "field",
+                    field: field || targetKey || null,
+                    name: null,
+                    xmlid: null,
+                    label: label || instruction,
+                    selector: null,
+                    actionLabel: instruction,
+                };
+            } else if (targetKey) {
+                targetHint = {
+                    kind: "button",
+                    field: null,
+                    name: targetKey,
+                    xmlid: null,
+                    label: label || instruction,
+                    selector: null,
+                    actionLabel: instruction,
+                };
+            }
+
+            const hydrated = {
+                id: trimText(step.id || "", 128) || generateUuid(),
+                instruction,
+                is_optional: step.is_optional === true,
+                optional_group: null,
+                target: {
+                    action,
+                    model,
+                    field,
+                    target_key: targetKey,
+                },
+            };
+            if (targetHint) {
+                hydrated.target_hint = targetHint;
+            }
+            const expectedChecked = getStepExpectedChecked(hydrated);
+            if (typeof expectedChecked === "boolean") {
+                hydrated.expected_checked = expectedChecked;
+            }
+            return hydrated;
+        })
+        .filter(Boolean)
+        .slice(0, 200);
+
+    return {
+        recordingId,
+        title,
+        module,
+        steps: recomputeOptionalGroups(hydratedSteps),
     };
 }
 

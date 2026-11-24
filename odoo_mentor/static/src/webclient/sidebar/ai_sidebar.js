@@ -34,6 +34,7 @@ import {
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
+    hydrateDraftForEditing,
     isRecorderUiElement,
     matchDryRunStepIndex,
     recomputeOptionalGroups,
@@ -362,6 +363,7 @@ export class AiSidebar extends Component {
             reviewLoading: false,
             reviewDetail: null,
             reviewComment: "",
+            reviewPublishFailure: null,
 
             hintMessage: "",
             hintTimestamp: null,
@@ -3680,18 +3682,162 @@ export class AiSidebar extends Component {
                 this.notification.add(result.error, { type: "danger" });
                 return;
             }
-            this.notification.add(
-                decision === "approved"
-                    ? _t("Exercise approved for same-tenant learners.")
-                    : _t("Exercise rejected."),
-                { type: "success" }
-            );
+            if (decision === "approved") {
+                const publishStatus = String(result?.data?.publish_status || "").trim();
+                const publishError = String(result?.data?.publish_error || "").trim() || null;
+                if (publishStatus === "chroma_failed" || publishStatus === "publish_failed") {
+                    this.state.reviewPublishFailure = {
+                        recording_id: detail.draft.recording_id,
+                        author_id: detail.author_id,
+                        title: detail.draft.title || detail.draft.recording_id,
+                        publish_status: publishStatus,
+                        publish_error: publishError,
+                    };
+                    this.notification.add(
+                        publishStatus === "chroma_failed"
+                            ? _t(
+                                  "Exercise approved, but search indexing failed. Click Retry Publish to index it for learners."
+                              )
+                            : _t(
+                                  "Exercise approved, but publishing failed. Click Retry Publish to try again."
+                              ),
+                        { type: "warning" }
+                    );
+                } else {
+                    if (
+                        this.state.reviewPublishFailure?.recording_id ===
+                        detail.draft.recording_id
+                    ) {
+                        this.state.reviewPublishFailure = null;
+                    }
+                    this.notification.add(_t("Exercise approved for same-tenant learners."), {
+                        type: "success",
+                    });
+                }
+            } else {
+                if (this.state.reviewPublishFailure?.recording_id === detail.draft.recording_id) {
+                    this.state.reviewPublishFailure = null;
+                }
+                this.notification.add(_t("Exercise rejected."), { type: "success" });
+            }
             this.state.reviewDetail = null;
             this.state.reviewComment = "";
             await this.loadReviewQueue();
         } catch (err) {
             this.notification.add(
                 err?.message || _t("Could not submit review decision."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.reviewLoading = false;
+        }
+    }
+
+    dismissReviewPublishFailure() {
+        this.state.reviewPublishFailure = null;
+    }
+
+    onRecorderTitleInput(ev) {
+        this.state.recorderTitle = ev.target.value;
+        if (this.state.recorderStatus !== "idle") {
+            this.aiRecorder?.syncSessionMeta?.({ title: this.state.recorderTitle });
+        }
+    }
+
+    onRecorderModuleChange(ev) {
+        this.state.recorderModule = ev.target.value;
+        if (this.state.recorderStatus !== "idle") {
+            const apps = this.menuService?.getApps?.() || [];
+            const selectedApp = findAppForModule(apps, this.state.recorderModule);
+            this.aiRecorder?.syncSessionMeta?.({
+                module: this.state.recorderModule,
+                moduleRootXmlid: selectedApp?.xmlid || null,
+            });
+        }
+    }
+
+    editReviewDraft(detail = null) {
+        const targetDetail = detail || this.state.reviewDetail;
+        if (!this.state.canSeeRecorderToggle || !targetDetail?.draft) return;
+
+        const hydrated = hydrateDraftForEditing(targetDetail.draft);
+        if (!hydrated) return;
+
+        this.onRecorderStopDryRun();
+        this._polishRequestSeq += 1;
+        this.state.recorderPolishing = false;
+        this.state.recorderPrePolishSnapshot = null;
+        this._editedDuringPolishStepIds = new Set();
+
+        const apps = this.menuService?.getApps?.() || [];
+        const selectedApp = findAppForModule(apps, hydrated.module);
+
+        this.aiRecorder.loadDraftSession({
+            sessionId: hydrated.recordingId,
+            title: hydrated.title,
+            module: hydrated.module,
+            moduleRootXmlid: selectedApp?.xmlid || null,
+            steps: hydrated.steps,
+        });
+
+        this.state.recorderStatus = "paused";
+        this.state.recorderSessionId = hydrated.recordingId;
+        this.state.recorderTitle = hydrated.title;
+        this.state.recorderModule = hydrated.module;
+        this.state.recorderSteps = hydrated.steps;
+        this.state.selectedRecorderStepIds = [];
+        this._lastSelectedRecorderStepId = null;
+        this.state.dismissedSuspectKeys = [];
+        this.state.dismissedBlockSuggestionIds = [];
+        this.state.recorderStepIndex = hydrated.steps.length;
+        this.state.recorderPicked = null;
+        this.state.recorderNote = "";
+        this.state.recorderFeed = [];
+        this.state.recorderReviewTab = false;
+
+        this.notification.add(
+            _t("Loaded recording into Recorder. Edit steps and click Save for later review to update it."),
+            { type: "info" }
+        );
+    }
+
+    async retryReviewPublish(target = null) {
+        const failure = target || this.state.reviewPublishFailure;
+        if (!this.state.canReviewRecordings || !failure?.recording_id) return;
+        this.state.reviewLoading = true;
+        try {
+            const result = await rpc("/ai_chat/recording_drafts/review_publish", {
+                recording_id: failure.recording_id,
+                author_id: failure.author_id,
+            });
+            if (result?.error) {
+                this.notification.add(result.error, { type: "danger" });
+                return;
+            }
+            const publishStatus = String(result?.data?.publish_status || "").trim();
+            const publishError = String(result?.data?.publish_error || "").trim() || null;
+            if (publishStatus === "chroma_failed" || publishStatus === "publish_failed") {
+                this.state.reviewPublishFailure = {
+                    ...failure,
+                    publish_status: publishStatus,
+                    publish_error: publishError,
+                };
+                this.notification.add(
+                    publishStatus === "chroma_failed"
+                        ? _t("Retry completed, but search indexing still failed.")
+                        : _t("Publish retry failed."),
+                    { type: "warning" }
+                );
+                return;
+            }
+            this.state.reviewPublishFailure = null;
+            this.notification.add(_t("Exercise published and indexed for same-tenant learners."), {
+                type: "success",
+            });
+            await this.loadReviewQueue();
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not retry exercise publishing."),
                 { type: "danger" }
             );
         } finally {

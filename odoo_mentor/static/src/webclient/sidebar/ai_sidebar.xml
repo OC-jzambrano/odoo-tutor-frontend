@@ -165,6 +165,37 @@
                                         </button>
                                     </div>
 
+                                    <div t-if="this.state.reviewPublishFailure"
+                                         class="alert alert-warning py-2 px-2 mb-0 small d-flex flex-column gap-2"
+                                         role="alert">
+                                        <div class="d-flex justify-content-between align-items-start gap-2">
+                                            <div>
+                                                <div class="fw-semibold" t-out="this.state.reviewPublishFailure.title"/>
+                                                <div>
+                                                    <t t-if="this.state.reviewPublishFailure.publish_status === 'chroma_failed'"
+                                                       t-out="this.translate('Approved, but search indexing failed.')"/>
+                                                    <t t-else=""
+                                                       t-out="this.translate('Approved, but publishing failed.')"/>
+                                                </div>
+                                                <div t-if="this.state.reviewPublishFailure.publish_error"
+                                                     class="text-muted"
+                                                     t-out="this.state.reviewPublishFailure.publish_error"/>
+                                            </div>
+                                            <button type="button"
+                                                    class="btn-close btn-sm"
+                                                    t-att-aria-label="this.translate('Dismiss')"
+                                                    t-on-click.stop.prevent="this.dismissReviewPublishFailure"/>
+                                        </div>
+                                        <div>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-warning"
+                                                    t-att-disabled="this.state.reviewLoading"
+                                                    t-on-click.stop.prevent="() => this.retryReviewPublish()">
+                                                <t t-out="this.translate('Retry Publish')"/>
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     <div t-if="!this.state.reviewQueue.length" class="text-muted small">
                                         <t t-out="this.translate('No pending recordings in this tenant.')"/>
                                     </div>
@@ -200,12 +231,18 @@
                                                t-att-value="this.state.reviewComment"
                                                t-on-input="(ev) => this.state.reviewComment = ev.target.value"
                                                t-att-placeholder="this.translate('Review comment (optional)...')"/>
-                                        <div class="d-flex gap-2">
+                                        <div class="d-flex gap-2 flex-wrap">
                                             <button type="button"
                                                     class="btn btn-sm btn-success"
                                                     t-att-disabled="this.state.reviewLoading"
                                                     t-on-click.stop.prevent="() => this.submitReviewDecision('approved')">
                                                 <t t-out="this.translate('Approve')"/>
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    t-att-disabled="this.state.reviewLoading"
+                                                    t-on-click.stop.prevent="() => this.editReviewDraft()">
+                                                <t t-out="this.translate('Edit')"/>
                                             </button>
                                             <button type="button"
                                                     class="btn btn-sm btn-outline-danger"
@@ -224,17 +261,17 @@
                                         <label class="form-label small mb-1" t-out="this.translate('Exercise title')"/>
                                         <input type="text"
                                                class="form-control form-control-sm"
-                                               t-att-disabled="this.state.recorderStatus !== 'idle'"
+                                               t-att-disabled="this.state.recorderStatus === 'recording'"
                                                t-att-value="this.state.recorderTitle"
-                                               t-on-input="(ev) => this.state.recorderTitle = ev.target.value"
+                                               t-on-input="this.onRecorderTitleInput"
                                                t-att-placeholder="this.translate('e.g. Create a sales quotation')"/>
                                     </div>
                                     <div>
                                         <label class="form-label small mb-1" t-out="this.translate('Odoo app / module')"/>
                                         <select class="form-select form-select-sm"
-                                                t-att-disabled="this.state.recorderStatus !== 'idle'"
+                                                t-att-disabled="this.state.recorderStatus === 'recording'"
                                                 t-att-value="this.state.recorderModule"
-                                                t-on-change="(ev) => this.state.recorderModule = ev.target.value">
+                                                t-on-change="this.onRecorderModuleChange">
                                             <option value=""
                                                     t-att-selected="!this.state.recorderModule"
                                                     t-out="this.translate('Select app / module...')"/>

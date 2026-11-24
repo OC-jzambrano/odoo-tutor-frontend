@@ -21,6 +21,7 @@ import {
     getRecorderStorageKey,
     getStepExpectedChecked,
     humanizeTechnicalKey,
+    hydrateDraftForEditing,
     isElementRequiredField,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
@@ -451,16 +452,18 @@ describe("recording_draft helpers", () => {
             )
         );
 
-        // Backend draft payload strips frontend-only nav and target_hint fields.
+        // Backend draft payload strips frontend-only nav/target_hint/optional_group while preserving label and is_optional.
         const draftPayload = buildRecordingDraftPayload({
             recordingId: "99999999-9999-4999-8999-999999999999",
             title: "Configure addresses",
             module: "account",
-            steps: [step],
+            steps: [{ ...step, is_optional: true, optional_group: "opt_1" }],
         });
         expect(draftPayload.steps[0]).toEqual({
             id: "88888888-8888-4888-8888-888888888888",
             instruction: "Update Customer Addresses",
+            label: "Customer Addresses",
+            is_optional: true,
             target: {
                 action: "change",
                 model: "res.config.settings",
@@ -470,7 +473,6 @@ describe("recording_draft helpers", () => {
         });
         expect(draftPayload.steps[0].nav).toBeUndefined();
         expect(draftPayload.steps[0].target_hint).toBeUndefined();
-        expect(draftPayload.steps[0].is_optional).toBeUndefined();
         expect(draftPayload.steps[0].optional_group).toBeUndefined();
     });
 
@@ -550,7 +552,14 @@ describe("recording_draft helpers", () => {
             module: "sale",
             steps: grouped,
         });
-        expect(Object.keys(payload.steps[0]).sort()).toEqual(["id", "instruction", "target"]);
+        expect(Object.keys(payload.steps[0]).sort()).toEqual([
+            "id",
+            "instruction",
+            "is_optional",
+            "target",
+        ]);
+        expect(payload.steps[0].is_optional).toBe(true);
+        expect(Object.keys(payload.steps[4]).sort()).toEqual(["id", "instruction", "target"]);
     });
 
     it("suggests optional for non-required fields and res.config.settings setup blocks without forcing", () => {
@@ -1084,5 +1093,84 @@ describe("recording_draft helpers", () => {
                 target: { action: "click", model: "res.config.settings", field: "group_delivery_invoice_address", target_key: "group_delivery_invoice_address" },
             })
         ).toBe(true);
+    });
+
+    it("hydrates a saved draft from Review back into Recorder steps with target hints and optional blocks", () => {
+        const hydrated = hydrateDraftForEditing({
+            recording_id: "bbbb7994-f12a-4b65-99a6-be42ed8768d2",
+            title: "Configure customer addresses",
+            module: "account",
+            steps: [
+                {
+                    id: "s1",
+                    instruction: "Enable Customer Addresses",
+                    label: "Customer Addresses",
+                    is_optional: true,
+                    target: {
+                        action: "change",
+                        model: "res.config.settings",
+                        field: "group_sale_delivery_address",
+                        target_key: "group_sale_delivery_address",
+                    },
+                },
+                {
+                    id: "s2",
+                    instruction: "Click Save",
+                    is_optional: true,
+                    target: {
+                        action: "click",
+                        model: "res.config.settings",
+                        field: null,
+                        target_key: "form.save",
+                    },
+                },
+                {
+                    id: "s3",
+                    instruction: "Open Customers",
+                    label: "Customers",
+                    target: {
+                        action: "click",
+                        model: null,
+                        field: null,
+                        target_key: "menu.account.menu_account_customer",
+                    },
+                },
+            ],
+        });
+
+        expect(hydrated.recordingId).toBe("bbbb7994-f12a-4b65-99a6-be42ed8768d2");
+        expect(hydrated.title).toBe("Configure customer addresses");
+        expect(hydrated.module).toBe("account");
+        expect(hydrated.steps).toHaveLength(3);
+        expect(hydrated.steps[0]).toMatchObject({
+            id: "s1",
+            is_optional: true,
+            optional_group: "opt_group_1",
+            expected_checked: true,
+            target_hint: {
+                kind: "field",
+                field: "group_sale_delivery_address",
+                label: "Customer Addresses",
+            },
+        });
+        expect(hydrated.steps[1]).toMatchObject({
+            id: "s2",
+            is_optional: true,
+            optional_group: "opt_group_1",
+            target_hint: {
+                kind: "button",
+                name: "form.save",
+            },
+        });
+        expect(hydrated.steps[2]).toMatchObject({
+            id: "s3",
+            is_optional: false,
+            optional_group: null,
+            target_hint: {
+                kind: "menu",
+                xmlid: "account.menu_account_customer",
+                label: "Customers",
+            },
+        });
     });
 });
