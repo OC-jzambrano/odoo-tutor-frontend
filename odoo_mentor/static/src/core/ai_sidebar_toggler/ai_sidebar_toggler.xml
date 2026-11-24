@@ -100,6 +100,19 @@
                             <button
                                 type="button"
                                 class="ai-owl-dry-run-btn"
+                                t-att-disabled="this.state.dryRun.stepIndex &lt;= 0"
+                                t-on-mousedown.stop.prevent="this.noop"
+                                t-on-touchstart.stop.prevent="this.noop"
+                                t-on-click.stop.prevent="this.onDryRunBack"
+                                t-att-title="this.translate('Go back to previous step')"
+                            >
+                                <i class="oi" data-icon="skip_previous"/>
+                                <t t-out="this.translate('Back')"/>
+                            </button>
+
+                            <button
+                                type="button"
+                                class="ai-owl-dry-run-btn"
                                 t-on-mousedown.stop.prevent="this.noop"
                                 t-on-touchstart.stop.prevent="this.noop"
                                 t-on-click.stop.prevent="this.onDryRunSkip"

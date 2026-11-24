@@ -939,6 +939,12 @@
     color: var(--tutor-accent-strong);
 }
 
+#offcanvasAiSidebar .ai-chat-dry-run-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 #offcanvasAiSidebar .ai-chat-dry-run-btn-edit {
     border-color: rgba(113, 75, 103, 0.35);
     color: var(--tutor-accent-strong);

@@ -19,6 +19,7 @@ import {
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
+    getPreviousDryRunIndex,
     getRecorderStorageKey,
     getStepExpectedChecked,
     humanizeTechnicalKey,
@@ -1216,5 +1217,15 @@ describe("recording_draft helpers", () => {
                 true
             )
         ).toBe(false);
+    });
+
+    it("steps back cleanly during Dry-Run and returns null at step 0 or empty list", () => {
+        const steps = [{ id: "s1" }, { id: "s2" }, { id: "s3" }];
+        expect(getPreviousDryRunIndex(steps, 0)).toBeNull();
+        expect(getPreviousDryRunIndex(steps, -1)).toBeNull();
+        expect(getPreviousDryRunIndex([], 2)).toBeNull();
+        expect(getPreviousDryRunIndex(steps, 1)).toBe(0);
+        expect(getPreviousDryRunIndex(steps, 2)).toBe(1);
+        expect(getPreviousDryRunIndex(steps, 5)).toBe(2);
     });
 });

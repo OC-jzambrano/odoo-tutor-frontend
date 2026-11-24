@@ -3506,6 +3506,20 @@ export class AiSidebar extends Component {
             return;
         }
 
+        if (action === "back") {
+            const steps = this.state.recorderSteps || [];
+            const currentIdx = this.state.dryRunStepIndex || 0;
+            const prevIdx = getPreviousDryRunIndex(steps, currentIdx);
+            if (prevIdx === null) return;
+            hideTargetHintOverlay();
+            this.state.dryRunSkippedPromptStepId = null;
+            this.state.dryRunSkippedPromptStepNumber = null;
+            this.state.dryRunAlreadySatisfied = null;
+            this.state.dryRunStepIndex = prevIdx;
+            this._emitDryRunState();
+            return;
+        }
+
         if (action === "skip") {
             if (!step) return;
             const steps = this.state.recorderSteps || [];
@@ -3569,6 +3583,10 @@ export class AiSidebar extends Component {
 
     onChatDryRunEdit() {
         this._handleDryRunAction({ action: "edit", stepId: this.dryRunCurrentStep?.id || null });
+    }
+
+    onChatDryRunBack() {
+        this._handleDryRunAction({ action: "back" });
     }
 
     onChatDryRunSkip() {
