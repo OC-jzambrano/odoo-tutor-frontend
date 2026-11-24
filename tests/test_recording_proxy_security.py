@@ -85,3 +85,14 @@ def test_review_decision_and_publish_proxies_use_extended_timeout_and_reviewer_g
     assert 'f"{base_path}/review/{safe_id}/publish"' in publish_route
     assert "timeout=(3, 25)" in publish_route
     assert "allow_redirects=False" in publish_route
+
+
+def test_save_draft_proxy_has_extra_field_422_fallback():
+    controller = (ROOT / "odoo_mentor/controllers/ai_chat.py").read_text(
+        encoding="utf-8"
+    )
+    save_route = controller.split("def save_recording_draft_proxy", 1)[1].split(
+        "@http.route", 1
+    )[0]
+    assert "response.status_code == 422" in save_route
+    assert "_strip_rejected_draft_step_fields" in save_route
