@@ -15,6 +15,7 @@ import {
     DEFAULT_ODOO_MODULE_OPTIONS,
     detectOptionalBlockSuggestions,
     extractModuleFromApp,
+    extractNavigateToModule,
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
@@ -35,6 +36,7 @@ import {
     resolveDomHumanLabel,
     resolveExpectedCheckedState,
     savePersistedRecordingSession,
+    shouldSuppressModuleGatePrompt,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
 
 describe("recording_draft helpers", () => {
@@ -1172,5 +1174,47 @@ describe("recording_draft helpers", () => {
                 label: "Customers",
             },
         });
+    });
+
+    it("resolves app aliases and navigation redirect flags on exercise start", () => {
+        const apps = [
+            { id: 1, name: "Discuss", xmlid: "mail.menu_root_discuss" },
+            { id: 2, name: "Sales", xmlid: "sale.sale_menu_root" },
+            { id: 3, name: "Inventory", xmlid: "stock.menu_stock_root" },
+            { id: 4, name: "Accounting", xmlid: "account_accountant.menu_accounting" },
+            { id: 5, name: "Settings", xmlid: "base.menu_administration" },
+        ];
+
+        expect(findAppForModule(apps, "sales")?.id).toBe(2);
+        expect(findAppForModule(apps, "sale")?.id).toBe(2);
+        expect(findAppForModule(apps, "inventory")?.id).toBe(3);
+        expect(findAppForModule(apps, "account")?.id).toBe(4);
+        expect(findAppForModule(apps, "invoicing")?.id).toBe(4);
+        expect(findAppForModule(apps, "settings")?.id).toBe(5);
+        expect(findAppForModule(apps, "base")?.id).toBe(5);
+
+        expect(
+            extractNavigateToModule({ raw: { navigate_to_module: "  SALE " } })
+        ).toBe("sale");
+        expect(extractNavigateToModule({ response: "hello" })).toBeNull();
+
+        expect(
+            shouldSuppressModuleGatePrompt(
+                { raw: { mode: "module_gate", navigate_to_module: "sale" } },
+                true
+            )
+        ).toBe(true);
+        expect(
+            shouldSuppressModuleGatePrompt(
+                { raw: { mode: "module_gate", navigate_to_module: "sale" } },
+                false
+            )
+        ).toBe(false);
+        expect(
+            shouldSuppressModuleGatePrompt(
+                { raw: { mode: "exercise_active", navigate_to_module: "sale" } },
+                true
+            )
+        ).toBe(false);
     });
 });

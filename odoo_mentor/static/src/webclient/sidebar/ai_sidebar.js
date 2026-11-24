@@ -31,6 +31,7 @@ import {
     checkDryRunToggleAlreadySatisfied,
     detectOptionalBlockSuggestions,
     extractModuleFromApp,
+    extractNavigateToModule,
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
@@ -39,6 +40,7 @@ import {
     matchDryRunStepIndex,
     recomputeOptionalGroups,
     reconcileDryRunAfterStepRemoval,
+    shouldSuppressModuleGatePrompt,
 } from "../../core/recording_draft";
 import {
     buildActiveSuspectWarnings,
@@ -270,6 +272,7 @@ export class AiSidebar extends Component {
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
         this._contextAckSubscribed = false;
+        this._pendingRedirectStepWaiter = null;
 
         // anti-auto-scroll lock
         this._expectingAssistant = false;
@@ -807,6 +810,8 @@ export class AiSidebar extends Component {
                 clearInterval(this.state.timerInterval);
                 this.state.timerInterval = null;
             }
+
+            this._cancelRedirectStepWaiter?.();
 
             this._seenTutorPushIds = null;
 
@@ -2035,6 +2040,130 @@ export class AiSidebar extends Component {
         });
     }
 
+    _cancelRedirectStepWaiter() {
+        const waiter = this._pendingRedirectStepWaiter;
+        if (!waiter) return;
+        this._pendingRedirectStepWaiter = null;
+        clearTimeout(waiter.timer);
+        if (!waiter.settled) {
+            waiter.settled = true;
+            waiter.resolve(null);
+        }
+    }
+
+    _waitForRedirectInstructionPush(exerciseId = null, timeoutMs = 2200) {
+        this._cancelRedirectStepWaiter();
+        return new Promise((resolve) => {
+            const waiter = {
+                exerciseId: this._normalizeExerciseId(exerciseId),
+                settled: false,
+                resolve,
+                timer: setTimeout(() => {
+                    if (this._pendingRedirectStepWaiter === waiter) {
+                        this._pendingRedirectStepWaiter = null;
+                    }
+                    if (!waiter.settled) {
+                        waiter.settled = true;
+                        resolve(null);
+                    }
+                }, timeoutMs),
+            };
+            this._pendingRedirectStepWaiter = waiter;
+        });
+    }
+
+    async _autoNavigateToExerciseModule(payload) {
+        const targetModule = extractNavigateToModule(payload);
+        if (!targetModule) return false;
+
+        const apps = this.menuService?.getApps?.() || [];
+        const targetApp = findAppForModule(apps, targetModule);
+        const currentApp = this.menuService?.getCurrentApp?.() || null;
+        const beforeCtx = this.contextService?.getContext?.() || this.state.currentContext || {};
+        const beforeModel = String(beforeCtx?.model || "").trim().toLowerCase();
+        const isHomeMenuOpen = !!document.querySelector(".o_home_menu, .o_apps");
+        const inSharedSettingsForOtherApp =
+            beforeModel === "res.config.settings" && targetModule !== "base";
+
+        let navigated = false;
+        let switchedApp = false;
+
+        if (targetApp && this.menuService?.selectMenu) {
+            switchedApp = currentApp?.id !== targetApp.id;
+            const needsMenuSelection =
+                switchedApp ||
+                isHomeMenuOpen ||
+                inSharedSettingsForOtherApp ||
+                !beforeModel ||
+                beforeModel === "unknown" ||
+                beforeModel === "ir.ui.menu";
+            if (needsMenuSelection) {
+                try {
+                    await this.menuService.selectMenu(targetApp);
+                    navigated = true;
+                } catch (e) {
+                    console.warn("[AiSidebar] auto module selectMenu failed:", e);
+                    return false;
+                }
+            } else {
+                navigated = true;
+            }
+        } else if (targetModule === "base" && this.actionService?.doAction) {
+            if (beforeModel !== "res.config.settings" || isHomeMenuOpen) {
+                try {
+                    await this.actionService.doAction("base.action_general_configuration");
+                    switchedApp = true;
+                    navigated = true;
+                } catch (e) {
+                    console.warn("[AiSidebar] auto Settings navigation failed:", e);
+                    return false;
+                }
+            } else {
+                navigated = true;
+            }
+        }
+
+        if (!navigated) return false;
+
+        const deadline = Date.now() + 1500;
+        const resolvedAt = Date.now();
+        let latestCtx = this.contextService?.getContext?.() || this.state.currentContext;
+
+        while (Date.now() < deadline) {
+            latestCtx = this.contextService?.getContext?.() || latestCtx;
+            const latestModel = String(latestCtx?.model || "").trim().toLowerCase();
+            const isValidModel =
+                Boolean(latestModel) &&
+                latestModel !== "unknown" &&
+                latestModel !== "ir.ui.menu";
+            if (isValidModel) {
+                const modelChanged = !switchedApp || !beforeModel || latestModel !== beforeModel;
+                if (modelChanged || Date.now() - resolvedAt >= 600) {
+                    break;
+                }
+            }
+            await new Promise((r) => setTimeout(r, 60));
+        }
+
+        if (latestCtx) {
+            this.state.currentContext = latestCtx;
+        }
+        this.state.breadcrumbPath = this._getCurrentBreadcrumbPath();
+
+        const contextModel = latestCtx?.model || this.state.currentContext?.model;
+        if (contextModel) {
+            try {
+                await this.aiWs?.sendLiveContext?.({
+                    context_model: contextModel,
+                    route: this._getLiveContextRoute(),
+                    force: true,
+                });
+            } catch (_) {}
+        }
+
+        return true;
+    }
+
     async _handleExerciseChoice({ exerciseId, answer, action, card }) {
         const normalizedExerciseId = this._normalizeExerciseId(exerciseId);
         if (
@@ -2079,13 +2208,20 @@ export class AiSidebar extends Component {
 
         try {
             const response = await this._sendExerciseChoiceToWs({ exerciseId: normalizedExerciseId, answer, action });
-            this._syncStepTargetFromPayload(response?.raw || response);
+            const rawPayload = response?.raw || response;
+            const redirected =
+                action === "start" ? await this._autoNavigateToExerciseModule(rawPayload) : false;
+            this._syncStepTargetFromPayload(rawPayload);
             const responseText = this._prepareAssistantDisplayText(
                 this._extractResponseText(response),
                 this._extractCopyTargets(response)
             );
 
-            if (responseText && !this._isDuplicateAssistantText(responseText)) {
+            if (
+                !shouldSuppressModuleGatePrompt(rawPayload, redirected) &&
+                responseText &&
+                !this._isDuplicateAssistantText(responseText)
+            ) {
                 // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
@@ -4331,6 +4467,27 @@ export class AiSidebar extends Component {
             );
             const isExerciseCompleted = this._isExerciseCompletedPayload(msg);
 
+            if (
+                msg.type === "instruction_push" &&
+                this._pendingRedirectStepWaiter &&
+                !this._pendingRedirectStepWaiter.settled
+            ) {
+                const expectedExId = this._normalizeExerciseId(
+                    this._pendingRedirectStepWaiter.exerciseId
+                );
+                const incomingExId = this._normalizeExerciseId(
+                    msg.exercise_id || this.state.exerciseId
+                );
+                if (!expectedExId || !incomingExId || expectedExId === incomingExId) {
+                    const waiter = this._pendingRedirectStepWaiter;
+                    this._pendingRedirectStepWaiter = null;
+                    clearTimeout(waiter.timer);
+                    waiter.settled = true;
+                    waiter.resolve({ text: displayText, msg });
+                    return;
+                }
+            }
+
             const allowExercisePromptWhileActive = this._isExerciseResumePromptText(cleaned);
             const exerciseId = this._registerExercisePrompt(this._extractExerciseId(msg), {
                 allowWhileActive: allowExercisePromptWhileActive,
@@ -4701,6 +4858,7 @@ export class AiSidebar extends Component {
         this._lastInjectedTutorAt = 0;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._cancelRedirectStepWaiter();
         this._clearTargetHintState?.();
         this.aiChatStore?.markRead?.();
         this.aiChatStore?.clearTutorPushes?.();
@@ -4756,6 +4914,42 @@ export class AiSidebar extends Component {
         try {
             const response = await this.sendMessage(message);
             const messageText = response.result.response;
+            const rawPayload = response.raw || response;
+            const navTarget = extractNavigateToModule(rawPayload);
+            const rawMode = String(rawPayload?.mode || "").trim().toLowerCase();
+            const navExerciseId = this._normalizeExerciseId(
+                rawPayload?.exercise_id || response.result.exercise_id
+            );
+
+            if (
+                navTarget &&
+                navExerciseId &&
+                (rawMode === "module_gate" || rawMode === "exercise_active")
+            ) {
+                if (!this.state.processActive) {
+                    this.startProcess(navExerciseId);
+                } else {
+                    this.state.exerciseId = navExerciseId;
+                    this.state.showButtons = false;
+                }
+            }
+
+            if (navTarget && rawMode === "module_gate") {
+                const stepPushPromise = this._waitForRedirectInstructionPush(navExerciseId, 2200);
+                const redirected = await this._autoNavigateToExerciseModule(rawPayload);
+                if (shouldSuppressModuleGatePrompt(rawPayload, redirected)) {
+                    const stepPush = await stepPushPromise;
+                    this._cancelRedirectStepWaiter();
+                    if (stepPush?.text) {
+                        return new String(stepPush.text);
+                    }
+                    return new String(_t("Opening the required app..."));
+                }
+                this._cancelRedirectStepWaiter();
+            } else if (navTarget) {
+                await this._autoNavigateToExerciseModule(rawPayload);
+            }
+
             const exercise_id = this._getPromptExerciseId(response.result.exercise_id);
             const isWelcomePrompt = this._isWelcomePromptPayload(response.result || response);
             const isExerciseCompleted = this._isExerciseCompletedPayload(response.raw || response.result || response);
@@ -5052,6 +5246,7 @@ export class AiSidebar extends Component {
         this._timerStartedAtMs = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._cancelRedirectStepWaiter();
         this._clearTargetHintState?.();
         this.state.showButtons = false;
         this.state.processActive = false;
@@ -5079,6 +5274,7 @@ export class AiSidebar extends Component {
         this._timerStartedAtMs = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._cancelRedirectStepWaiter();
         this._clearTargetHintState?.();
         this.state.showButtons = false;
         this.state.processActive = false;

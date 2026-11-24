@@ -1226,6 +1226,37 @@ export const DEFAULT_ODOO_MODULE_OPTIONS = Object.freeze([
     { value: "website", label: "Website (website)" },
 ]);
 
+export const EXERCISE_MODULE_ALIASES = Object.freeze({
+    account: ["account", "account_accountant"],
+    accounting: ["account", "account_accountant"],
+    invoicing: ["account", "account_accountant"],
+    account_accountant: ["account_accountant", "account"],
+    crm: ["crm"],
+    stock: ["stock"],
+    inventory: ["stock"],
+    purchase: ["purchase"],
+    purchases: ["purchase"],
+    sale: ["sale", "sale_management"],
+    sales: ["sale", "sale_management"],
+    sale_management: ["sale_management", "sale"],
+    mrp: ["mrp"],
+    manufacturing: ["mrp"],
+    project: ["project"],
+    projects: ["project"],
+    project_management: ["project"],
+    settings: ["base"],
+    base: ["base"],
+    contacts: ["contacts"],
+    hr: ["hr"],
+    employees: ["hr"],
+    calendar: ["calendar"],
+    mail: ["mail"],
+    discuss: ["mail"],
+    point_of_sale: ["point_of_sale"],
+    pos: ["point_of_sale"],
+    website: ["website"],
+});
+
 export function extractModuleFromApp(app) {
     if (!app || typeof app !== "object") return "";
     const explicit = trimText(app.module || "", 120);
@@ -1243,14 +1274,58 @@ export function extractModuleFromApp(app) {
 }
 
 export function findAppForModule(apps = [], moduleName = "") {
-    const target = trimText(moduleName, 120).toLowerCase();
-    if (!target) return null;
-    for (const app of Array.isArray(apps) ? apps : []) {
-        if (extractModuleFromApp(app).toLowerCase() === target) {
+    const rawTarget = trimText(moduleName, 120).toLowerCase().replaceAll("-", "_");
+    if (!rawTarget) return null;
+    const appList = Array.isArray(apps) ? apps : [];
+
+    for (const app of appList) {
+        if (extractModuleFromApp(app).toLowerCase() === rawTarget) {
             return app;
         }
     }
+
+    const candidates = new Set(EXERCISE_MODULE_ALIASES[rawTarget] || [rawTarget]);
+    if (rawTarget.includes(".")) {
+        const prefix = rawTarget.split(".")[0];
+        if (prefix && !["ir", "res", "web"].includes(prefix)) {
+            for (const candidate of EXERCISE_MODULE_ALIASES[prefix] || [prefix]) {
+                candidates.add(candidate);
+            }
+        }
+    }
+
+    for (const candidate of candidates) {
+        for (const app of appList) {
+            if (extractModuleFromApp(app).toLowerCase() === candidate) {
+                return app;
+            }
+        }
+    }
     return null;
+}
+
+export function extractNavigateToModule(payload) {
+    if (!payload || typeof payload !== "object") return null;
+    const candidates = [
+        payload.navigate_to_module,
+        payload.raw?.navigate_to_module,
+        payload.result?.navigate_to_module,
+        payload.data?.navigate_to_module,
+    ];
+    for (const candidate of candidates) {
+        const cleaned = trimText(candidate || "", 120).toLowerCase();
+        if (cleaned) return cleaned;
+    }
+    return null;
+}
+
+export function shouldSuppressModuleGatePrompt(payload, redirected) {
+    if (!redirected || !payload || typeof payload !== "object") return false;
+    const mode = trimText(
+        payload.mode || payload.raw?.mode || payload.result?.mode || payload.data?.mode || "",
+        64
+    ).toLowerCase();
+    return mode === "module_gate";
 }
 
 export function buildRecorderModuleOptions(apps = []) {
