@@ -3039,7 +3039,7 @@
 #offcanvasAiSidebar .o_ai_rec_feed_list { gap: 0; }
 #offcanvasAiSidebar .o_ai_rec_feed_item {
     border: 0; border-bottom: 1px solid var(--tutor-border); border-radius: 0;
-    padding: 10px 0; background: transparent; box-shadow: none;
+    padding: 10px 6px; background: transparent; box-shadow: none;
 }
 #offcanvasAiSidebar .o_ai_rec_feed_item.is-selected-step,
 #offcanvasAiSidebar .o_ai_rec_feed_item.is-optional-step,
