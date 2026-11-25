@@ -44,6 +44,7 @@ import {
     isRecorderUiElement,
     matchDryRunStepIndex,
     moveStepByOffset,
+    moveStepToIndex,
     normalizeExerciseExplorerItem,
     recomputeOptionalGroups,
     reconcileDryRunAfterStepInsertion,
@@ -371,6 +372,9 @@ export class AiSidebar extends Component {
             recorderInsertMulti: false,
             recorderInsertCapturing: false,
             recorderRecentInsertedStepId: null,
+            recorderDragStepId: null,
+            recorderDragOverStepId: null,
+            recorderDragOverPosition: null,
 
             wsStatus: "unknown",
             showRecorderPanel: false,
@@ -3254,6 +3258,82 @@ export class AiSidebar extends Component {
                 this._emitDryRunState();
             }
         }
+    }
+
+    onRecorderDragStart(stepId, ev) {
+        if (!stepId) return;
+        this.state.recorderDragStepId = stepId;
+        this.state.recorderDragOverStepId = null;
+        this.state.recorderDragOverPosition = null;
+        if (ev?.dataTransfer) {
+            ev.dataTransfer.effectAllowed = "move";
+            try {
+                ev.dataTransfer.setData("text/plain", stepId);
+            } catch {}
+            const cardEl = ev.currentTarget?.closest?.(".o_ai_rec_feed_item");
+            if (cardEl && ev.dataTransfer.setDragImage) {
+                try {
+                    ev.dataTransfer.setDragImage(cardEl, 18, 18);
+                } catch {}
+            }
+        }
+    }
+
+    onRecorderDragOver(stepId, ev) {
+        const dragId = this.state.recorderDragStepId;
+        if (!dragId || !stepId || dragId === stepId) return;
+        ev.preventDefault();
+        if (ev.dataTransfer) {
+            ev.dataTransfer.dropEffect = "move";
+        }
+        const rect = ev.currentTarget?.getBoundingClientRect?.();
+        const pos = rect && ev.clientY > rect.top + rect.height / 2 ? "after" : "before";
+        if (this.state.recorderDragOverStepId !== stepId || this.state.recorderDragOverPosition !== pos) {
+            this.state.recorderDragOverStepId = stepId;
+            this.state.recorderDragOverPosition = pos;
+        }
+    }
+
+    onRecorderDrop(targetStepId, ev) {
+        ev.preventDefault();
+        const draggedId =
+            this.state.recorderDragStepId || ev?.dataTransfer?.getData?.("text/plain") || null;
+        const pos = this.state.recorderDragOverPosition || "before";
+        this.onRecorderDragEnd();
+        if (!draggedId || !targetStepId || draggedId === targetStepId) return;
+
+        const steps = this.state.recorderSteps || [];
+        const fromIdx = steps.findIndex((s) => s?.id === draggedId);
+        const targetIdx = steps.findIndex((s) => s?.id === targetStepId);
+        if (fromIdx < 0 || targetIdx < 0) return;
+
+        let desiredIdx = pos === "after" ? targetIdx + 1 : targetIdx;
+        if (fromIdx < desiredIdx) {
+            desiredIdx -= 1;
+        }
+        const moved = moveStepToIndex(steps, draggedId, desiredIdx);
+        if (!moved.moved) return;
+
+        this.state.recorderSteps = moved.steps;
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+
+        if (this.state.dryRunActive) {
+            const nextDryRun = reconcileDryRunAfterStepMove(
+                { active: true, stepIndex: this.state.dryRunStepIndex },
+                moved.fromIndex,
+                moved.toIndex
+            );
+            if (nextDryRun) {
+                this.state.dryRunStepIndex = nextDryRun.stepIndex;
+                this._emitDryRunState();
+            }
+        }
+    }
+
+    onRecorderDragEnd() {
+        this.state.recorderDragStepId = null;
+        this.state.recorderDragOverStepId = null;
+        this.state.recorderDragOverPosition = null;
     }
 
     async onRecorderOpenInsertSlot(index) {

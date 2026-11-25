@@ -708,6 +708,8 @@
                                             <t t-set="isCurrentDryRun" t-value="this.state.dryRunActive and this.dryRunCurrentStep and this.dryRunCurrentStep.id === step.id"/>
                                             <div class="o_ai_rec_feed_item d-flex flex-column gap-1"
                                                  t-att-data-recorder-step-id="step.id"
+                                                 t-on-dragover="(ev) => this.onRecorderDragOver(step.id, ev)"
+                                                 t-on-drop="(ev) => this.onRecorderDrop(step.id, ev)"
                                                  t-att-class="{
                                                      'is-optional-step': step.is_optional,
                                                      'is-optional-block': !!step.optional_group,
@@ -715,12 +717,25 @@
                                                      'is-selected-step': this.isRecorderStepSelected(step.id),
                                                      'is-dry-run-editing': this.state.dryRunEditStepId === step.id or isCurrentDryRun,
                                                      'is-recently-inserted': this.state.recorderRecentInsertedStepId === step.id,
+                                                     'is-dragging-step': this.state.recorderDragStepId === step.id,
+                                                     'is-drag-over-before': this.state.recorderDragOverStepId === step.id and this.state.recorderDragOverPosition === 'before',
+                                                     'is-drag-over-after': this.state.recorderDragOverStepId === step.id and this.state.recorderDragOverPosition === 'after',
                                                  }">
                                                 <div t-if="isCurrentDryRun" class="o_ai_rec_dry_run_current_pill">
                                                     <span class="o_ai_rec_dry_run_current_dot" aria-hidden="true"/>
                                                     <t t-out="this.translate('Current Dry-Run step')"/>
                                                 </div>
                                                 <div class="o_ai_rec_step_row d-flex gap-1 align-items-center">
+                                                    <button type="button"
+                                                            class="o_ai_rec_drag_handle"
+                                                            draggable="true"
+                                                            t-att-title="this.translate('Drag to reorder step')"
+                                                            t-att-aria-label="this.translate('Drag to reorder step')"
+                                                            t-on-dragstart="(ev) => this.onRecorderDragStart(step.id, ev)"
+                                                            t-on-dragend="this.onRecorderDragEnd"
+                                                            t-on-click.stop.prevent="() => {}">
+                                                        ⋮⋮
+                                                    </button>
                                                     <input type="checkbox"
                                                            class="o_ai_rec_step_checkbox"
                                                            t-att-checked="this.isRecorderStepSelected(step.id)"
@@ -738,22 +753,6 @@
                                                             t-att-title="step.is_optional ? this.translate('Step is optional (click to make required)') : this.translate('Mark step as optional')"
                                                             t-on-click.stop.prevent="() => this.onRecorderToggleStepOptional(step.id)">
                                                         <t t-out="this.translate('Optional')"/>
-                                                    </button>
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-secondary o_ai_rec_icon_btn"
-                                                            t-att-disabled="step_index === 0"
-                                                            t-att-title="this.translate('Move step up')"
-                                                            t-att-aria-label="this.translate('Move step up')"
-                                                            t-on-click.stop.prevent="() => this.onRecorderMoveStep(step.id, -1)">
-                                                        ↑
-                                                    </button>
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-secondary o_ai_rec_icon_btn"
-                                                            t-att-disabled="step_index === (this.state.recorderSteps || []).length - 1"
-                                                            t-att-title="this.translate('Move step down')"
-                                                            t-att-aria-label="this.translate('Move step down')"
-                                                            t-on-click.stop.prevent="() => this.onRecorderMoveStep(step.id, 1)">
-                                                        ↓
                                                     </button>
                                                     <button t-if="this.state.recorderStatus !== 'idle'"
                                                             type="button"

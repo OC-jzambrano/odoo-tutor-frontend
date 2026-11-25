@@ -3122,6 +3122,47 @@
     min-width: 24px;
 }
 
+#offcanvasAiSidebar .o_ai_rec_drag_handle {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--tutor-text-muted);
+    font-size: 13px;
+    line-height: 1;
+    letter-spacing: -1px;
+    cursor: grab;
+    user-select: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+#offcanvasAiSidebar .o_ai_rec_drag_handle:hover {
+    background: rgba(113, 75, 103, 0.12);
+    color: var(--tutor-accent-strong);
+}
+
+#offcanvasAiSidebar .o_ai_rec_drag_handle:active {
+    cursor: grabbing;
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-dragging-step {
+    opacity: 0.45;
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-drag-over-before {
+    box-shadow: inset 0 2px 0 0 var(--tutor-accent);
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-drag-over-after {
+    box-shadow: inset 0 -2px 0 0 var(--tutor-accent);
+}
+
 #offcanvasAiSidebar .o_ai_rec_insert_after_btn.is-active {
     background: var(--tutor-accent);
     border-color: var(--tutor-accent);

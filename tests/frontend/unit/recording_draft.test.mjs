@@ -36,6 +36,7 @@ import {
     loadPersistedRecordingSession,
     matchDryRunStepIndex,
     moveStepByOffset,
+    moveStepToIndex,
     normalizeExerciseExplorerItem,
     readElementCheckedState,
     recomputeOptionalGroups,
@@ -1311,6 +1312,12 @@ describe("recording_draft helpers", () => {
 
         const afterMove = reconcileDryRunAfterStepMove({ active: true, stepIndex: 1 }, 1, 0);
         expect(afterMove.stepIndex).toBe(0);
+
+        const dragged = moveStepToIndex(steps, "s3", 0);
+        expect(dragged.moved).toBe(true);
+        expect(dragged.fromIndex).toBe(2);
+        expect(dragged.toIndex).toBe(0);
+        expect(dragged.steps.map((s) => s.id)).toEqual(["s3", "s1", "s2"]);
     });
 
     it("normalizes, filters, and extracts modules for the Exercises Explorer panel", () => {

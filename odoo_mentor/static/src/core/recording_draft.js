@@ -1078,6 +1078,32 @@ export function moveStepByOffset(steps = [], stepId = null, delta = 0) {
     };
 }
 
+export function moveStepToIndex(steps = [], stepId = null, targetIndex = 0) {
+    const list = Array.isArray(steps) ? steps.slice() : [];
+    if (!stepId || list.length < 2) {
+        return { steps: list, fromIndex: -1, toIndex: -1, moved: false };
+    }
+    const fromIndex = list.findIndex((s) => s?.id === stepId);
+    if (fromIndex < 0) {
+        return { steps: list, fromIndex: -1, toIndex: -1, moved: false };
+    }
+    const rawTarget = Math.floor(Number(targetIndex));
+    const toIndex = Number.isFinite(rawTarget)
+        ? Math.max(0, Math.min(list.length - 1, rawTarget))
+        : fromIndex;
+    if (toIndex === fromIndex) {
+        return { steps: list, fromIndex, toIndex, moved: false };
+    }
+    const [item] = list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, item);
+    return {
+        steps: recomputeOptionalGroups(list),
+        fromIndex,
+        toIndex,
+        moved: true,
+    };
+}
+
 export function captureDeletedStepEntries(steps = [], stepIds = []) {
     const list = Array.isArray(steps) ? steps : [];
     const idSet = new Set((Array.isArray(stepIds) ? stepIds : []).filter(Boolean));
