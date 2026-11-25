@@ -3202,3 +3202,126 @@
     background: rgba(186, 139, 173, 0.24);
     color: #f3d7eb;
 }
+
+/* Exercises Explorer panel */
+#offcanvasAiSidebar .o_ai_rec_explorer {
+    min-width: 0;
+}
+
+#offcanvasAiSidebar .o_ai_rec_filter_pill {
+    border: 1px solid var(--tutor-border);
+    background: transparent;
+    color: var(--tutor-text-muted);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#offcanvasAiSidebar .o_ai_rec_filter_pill.is-active {
+    background: var(--tutor-accent);
+    border-color: var(--tutor-accent);
+    color: #fff;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_card {
+    border: 1px solid var(--tutor-border);
+    border-radius: 10px;
+    padding: 10px;
+    background: var(--tutor-surface-subtle);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_card.is-selected {
+    border-color: var(--tutor-accent);
+    box-shadow: 0 0 0 1px rgba(113, 75, 103, 0.18);
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_card_main {
+    cursor: pointer;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--tutor-text);
+    margin-bottom: 4px;
+    overflow-wrap: anywhere;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_chip {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    background: rgba(100, 116, 139, 0.12);
+    color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_status {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_status.is-published {
+    background: rgba(16, 185, 129, 0.14);
+    color: #047857;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_status.is-pending_review {
+    background: rgba(245, 158, 11, 0.16);
+    color: #b45309;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_status.is-rejected {
+    background: rgba(239, 68, 68, 0.14);
+    color: #b91c1c;
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_status.is-draft {
+    background: rgba(100, 116, 139, 0.14);
+    color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_delete_confirm {
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+#offcanvasAiSidebar .o_ai_rec_ex_detail {
+    border-top: 1px solid var(--tutor-border);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_ex_card {
+    background: rgba(15, 23, 42, 0.45);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_ex_status.is-published {
+    background: rgba(16, 185, 129, 0.22);
+    color: #6ee7b7;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_ex_status.is-pending_review {
+    background: rgba(245, 158, 11, 0.22);
+    color: #fcd34d;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_ex_status.is-rejected {
+    background: rgba(239, 68, 68, 0.22);
+    color: #fca5a5;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_explorer .form-control,
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_explorer .form-select {
+    background-color: rgba(15, 23, 42, 0.62);
+    border-color: rgba(148, 163, 184, 0.22);
+    color: var(--tutor-text);
+}

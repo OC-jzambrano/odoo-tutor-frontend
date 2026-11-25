@@ -11,7 +11,7 @@
                     'is-open': this.state.chatOpen,
                     'is-recording': this.state.recorderStatus === 'recording',
                     'is-recording-paused': this.state.recorderStatus === 'paused',
-                    'has-preview': (this.dryRunBubbleVisible || (this.state.previewVisible &amp;&amp; this.state.previewMessage)) &amp;&amp; !this.state.chatOpen &amp;&amp; !this.state.dragging,
+                    'has-preview': (this.dryRunBubbleVisible || this.recordingBubbleVisible || (this.state.recorderStatus !== 'recording' &amp;&amp; this.state.previewVisible &amp;&amp; this.state.previewMessage)) &amp;&amp; !this.state.chatOpen &amp;&amp; !this.state.dragging,
                     'has-exercise-cta': this.launcherExerciseCtaVisible,
                     'has-attention': this.launcherHasAttention,
                     'is-fresh': this.isPreviewFresh,
@@ -191,8 +191,44 @@
                         <div class="ai-owl-preview-tail"/>
                     </div>
                 </t>
-                <t t-elif="this.state.previewVisible and this.state.previewMessage and !this.state.chatOpen and !this.state.dragging">
+                <t t-elif="this.recordingBubbleVisible">
+                    <div class="ai-owl-preview ai-owl-recording-bubble"
+                         role="button"
+                         tabindex="0"
+                         data-ai-tutor-ignore-event="true"
+                         t-on-click.stop.prevent="this.toggleChat">
+                        <button
+                            type="button"
+                            class="ai-owl-preview-close"
+                            t-on-mousedown.stop.prevent="this.noop"
+                            t-on-touchstart.stop.prevent="this.noop"
+                            t-on-click.stop.prevent="this.closeRecordingBubble"
+                            t-att-aria-label="this.translate('Hide recording banner')"
+                        >×</button>
+                        <div class="ai-owl-recording-header">
+                            <span class="ai-owl-recording-badge">
+                                <span class="ai-owl-recording-dot" aria-hidden="true"/>
+                                <t t-out="this.translate('Recording exercise')"/>
+                            </span>
+                            <span t-if="this.state.recorderStepCount > 0" class="ai-owl-recording-count">
+                                <t t-out="this.state.recorderStepCount"/>
+                                <t t-if="this.state.recorderStepCount === 1" t-out="' ' + this.translate('step')"/>
+                                <t t-else="" t-out="' ' + this.translate('steps')"/>
+                            </span>
+                        </div>
+                        <div class="ai-owl-preview-text">
+                            <t t-if="this.state.recorderTitle">
+                                <strong t-out="this.state.recorderTitle"/>
+                                <t t-out="' — ' + this.translate('Perform the steps in Odoo. Click the owl when ready to pause or finish.')"/>
+                            </t>
+                            <t t-else="" t-out="this.translate('You are recording an exercise. Perform the steps in Odoo, then click the owl to pause or finish.')"/>
+                        </div>
+                        <div class="ai-owl-preview-tail"/>
+                    </div>
+                </t>
+                <t t-elif="this.state.recorderStatus !== 'recording' and this.state.previewVisible and this.state.previewMessage and !this.state.chatOpen and !this.state.dragging">
                     <div class="ai-owl-preview"
+                         t-att-class="{ 'is-completed': this.state.previewCompleted }"
                          role="button"
                          tabindex="0"
                          data-ai-tutor-ignore-event="true"
@@ -207,6 +243,10 @@
                             t-on-click.stop.prevent="this.closePreview"
                             t-att-aria-label="this.translate('Close preview')"
                         >×</button>
+                        <div t-if="this.state.previewCompleted" class="ai-owl-preview-completed-badge">
+                            <span class="ai-owl-preview-completed-icon" aria-hidden="true">✓</span>
+                            <t t-out="this.translate('Exercise completed')"/>
+                        </div>
                         <div class="ai-owl-preview-time">
                             <t t-out="this.previewTimeAgo"/>
                         </div>

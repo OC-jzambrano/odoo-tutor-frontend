@@ -1999,3 +1999,94 @@ export function loadPersistedRecordingSession(
         return null;
     }
 }
+
+export function normalizeExerciseExplorerItem(raw = {}, { source = "exercise" } = {}) {
+    if (!raw || typeof raw !== "object") return null;
+    const draft = raw.draft && typeof raw.draft === "object" ? raw.draft : raw;
+    const id = trimText(
+        raw.exercise_id || raw.id || raw.recording_id || draft.recording_id || "",
+        128
+    );
+    const title = trimText(raw.title || draft.title || "", 240);
+    if (!id || !title) return null;
+
+    const module = trimText(raw.module || draft.module || "", 120) || "general";
+    const rawStatus = trimText(
+        raw.status || raw.review_status || (source === "exercise" ? "published" : "draft"),
+        48
+    ).toLowerCase();
+    const status =
+        rawStatus === "approved" || rawStatus === "published"
+            ? "published"
+            : rawStatus === "pending_review"
+              ? "pending_review"
+              : rawStatus === "rejected"
+                ? "rejected"
+                : "draft";
+
+    const steps = Array.isArray(raw.steps)
+        ? raw.steps
+        : Array.isArray(draft.steps)
+          ? draft.steps
+          : [];
+    const stepCount = Number.isFinite(Number(raw.step_count))
+        ? Math.max(0, Math.floor(Number(raw.step_count)))
+        : steps.length;
+    const optionalCount = steps.filter((s) => s?.is_optional === true).length;
+    const version = trimText(raw.odoo_version || raw.version || draft.odoo_version || "", 32) || null;
+    const authorId = raw.author_id ?? draft.author_id ?? null;
+    const updatedAt = trimText(raw.updated_at || raw.created_at || "", 64) || null;
+
+    return {
+        id,
+        recordingId: trimText(raw.recording_id || draft.recording_id || id, 128),
+        title,
+        module,
+        status,
+        version,
+        stepCount,
+        optionalCount,
+        authorId,
+        updatedAt,
+        steps,
+        source,
+    };
+}
+
+export function filterExercisesForExplorer(
+    items = [],
+    { query = "", module = "", status = "" } = {}
+) {
+    const list = Array.isArray(items) ? items : [];
+    const cleanQuery = trimText(query || "", 160).toLowerCase();
+    const cleanModule = trimText(module || "", 120).toLowerCase();
+    const cleanStatus = trimText(status || "", 48).toLowerCase();
+
+    return list.filter((item) => {
+        if (!item) return false;
+        if (cleanModule && (item.module || "").toLowerCase() !== cleanModule) {
+            return false;
+        }
+        if (cleanStatus && (item.status || "").toLowerCase() !== cleanStatus) {
+            return false;
+        }
+        if (!cleanQuery) return true;
+        if ((item.title || "").toLowerCase().includes(cleanQuery)) return true;
+        if ((item.module || "").toLowerCase().includes(cleanQuery)) return true;
+        if (Array.isArray(item.steps)) {
+            return item.steps.some((step) =>
+                (step?.instruction || "").toLowerCase().includes(cleanQuery)
+            );
+        }
+        return false;
+    });
+}
+
+export function extractExerciseExplorerModules(items = []) {
+    const modules = new Set();
+    for (const item of Array.isArray(items) ? items : []) {
+        const mod = trimText(item?.module || "", 120);
+        if (mod) modules.add(mod);
+    }
+    return Array.from(modules).sort((a, b) => a.localeCompare(b));
+}

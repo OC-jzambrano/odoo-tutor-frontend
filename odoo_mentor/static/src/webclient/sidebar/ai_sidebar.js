@@ -31,8 +31,10 @@ import {
     captureDeletedStepEntries,
     checkDryRunToggleAlreadySatisfied,
     detectOptionalBlockSuggestions,
+    extractExerciseExplorerModules,
     extractModuleFromApp,
     extractNavigateToModule,
+    filterExercisesForExplorer,
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
@@ -42,6 +44,7 @@ import {
     isRecorderUiElement,
     matchDryRunStepIndex,
     moveStepByOffset,
+    normalizeExerciseExplorerItem,
     recomputeOptionalGroups,
     reconcileDryRunAfterStepInsertion,
     reconcileDryRunAfterStepMove,
@@ -373,12 +376,25 @@ export class AiSidebar extends Component {
             showRecorderPanel: false,
             canSeeRecorderToggle: false,
             canReviewRecordings: false,
+            recorderTab: "record", // record | review | exercises
             recorderReviewTab: false,
             reviewQueue: [],
             reviewLoading: false,
             reviewDetail: null,
             reviewComment: "",
             reviewPublishFailure: null,
+
+            explorerExercises: [],
+            explorerLoading: false,
+            explorerUsingFallback: false,
+            explorerQuery: "",
+            explorerModuleFilter: "",
+            explorerStatusFilter: "",
+            explorerSelectedId: null,
+            explorerDetail: null,
+            explorerDetailLoading: false,
+            explorerConfirmDeleteId: null,
+            explorerDeletingId: null,
 
             hintMessage: "",
             hintTimestamp: null,
@@ -2127,44 +2143,30 @@ export class AiSidebar extends Component {
         const beforeCtx = this.contextService?.getContext?.() || this.state.currentContext || {};
         const beforeModel = String(beforeCtx?.model || "").trim().toLowerCase();
         const isHomeMenuOpen = !!document.querySelector(".o_home_menu, .o_apps");
-        const inSharedSettingsForOtherApp =
-            beforeModel === "res.config.settings" && targetModule !== "base";
 
         let navigated = false;
         let switchedApp = false;
 
         if (targetApp && this.menuService?.selectMenu) {
             switchedApp = currentApp?.id !== targetApp.id;
-            const needsMenuSelection =
-                switchedApp ||
-                isHomeMenuOpen ||
-                inSharedSettingsForOtherApp ||
-                !beforeModel ||
-                beforeModel === "unknown" ||
-                beforeModel === "ir.ui.menu";
-            if (needsMenuSelection) {
-                try {
-                    await this.menuService.selectMenu(targetApp);
-                    navigated = true;
-                } catch (e) {
-                    console.warn("[AiSidebar] auto module selectMenu failed:", e);
-                    return false;
-                }
-            } else {
+            // Always select the target app's root menu so exercises start
+            // consistently from the app's home view (even when the user is
+            // already inside a record form or submenu of the same app).
+            try {
+                await this.menuService.selectMenu(targetApp);
                 navigated = true;
+            } catch (e) {
+                console.warn("[AiSidebar] auto module selectMenu failed:", e);
+                return false;
             }
         } else if (targetModule === "base" && this.actionService?.doAction) {
-            if (beforeModel !== "res.config.settings" || isHomeMenuOpen) {
-                try {
-                    await this.actionService.doAction("base.action_general_configuration");
-                    switchedApp = true;
-                    navigated = true;
-                } catch (e) {
-                    console.warn("[AiSidebar] auto Settings navigation failed:", e);
-                    return false;
-                }
-            } else {
+            try {
+                await this.actionService.doAction("base.action_general_configuration");
+                switchedApp = beforeModel !== "res.config.settings" || isHomeMenuOpen;
                 navigated = true;
+            } catch (e) {
+                console.warn("[AiSidebar] auto Settings navigation failed:", e);
+                return false;
             }
         }
 
@@ -2805,12 +2807,15 @@ export class AiSidebar extends Component {
         const apps = this.menuService?.getApps?.() || [];
         const selectedApp = findAppForModule(apps, mod);
         if (selectedApp && this.menuService?.selectMenu) {
-            const currentAppId = this.menuService?.getCurrentApp?.()?.id;
-            if (currentAppId !== selectedApp.id) {
-                try {
-                    await this.menuService.selectMenu(selectedApp);
-                } catch {}
-            }
+            // Always navigate to the selected app's home view before starting
+            // recording so every recorded exercise begins from a consistent screen.
+            try {
+                await this.menuService.selectMenu(selectedApp);
+            } catch {}
+        } else if (mod === "base" && this.actionService?.doAction) {
+            try {
+                await this.actionService.doAction("base.action_general_configuration");
+            } catch {}
         }
 
         await this.hideSidebar();
@@ -4063,27 +4068,35 @@ export class AiSidebar extends Component {
 
         this.state.recorderSaving = true;
         try {
-            let result = await rpc("/ai_chat/recording_drafts/save", { draft });
+            let result;
             let supersededOldDraft = null;
-            if (result?.status === 409) {
-                const previousRecordingId = draft.recording_id;
-                const retryDraft = buildRecordingDraftPayload({
-                    recordingId:
-                        crypto?.randomUUID?.() ||
-                        `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
-                    title: this.state.recorderTitle,
-                    module: this.state.recorderModule,
-                    steps: this.state.recorderSteps,
+            if (this._editingExerciseId) {
+                result = await rpc("/ai_chat/exercises/update", {
+                    exercise_id: this._editingExerciseId,
+                    draft,
                 });
-                result = await rpc("/ai_chat/recording_drafts/save", { draft: retryDraft });
-                if (!result?.error && previousRecordingId) {
-                    supersededOldDraft = {
-                        recordingId: previousRecordingId,
-                        authorId:
-                            this._editingReviewDraft?.recordingId === previousRecordingId
-                                ? this._editingReviewDraft.authorId
-                                : null,
-                    };
+            } else {
+                result = await rpc("/ai_chat/recording_drafts/save", { draft });
+                if (result?.status === 409) {
+                    const previousRecordingId = draft.recording_id;
+                    const retryDraft = buildRecordingDraftPayload({
+                        recordingId:
+                            crypto?.randomUUID?.() ||
+                            `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+                        title: this.state.recorderTitle,
+                        module: this.state.recorderModule,
+                        steps: this.state.recorderSteps,
+                    });
+                    result = await rpc("/ai_chat/recording_drafts/save", { draft: retryDraft });
+                    if (!result?.error && previousRecordingId) {
+                        supersededOldDraft = {
+                            recordingId: previousRecordingId,
+                            authorId:
+                                this._editingReviewDraft?.recordingId === previousRecordingId
+                                    ? this._editingReviewDraft.authorId
+                                    : null,
+                        };
+                    }
                 }
             }
             if (result?.error) {
@@ -4100,6 +4113,7 @@ export class AiSidebar extends Component {
                     });
                 } catch {}
             }
+            this._editingExerciseId = null;
             this._editingReviewDraft = null;
             const strippedFields = Array.isArray(result?.stripped_fields)
                 ? result.stripped_fields
@@ -4144,10 +4158,242 @@ export class AiSidebar extends Component {
     }
 
     async toggleRecorderReviewTab(showReview) {
-        if (!this.state.canReviewRecordings) return;
-        this.state.recorderReviewTab = !!showReview;
-        if (this.state.recorderReviewTab) {
+        await this.setRecorderTab(showReview ? "review" : "record");
+    }
+
+    async setRecorderTab(tab) {
+        if (!this.state.canSeeRecorderToggle) return;
+        const target =
+            tab === "review" && this.state.canReviewRecordings
+                ? "review"
+                : tab === "exercises"
+                  ? "exercises"
+                  : "record";
+        this.state.recorderTab = target;
+        this.state.recorderReviewTab = target === "review";
+        if (target === "review") {
             await this.loadReviewQueue();
+        } else if (target === "exercises") {
+            await this.loadExplorerExercises();
+        }
+    }
+
+    get explorerModules() {
+        return extractExerciseExplorerModules(this.state.explorerExercises || []);
+    }
+
+    get filteredExplorerExercises() {
+        return filterExercisesForExplorer(this.state.explorerExercises || [], {
+            query: this.state.explorerQuery,
+            module: this.state.explorerModuleFilter,
+            status: this.state.explorerStatusFilter,
+        });
+    }
+
+    async loadExplorerExercises() {
+        if (!this.state.canSeeRecorderToggle) return;
+        this.state.explorerLoading = true;
+        this.state.explorerConfirmDeleteId = null;
+        try {
+            const result = await rpc("/ai_chat/exercises/list", {});
+            if (result?.ok) {
+                const rawItems = Array.isArray(result?.data?.items)
+                    ? result.data.items
+                    : Array.isArray(result?.data)
+                      ? result.data
+                      : [];
+                this.state.explorerExercises = rawItems
+                    .map((item) => normalizeExerciseExplorerItem(item, { source: "exercise" }))
+                    .filter(Boolean);
+                this.state.explorerUsingFallback = false;
+                return;
+            }
+
+            // Graceful fallback while backend /exercises endpoint is not deployed yet:
+            // list the creator's own drafts (+ pending review queue for reviewers/admins).
+            const fallbackItems = [];
+            const seen = new Set();
+            const addUnique = (raw, source) => {
+                const norm = normalizeExerciseExplorerItem(raw, { source });
+                if (norm && !seen.has(norm.id)) {
+                    seen.add(norm.id);
+                    fallbackItems.push(norm);
+                }
+            };
+            const ownDrafts = await rpc("/ai_chat/recording_drafts/list", {});
+            for (const item of ownDrafts?.data?.items || []) {
+                addUnique(item, "draft");
+            }
+            if (this.state.canReviewRecordings) {
+                const reviewDrafts = await rpc("/ai_chat/recording_drafts/review_list", {});
+                for (const item of reviewDrafts?.data?.items || []) {
+                    addUnique(item, "draft");
+                }
+            }
+            this.state.explorerExercises = fallbackItems;
+            this.state.explorerUsingFallback = true;
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not load exercises."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.explorerLoading = false;
+        }
+    }
+
+    async inspectExplorerExercise(item) {
+        if (!item?.id) return;
+        if (this.state.explorerSelectedId === item.id && this.state.explorerDetail) {
+            this.state.explorerSelectedId = null;
+            this.state.explorerDetail = null;
+            this.state.explorerConfirmDeleteId = null;
+            return;
+        }
+        this.state.explorerSelectedId = item.id;
+        this.state.explorerConfirmDeleteId = null;
+        this.state.explorerDetailLoading = true;
+        try {
+            if (item.source === "exercise" && !this.state.explorerUsingFallback) {
+                const result = await rpc("/ai_chat/exercises/detail", { exercise_id: item.id });
+                if (result?.ok && result.data) {
+                    const norm = normalizeExerciseExplorerItem(result.data, { source: "exercise" });
+                    this.state.explorerDetail = norm || item;
+                    return;
+                }
+            } else if (this.state.canReviewRecordings && item.recordingId) {
+                const result = await rpc("/ai_chat/recording_drafts/review_detail", {
+                    recording_id: item.recordingId,
+                    author_id: item.authorId,
+                });
+                if (result?.ok && result.data) {
+                    const norm = normalizeExerciseExplorerItem(result.data, { source: "draft" });
+                    this.state.explorerDetail = norm || item;
+                    return;
+                }
+            }
+            this.state.explorerDetail = item;
+        } catch {
+            this.state.explorerDetail = item;
+        } finally {
+            this.state.explorerDetailLoading = false;
+        }
+    }
+
+    async editExplorerExercise(item = null) {
+        const target = item || this.state.explorerDetail;
+        if (!this.state.canSeeRecorderToggle || !target) return;
+
+        let fullItem = target;
+        if (!Array.isArray(fullItem.steps) || !fullItem.steps.length) {
+            await this.inspectExplorerExercise(target);
+            fullItem = this.state.explorerDetail || target;
+        }
+
+        const hydrated = hydrateDraftForEditing({
+            recording_id: fullItem.recordingId || fullItem.id,
+            title: fullItem.title,
+            module: fullItem.module,
+            steps: fullItem.steps || [],
+        });
+        if (!hydrated) return;
+
+        this.onRecorderStopDryRun();
+        this._polishRequestSeq += 1;
+        this.state.recorderPolishing = false;
+        this.state.recorderPrePolishSnapshot = null;
+        this._editedDuringPolishStepIds = new Set();
+
+        const apps = this.menuService?.getApps?.() || [];
+        const selectedApp = findAppForModule(apps, hydrated.module);
+
+        this.aiRecorder.loadDraftSession({
+            sessionId: hydrated.recordingId,
+            title: hydrated.title,
+            module: hydrated.module,
+            moduleRootXmlid: selectedApp?.xmlid || null,
+            steps: hydrated.steps,
+        });
+
+        this.state.recorderStatus = "paused";
+        this.state.recorderSessionId = hydrated.recordingId;
+        this._editingExerciseId =
+            fullItem.source === "exercise" && !this.state.explorerUsingFallback ? fullItem.id : null;
+        this._editingReviewDraft =
+            fullItem.source === "draft"
+                ? { recordingId: hydrated.recordingId, authorId: fullItem.authorId || null }
+                : null;
+        this.state.recorderTitle = hydrated.title;
+        this.state.recorderModule = hydrated.module;
+        this.state.recorderSteps = hydrated.steps;
+        this.state.selectedRecorderStepIds = [];
+        this._lastSelectedRecorderStepId = null;
+        this.state.recorderUndoStack = [];
+        this.state.recorderInsertAt = null;
+        this.state.recorderInsertCapturing = false;
+        this.state.recorderRecentInsertedStepId = null;
+        this.state.dismissedSuspectKeys = [];
+        this.state.dismissedBlockSuggestionIds = [];
+        this.state.recorderStepIndex = hydrated.steps.length;
+        this.state.recorderPicked = null;
+        this.state.recorderNote = "";
+        this.state.recorderFeed = [];
+        this.state.recorderTab = "record";
+        this.state.recorderReviewTab = false;
+
+        this.notification.add(
+            _t("Loaded exercise into Recorder. Edit steps and save to update it."),
+            { type: "info" }
+        );
+    }
+
+    onExplorerRequestDelete(exerciseId) {
+        if (!exerciseId) return;
+        this.state.explorerConfirmDeleteId =
+            this.state.explorerConfirmDeleteId === exerciseId ? null : exerciseId;
+    }
+
+    async onExplorerConfirmDelete(item) {
+        if (!item?.id || this.state.explorerDeletingId) return;
+        this.state.explorerDeletingId = item.id;
+        try {
+            let result;
+            if (item.source === "exercise" && !this.state.explorerUsingFallback) {
+                result = await rpc("/ai_chat/exercises/delete", { exercise_id: item.id });
+            } else if (this.state.canReviewRecordings && item.recordingId) {
+                result = await rpc("/ai_chat/recording_drafts/review_decision", {
+                    recording_id: item.recordingId,
+                    decision: "rejected",
+                    comment: "Deleted from Exercises panel",
+                    author_id: item.authorId,
+                });
+            } else {
+                this.notification.add(
+                    _t("Delete requires the backend /exercises endpoint or reviewer permission."),
+                    { type: "warning" }
+                );
+                return;
+            }
+            if (result?.error) {
+                this.notification.add(result.error, { type: "danger" });
+                return;
+            }
+            this.state.explorerExercises = (this.state.explorerExercises || []).filter(
+                (ex) => ex.id !== item.id
+            );
+            if (this.state.explorerSelectedId === item.id) {
+                this.state.explorerSelectedId = null;
+                this.state.explorerDetail = null;
+            }
+            this.state.explorerConfirmDeleteId = null;
+            this.notification.add(_t("Exercise deleted."), { type: "success" });
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not delete exercise."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.explorerDeletingId = null;
         }
     }
 
@@ -4331,6 +4577,7 @@ export class AiSidebar extends Component {
         this.state.recorderPicked = null;
         this.state.recorderNote = "";
         this.state.recorderFeed = [];
+        this.state.recorderTab = "record";
         this.state.recorderReviewTab = false;
 
         this.notification.add(
@@ -4923,7 +5170,10 @@ export class AiSidebar extends Component {
             }
 
             if (isExerciseCompleted) {
-                this.completeProcess();
+                this.completeProcess({
+                    preservePreview: true,
+                    completedMessage: cleaned || "",
+                });
             }
 
             const normalized = normalizeAssistantTextForCompare(cleaned);
@@ -5401,7 +5651,10 @@ export class AiSidebar extends Component {
             }
 
             if (isExerciseCompleted) {
-                this.completeProcess();
+                this.completeProcess({
+                    preservePreview: true,
+                    completedMessage: messageText || "",
+                });
             }
 
             return new String(messageText);
@@ -5690,7 +5943,7 @@ export class AiSidebar extends Component {
         window.dispatchEvent(new CustomEvent("ai:preview_reset"));
     }
 
-    completeProcess() {
+    completeProcess({ preservePreview = false, completedMessage = "" } = {}) {
         if (this.state.timerInterval) {
             clearInterval(this.state.timerInterval);
         }
@@ -5711,10 +5964,22 @@ export class AiSidebar extends Component {
         this.state.timerValue = "00:00:00";
         this.state.exerciseId = null;
         this._syncComposerDisabledState();
+        if (preservePreview) {
+            window.dispatchEvent(
+                new CustomEvent("ai:exercise_completed_preview", {
+                    detail: {
+                        message: completedMessage || _t("Exercise completed! Great job."),
+                        timestamp: new Date().toISOString(),
+                    },
+                })
+            );
+            return;
+        }
         window.__AI_TUTOR_OWL_PREVIEW__ = {
             message: "",
             timestamp: "",
             visible: false,
+            completed: false,
         };
         window.dispatchEvent(new CustomEvent("ai:preview_reset"));
     }

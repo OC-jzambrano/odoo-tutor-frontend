@@ -101,26 +101,31 @@
                                 </div>
 
                                 <div class="o_ai_recorder_right">
-                                    <div t-if="this.state.canReviewRecordings" class="o_ai_recorder_tabs">
+                                    <div t-if="this.state.canSeeRecorderToggle" class="o_ai_recorder_tabs">
                                         <button type="button"
                                                 class="btn btn-sm"
-                                                t-att-class="!this.state.recorderReviewTab ? 'btn-dark' : 'btn-outline-secondary'"
-                                                t-on-click.stop.prevent="() => this.toggleRecorderReviewTab(false)">
+                                                t-att-class="this.state.recorderTab === 'record' ? 'btn-dark' : 'btn-outline-secondary'"
+                                                t-on-click.stop.prevent="() => this.setRecorderTab('record')">
                                             <t t-out="this.translate('Record')"/>
                                         </button>
-                                        <button type="button"
+                                        <button t-if="this.state.canReviewRecordings"
+                                                type="button"
                                                 class="btn btn-sm"
-                                                t-att-class="this.state.recorderReviewTab ? 'btn-dark' : 'btn-outline-secondary'"
-                                                t-on-click.stop.prevent="() => this.toggleRecorderReviewTab(true)">
+                                                t-att-class="this.state.recorderTab === 'review' ? 'btn-dark' : 'btn-outline-secondary'"
+                                                t-on-click.stop.prevent="() => this.setRecorderTab('review')">
                                             <t t-out="this.translate('Review')"/>
                                         </button>
+                                        <button type="button"
+                                                class="btn btn-sm"
+                                                t-att-class="this.state.recorderTab === 'exercises' ? 'btn-dark' : 'btn-outline-secondary'"
+                                                t-on-click.stop.prevent="() => this.setRecorderTab('exercises')">
+                                            <t t-out="this.translate('Exercises')"/>
+                                        </button>
                                     </div>
-
-
                                 </div>
                             </div>
 
-                            <t t-if="this.state.recorderReviewTab and this.state.canReviewRecordings">
+                            <t t-if="this.state.recorderTab === 'review' and this.state.canReviewRecordings">
                                 <div class="o_ai_rec_review d-flex flex-column gap-2">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <strong t-out="this.translate('Pending Drafts')"/>
@@ -221,6 +226,137 @@
                                                 <t t-out="this.translate('Reject')"/>
                                             </button>
                                         </div>
+                                    </div>
+                                </div>
+                            </t>
+
+                            <t t-elif="this.state.recorderTab === 'exercises' and this.state.canSeeRecorderToggle">
+                                <div class="o_ai_rec_explorer d-flex flex-column gap-2">
+                                    <div class="d-flex justify-content-between align-items-center gap-2">
+                                        <strong t-out="this.translate('Exercises')"/>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                t-att-disabled="this.state.explorerLoading"
+                                                t-on-click.stop.prevent="this.loadExplorerExercises">
+                                            <t t-if="this.state.explorerLoading" t-out="this.translate('Loading...')"/>
+                                            <t t-else="" t-out="this.translate('Refresh')"/>
+                                        </button>
+                                    </div>
+
+                                    <div class="o_ai_rec_explorer_filters d-flex flex-column gap-2">
+                                        <input type="text"
+                                               class="form-control form-control-sm"
+                                               t-att-value="this.state.explorerQuery"
+                                               t-on-input="(ev) => this.state.explorerQuery = ev.target.value"
+                                               t-att-placeholder="this.translate('Search by title, module, or step...')"/>
+
+                                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                                            <button type="button"
+                                                    class="o_ai_rec_filter_pill"
+                                                    t-att-class="{ 'is-active': !this.state.explorerModuleFilter }"
+                                                    t-on-click.stop.prevent="() => this.state.explorerModuleFilter = ''">
+                                                <t t-out="this.translate('All apps')"/>
+                                            </button>
+                                            <t t-foreach="this.explorerModules" t-as="mod" t-key="mod">
+                                                <button type="button"
+                                                        class="o_ai_rec_filter_pill"
+                                                        t-att-class="{ 'is-active': this.state.explorerModuleFilter === mod }"
+                                                        t-on-click.stop.prevent="() => this.state.explorerModuleFilter = (this.state.explorerModuleFilter === mod ? '' : mod)">
+                                                    <t t-out="mod"/>
+                                                </button>
+                                            </t>
+                                        </div>
+
+                                        <select class="form-select form-select-sm"
+                                                t-att-value="this.state.explorerStatusFilter"
+                                                t-on-change="(ev) => this.state.explorerStatusFilter = ev.target.value">
+                                            <option value="" t-out="this.translate('All statuses')"/>
+                                            <option value="published" t-out="this.translate('Published')"/>
+                                            <option value="pending_review" t-out="this.translate('Pending review')"/>
+                                            <option value="draft" t-out="this.translate('Draft')"/>
+                                            <option value="rejected" t-out="this.translate('Rejected')"/>
+                                        </select>
+                                    </div>
+
+                                    <div t-if="!this.filteredExplorerExercises.length and !this.state.explorerLoading"
+                                         class="text-muted small py-2">
+                                        <t t-out="this.translate('No matching exercises found.')"/>
+                                    </div>
+
+                                    <div class="o_ai_rec_explorer_list d-flex flex-column gap-2"
+                                         t-if="this.filteredExplorerExercises.length">
+                                        <t t-foreach="this.filteredExplorerExercises" t-as="ex" t-key="ex.id">
+                                            <div class="o_ai_rec_ex_card"
+                                                 t-att-class="{ 'is-selected': this.state.explorerSelectedId === ex.id }">
+                                                <div class="o_ai_rec_ex_card_main"
+                                                     role="button"
+                                                     tabindex="0"
+                                                     t-on-click.stop.prevent="() => this.inspectExplorerExercise(ex)">
+                                                    <div class="o_ai_rec_ex_title" t-out="ex.title"/>
+                                                    <div class="o_ai_rec_ex_meta d-flex align-items-center gap-1 flex-wrap">
+                                                        <span class="o_ai_rec_ex_chip" t-out="ex.module"/>
+                                                        <span t-if="ex.version" class="o_ai_rec_ex_chip" t-out="'v' + ex.version"/>
+                                                        <span class="o_ai_rec_ex_status"
+                                                              t-att-class="'is-' + ex.status"
+                                                              t-out="ex.status === 'published' ? this.translate('Published') : (ex.status === 'pending_review' ? this.translate('Pending') : (ex.status === 'rejected' ? this.translate('Rejected') : this.translate('Draft')))"/>
+                                                        <span class="small text-muted ms-auto">
+                                                            <t t-out="ex.stepCount + ' ' + this.translate('steps')"/>
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div class="o_ai_rec_ex_actions d-flex align-items-center gap-1 flex-wrap mt-2">
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                            t-on-click.stop.prevent="() => this.editExplorerExercise(ex)">
+                                                        <t t-out="this.translate('Edit')"/>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-danger py-0 px-2"
+                                                            t-att-disabled="this.state.explorerDeletingId === ex.id"
+                                                            t-on-click.stop.prevent="() => this.onExplorerRequestDelete(ex.id)">
+                                                        <t t-out="this.translate('Delete')"/>
+                                                    </button>
+                                                </div>
+
+                                                <div t-if="this.state.explorerConfirmDeleteId === ex.id"
+                                                     class="o_ai_rec_ex_delete_confirm d-flex align-items-center justify-content-between gap-2 mt-2"
+                                                     role="alert">
+                                                    <span class="small" t-out="this.translate('Delete this exercise permanently?')"/>
+                                                    <div class="d-flex gap-1 flex-shrink-0">
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-danger py-0 px-2"
+                                                                t-att-disabled="this.state.explorerDeletingId === ex.id"
+                                                                t-on-click.stop.prevent="() => this.onExplorerConfirmDelete(ex)">
+                                                            <t t-out="this.translate('Confirm')"/>
+                                                        </button>
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                                                t-on-click.stop.prevent="() => this.state.explorerConfirmDeleteId = null">
+                                                            <t t-out="this.translate('Cancel')"/>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div t-if="this.state.explorerSelectedId === ex.id and this.state.explorerDetail"
+                                                     class="o_ai_rec_ex_detail mt-2 pt-2">
+                                                    <div t-if="this.state.explorerDetailLoading" class="small text-muted">
+                                                        <t t-out="this.translate('Loading steps...')"/>
+                                                    </div>
+                                                    <ol t-elif="(this.state.explorerDetail.steps || []).length" class="ps-3 mb-0 small">
+                                                        <t t-foreach="this.state.explorerDetail.steps" t-as="estep" t-key="estep.id || estep_index">
+                                                            <li>
+                                                                <span t-out="estep.instruction"/>
+                                                                <span t-if="estep.is_optional" class="o_ai_rec_review_optional_badge ms-1" t-out="this.translate('Optional')"/>
+                                                            </li>
+                                                        </t>
+                                                    </ol>
+                                                    <div t-else="" class="small text-muted">
+                                                        <t t-out="this.translate('Click Edit to inspect and modify steps in the Recorder.')"/>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </t>
                                     </div>
                                 </div>
                             </t>

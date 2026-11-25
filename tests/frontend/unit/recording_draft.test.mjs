@@ -15,8 +15,10 @@ import {
     clearPersistedRecordingSession,
     DEFAULT_ODOO_MODULE_OPTIONS,
     detectOptionalBlockSuggestions,
+    extractExerciseExplorerModules,
     extractModuleFromApp,
     extractNavigateToModule,
+    filterExercisesForExplorer,
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
@@ -34,6 +36,7 @@ import {
     loadPersistedRecordingSession,
     matchDryRunStepIndex,
     moveStepByOffset,
+    normalizeExerciseExplorerItem,
     readElementCheckedState,
     recomputeOptionalGroups,
     reconcileDryRunAfterStepInsertion,
@@ -1308,5 +1311,47 @@ describe("recording_draft helpers", () => {
 
         const afterMove = reconcileDryRunAfterStepMove({ active: true, stepIndex: 1 }, 1, 0);
         expect(afterMove.stepIndex).toBe(0);
+    });
+
+    it("normalizes, filters, and extracts modules for the Exercises Explorer panel", () => {
+        const items = [
+            normalizeExerciseExplorerItem({
+                exercise_id: "ex_1",
+                title: "Adjust stock with an inventory count",
+                module: "stock",
+                status: "published",
+                odoo_version: "20.0",
+                steps: [
+                    { id: "a", instruction: "Open Physical Inventory" },
+                    { id: "b", instruction: "Enter counted quantity", is_optional: true },
+                ],
+            }),
+            normalizeExerciseExplorerItem(
+                {
+                    recording_id: "rec_2",
+                    title: "Create a sales quotation",
+                    module: "sale",
+                    review_status: "pending_review",
+                    step_count: 4,
+                },
+                { source: "draft" }
+            ),
+        ].filter(Boolean);
+
+        expect(items.length).toBe(2);
+        expect(items[0].optionalCount).toBe(1);
+        expect(items[0].version).toBe("20.0");
+        expect(items[1].status).toBe("pending_review");
+        expect(extractExerciseExplorerModules(items)).toEqual(["sale", "stock"]);
+
+        expect(filterExercisesForExplorer(items, { query: "counted" }).map((x) => x.id)).toEqual([
+            "ex_1",
+        ]);
+        expect(filterExercisesForExplorer(items, { module: "sale" }).map((x) => x.id)).toEqual([
+            "rec_2",
+        ]);
+        expect(
+            filterExercisesForExplorer(items, { status: "published" }).map((x) => x.id)
+        ).toEqual(["ex_1"]);
     });
 });
