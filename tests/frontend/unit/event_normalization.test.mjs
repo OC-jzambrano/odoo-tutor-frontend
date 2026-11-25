@@ -509,4 +509,34 @@ describe("DOM event normalization", () => {
     expect(event.field).toBe("purchase");
     expect(event.meta.target_name).toBe("purchase");
   });
+
+  it("normalizes kanban and form New buttons to kanban.create and form.create", () => {
+    const kanbanBtn = makeElement({
+      tagName: "BUTTON",
+      text: "New",
+      className: "btn btn-primary o-kanban-button-new",
+    });
+    const kanbanEvent = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: kanbanBtn },
+      context: { model: "crm.lead", view_type: "kanban" },
+    });
+    expect(kanbanEvent.type).toBe("button_clicked");
+    expect(kanbanEvent.meta.target_name).toBe("kanban.create");
+    expect(kanbanEvent.label).toBe("kanban.create");
+
+    const formBtn = makeElement({
+      tagName: "BUTTON",
+      text: "New",
+      className: "btn btn-outline-primary o_form_button_create",
+    });
+    const formEvent = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: formBtn },
+      context: { model: "crm.lead", view_type: "form" },
+    });
+    expect(formEvent.type).toBe("button_clicked");
+    expect(formEvent.meta.target_name).toBe("form.create");
+    expect(formEvent.label).toBe("form.create");
+  });
 });

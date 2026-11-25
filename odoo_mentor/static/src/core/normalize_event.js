@@ -184,7 +184,9 @@ function resolveButtonName(el) {
   // Odoo standard
   if (/\bo_form_button_save\b/.test(cls)) return "form.save";
   if (/\bo_form_button_cancel\b/.test(cls)) return "form.discard";
+  if (/\bo_form_button_create\b/.test(cls)) return "form.create";
   if (/\bo_list_button_add\b/.test(cls)) return "list.create";
+  if (/\bo-kanban-button-new\b/.test(cls)) return "kanban.create";
 
   // Odoo object/action buttons
   const name = btn.getAttribute?.("name");
