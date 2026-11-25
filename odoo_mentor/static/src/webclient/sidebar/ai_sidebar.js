@@ -3387,33 +3387,8 @@ export class AiSidebar extends Component {
 
     async onRecorderGoToPreviousStepScreen() {
         const prevStep = this.recorderInsertPreviousStep;
-        const nav = prevStep?.nav || null;
-        if (!nav) return;
-
-        if (nav.appId && this.menuService?.selectMenu) {
-            const currentAppId = this.menuService?.getCurrentApp?.()?.id;
-            if (currentAppId !== nav.appId) {
-                const apps = this.menuService?.getApps?.() || [];
-                const targetApp = apps.find((a) => a?.id === nav.appId);
-                if (targetApp) {
-                    try {
-                        await this.menuService.selectMenu(targetApp);
-                    } catch {}
-                }
-            }
-        }
-
-        const actionReq = buildStepLocateActionRequest(nav);
-        if (actionReq && this.actionService?.doAction) {
-            try {
-                await this.actionService.doAction(actionReq);
-            } catch {}
-        }
-
-        const screenLabel = nav.breadcrumb || nav.appName || nav.resModel || "";
-        if (screenLabel) {
-            this.notification.add(_t("Navigated to %s.", screenLabel), { type: "info" });
-        }
+        if (!prevStep) return;
+        await this.onRecorderLocateStep(prevStep);
     }
 
     isRecorderStepSelected(stepId) {
@@ -4088,10 +4063,52 @@ export class AiSidebar extends Component {
 
         this.state.recorderSaving = true;
         try {
-            const result = await rpc("/ai_chat/recording_drafts/save", { draft });
+            let result = await rpc("/ai_chat/recording_drafts/save", { draft });
+            let supersededOldDraft = null;
+            if (result?.status === 409) {
+                const previousRecordingId = draft.recording_id;
+                const retryDraft = buildRecordingDraftPayload({
+                    recordingId:
+                        crypto?.randomUUID?.() ||
+                        `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+                    title: this.state.recorderTitle,
+                    module: this.state.recorderModule,
+                    steps: this.state.recorderSteps,
+                });
+                result = await rpc("/ai_chat/recording_drafts/save", { draft: retryDraft });
+                if (!result?.error && previousRecordingId) {
+                    supersededOldDraft = {
+                        recordingId: previousRecordingId,
+                        authorId:
+                            this._editingReviewDraft?.recordingId === previousRecordingId
+                                ? this._editingReviewDraft.authorId
+                                : null,
+                    };
+                }
+            }
             if (result?.error) {
                 this.notification.add(result.error, { type: "danger" });
                 return;
+            }
+            if (supersededOldDraft && this.state.canReviewRecordings) {
+                try {
+                    await rpc("/ai_chat/recording_drafts/review_decision", {
+                        recording_id: supersededOldDraft.recordingId,
+                        decision: "rejected",
+                        comment: "Superseded by edited version",
+                        author_id: supersededOldDraft.authorId,
+                    });
+                } catch {}
+            }
+            this._editingReviewDraft = null;
+            const strippedFields = Array.isArray(result?.stripped_fields)
+                ? result.stripped_fields
+                : [];
+            if (strippedFields.includes("is_optional")) {
+                this.notification.add(
+                    _t("Saved draft, but the backend does not persist 'Optional' step flags yet."),
+                    { type: "warning" }
+                );
             }
             this.onRecorderStopDryRun();
             if (this.state.recorderStatus !== "idle") {
@@ -4295,6 +4312,10 @@ export class AiSidebar extends Component {
 
         this.state.recorderStatus = "paused";
         this.state.recorderSessionId = hydrated.recordingId;
+        this._editingReviewDraft = {
+            recordingId: hydrated.recordingId,
+            authorId: targetDetail.author_id || null,
+        };
         this.state.recorderTitle = hydrated.title;
         this.state.recorderModule = hydrated.module;
         this.state.recorderSteps = hydrated.steps;

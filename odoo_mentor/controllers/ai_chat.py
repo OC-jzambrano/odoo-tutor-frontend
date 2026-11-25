@@ -377,7 +377,7 @@ class AiChatController(http.Controller):
     def _strip_rejected_draft_step_fields(draft, error_text):
         steps = draft.get("steps")
         if not isinstance(steps, list):
-            return None
+            return None, []
         lower = (error_text or "").lower()
         drop_keys = set()
         if "label" in lower:
@@ -395,8 +395,8 @@ class AiChatController(http.Controller):
             else:
                 stripped_steps.append(step)
         if not changed:
-            return None
-        return {**draft, "steps": stripped_steps}
+            return None, []
+        return {**draft, "steps": stripped_steps}, sorted(drop_keys)
 
     @http.route("/ai_chat/recording_drafts/save", type="jsonrpc", auth="user", methods=["POST"])
     def save_recording_draft_proxy(self, draft=None, **kwargs):
@@ -414,8 +414,9 @@ class AiChatController(http.Controller):
                 timeout=(3, 10),
                 allow_redirects=False,
             )
+            stripped_fields = []
             if response.status_code == 422 and "extra" in (response.text or "").lower():
-                fallback_draft = self._strip_rejected_draft_step_fields(draft, response.text)
+                fallback_draft, stripped_fields = self._strip_rejected_draft_step_fields(draft, response.text)
                 if fallback_draft is not None:
                     response = requests.put(
                         base_path,
@@ -424,7 +425,10 @@ class AiChatController(http.Controller):
                         timeout=(3, 10),
                         allow_redirects=False,
                     )
-            return self._proxy_backend_response(response)
+            proxied = self._proxy_backend_response(response)
+            if proxied.get("ok") and stripped_fields:
+                proxied["stripped_fields"] = stripped_fields
+            return proxied
         except requests.RequestException:
             return {"error": "Recording service is unavailable", "status": 503}
 

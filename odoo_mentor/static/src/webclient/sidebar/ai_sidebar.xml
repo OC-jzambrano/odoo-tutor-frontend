@@ -190,7 +190,10 @@
                                         </div>
                                         <ol class="ps-3 mb-1 small">
                                             <t t-foreach="this.state.reviewDetail.draft.steps" t-as="rstep" t-key="rstep.id">
-                                                <li t-out="rstep.instruction"/>
+                                                <li>
+                                                    <span t-out="rstep.instruction"/>
+                                                    <span t-if="rstep.is_optional" class="o_ai_rec_review_optional_badge ms-1" t-out="this.translate('Optional')"/>
+                                                </li>
                                             </t>
                                         </ol>
                                         <input type="text"

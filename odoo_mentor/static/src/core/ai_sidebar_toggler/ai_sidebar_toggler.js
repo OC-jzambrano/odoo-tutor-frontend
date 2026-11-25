@@ -541,6 +541,26 @@ class AiFloatingButton extends Component {
             this.state.previewHovered = false;
         };
 
+        this._applyHistoryPreview = (historyData) => {
+            if (!historyData || typeof historyData !== "object") return;
+            if (this.state.previewMessage || this._previewDismissed) return;
+            const messages = Array.isArray(historyData.messages) ? historyData.messages : [];
+            for (let i = messages.length - 1; i >= 0; i -= 1) {
+                const entry = messages[i];
+                if (!entry || entry.role === "user") continue;
+                const text = String(
+                    entry.text || entry.response || entry.message || entry.content || ""
+                ).trim();
+                if (!text) continue;
+                this._setPreviewMessage(
+                    text,
+                    entry.timestamp || entry.created_at || null,
+                    entry.copy_targets || []
+                );
+                return;
+            }
+        };
+
         this._applyConnectionEstablishedPreview = (msg) => {
             if (!msg || typeof msg !== "object") return;
             if (
@@ -567,11 +587,22 @@ class AiFloatingButton extends Component {
                 this.state.optionalStepVisible = false;
                 this.state.optionalStepExerciseId = null;
                 this.state.optionalStepLoading = false;
-                this._onPreviewReset?.();
+                if (msg.is_resumed) {
+                    const cachedHistory = this.aiWs?.getLastHistory?.();
+                    if (cachedHistory) {
+                        this._applyHistoryPreview(cachedHistory);
+                    }
+                } else {
+                    this._onPreviewReset?.();
+                }
             }
         };
 
         this._onPreviewMessage = (ev) => {
+            if (ev?.kind === "history") {
+                this._applyHistoryPreview(ev.data);
+                return;
+            }
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
 
@@ -865,6 +896,16 @@ class AiFloatingButton extends Component {
             const cachedConn = this.aiWs?.getLastConnectionInfo?.();
             if (cachedConn) {
                 this._applyConnectionEstablishedPreview(cachedConn);
+            }
+
+            this._onHistoryLoadedForPreview = (e) => {
+                this._applyHistoryPreview(e?.detail);
+            };
+            window.addEventListener("ai:history_loaded", this._onHistoryLoadedForPreview);
+
+            const cachedHistory = this.aiWs?.getLastHistory?.();
+            if (cachedHistory) {
+                this._applyHistoryPreview(cachedHistory);
             }
 
             this._onExerciseCtaUpdate = (e) => {
@@ -2166,6 +2207,11 @@ class AiFloatingButton extends Component {
         if (this._onTutorHintEventForBadge) {
             window.removeEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
             this._onTutorHintEventForBadge = null;
+        }
+
+        if (this._onHistoryLoadedForPreview) {
+            window.removeEventListener("ai:history_loaded", this._onHistoryLoadedForPreview);
+            this._onHistoryLoadedForPreview = null;
         }
 
         if (this._onWindowCaptureCopyMousedown) {
