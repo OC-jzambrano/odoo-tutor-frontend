@@ -2,7 +2,7 @@
     "name": "Odoo Tutor",
     "version": "20.0.1.0.2",
     "category": "Extra Tools",
-    "summary": "Learn Odoo 20 with contextual AI guidance and hands-on exercises across Project, Sales, Purchase, Inventory, and CRM.",
+    "summary": "Learn Odoo 20 with contextual AI guidance, hands-on exercises, and custom exercise recording for your company.",
     "description": """
 Odoo Tutor — Contextual AI Learning Companion for Odoo 20
 =========================================================
