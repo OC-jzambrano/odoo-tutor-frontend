@@ -94,7 +94,7 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
         </div>
       </div>
       <div class="ai-sidebar-header-actions">
-        <a class="ai-sidebar-upgrade" href="https://odooconcept.com/pricing" target="_blank" rel="noopener noreferrer">Upgrade</a>
+        <a class="ai-sidebar-upgrade" href="https://odoo-tutor.odoo.com/pricing" target="_blank" rel="noopener noreferrer">Upgrade</a>
         <button type="button" class="btn ai-sidebar-recorder-toggle">Record an exercise</button>
         <button type="button" class="btn ai-sidebar-reset" aria-label="Reset">↻</button>
         <button type="button" class="btn ai-sidebar-close" aria-label="Close">×</button>
@@ -153,7 +153,7 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
                           </div>
                         </div>
                         <div class="nlux-comp-message">
-                          <div class="nlux-markdown-container"><p>Your trial quota has finished. Get a subscription to continue.</p><div class="ai-quota-actions"><a class="ai-quota-plan-btn" href="https://odooconcept.com/pricing" target="_blank" rel="noopener noreferrer">Get a subscription</a></div></div>
+                          <div class="nlux-markdown-container"><p>Your trial quota has finished. Get a subscription to continue.</p><div class="ai-quota-actions"><a class="ai-quota-plan-btn" href="https://odoo-tutor.odoo.com/pricing" target="_blank" rel="noopener noreferrer">Get a subscription</a></div></div>
                         </div>
                       </div>
                     </div>
@@ -211,7 +211,7 @@ function buildFloatingBubbleHtml({ viewportWidth = 1280, viewportHeight = 760 } 
       <div class="ai-owl-quota-actions" role="group" aria-label="Subscription actions">
         <a
           class="ai-owl-quota-plan-btn"
-          href="https://odooconcept.com/pricing"
+          href="https://odoo-tutor.odoo.com/pricing"
           target="_blank"
           rel="noopener noreferrer"
         >Get a subscription</a>
