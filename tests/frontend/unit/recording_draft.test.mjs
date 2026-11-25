@@ -10,6 +10,7 @@ import {
     buildStepLocateActionRequest,
     buildStepNavSnapshot,
     buildStepTargetHint,
+    captureDeletedStepEntries,
     checkDryRunToggleAlreadySatisfied,
     clearPersistedRecordingSession,
     DEFAULT_ODOO_MODULE_OPTIONS,
@@ -24,6 +25,7 @@ import {
     getStepExpectedChecked,
     humanizeTechnicalKey,
     hydrateDraftForEditing,
+    insertStepsAt,
     isElementRequiredField,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
@@ -31,11 +33,15 @@ import {
     isTechnicalKey,
     loadPersistedRecordingSession,
     matchDryRunStepIndex,
+    moveStepByOffset,
     readElementCheckedState,
     recomputeOptionalGroups,
+    reconcileDryRunAfterStepInsertion,
+    reconcileDryRunAfterStepMove,
     reconcileDryRunAfterStepRemoval,
     resolveDomHumanLabel,
     resolveExpectedCheckedState,
+    restoreDeletedStepEntries,
     savePersistedRecordingSession,
     shouldSuppressModuleGatePrompt,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
@@ -1227,5 +1233,80 @@ describe("recording_draft helpers", () => {
         expect(getPreviousDryRunIndex(steps, 1)).toBe(0);
         expect(getPreviousDryRunIndex(steps, 2)).toBe(1);
         expect(getPreviousDryRunIndex(steps, 5)).toBe(2);
+    });
+
+    it("inserts steps at a specific index, deduplicates by id, and recomputes optional groups", () => {
+        const steps = [
+            { id: "s1", instruction: "Open Sales", is_optional: false },
+            { id: "s2", instruction: "Fill Customer", is_optional: true },
+            { id: "s3", instruction: "Confirm", is_optional: false },
+        ];
+
+        const inserted = insertStepsAt(
+            steps,
+            [{ id: "s_mid", instruction: "Fill Payment Terms", is_optional: true }],
+            1
+        );
+        expect(inserted.insertedIndex).toBe(1);
+        expect(inserted.insertedCount).toBe(1);
+        expect(inserted.steps.map((s) => s.id)).toEqual(["s1", "s_mid", "s2", "s3"]);
+        // Consecutive optional steps s_mid + s2 should form an optional group
+        expect(inserted.steps[1].optional_group).toBeTruthy();
+        expect(inserted.steps[1].optional_group).toBe(inserted.steps[2].optional_group);
+
+        // Duplicate id is ignored
+        const dup = insertStepsAt(inserted.steps, [{ id: "s_mid", instruction: "Dup" }], 0);
+        expect(dup.insertedCount).toBe(0);
+        expect(dup.steps.length).toBe(4);
+
+        // Null index appends to end
+        const appended = insertStepsAt(steps, [{ id: "s4", instruction: "Save" }], null);
+        expect(appended.insertedIndex).toBe(3);
+        expect(appended.steps.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
+    });
+
+    it("captures and restores deleted step entries at their exact original indices", () => {
+        const steps = [
+            { id: "s1", instruction: "Step 1" },
+            { id: "s2", instruction: "Step 2" },
+            { id: "s3", instruction: "Step 3" },
+            { id: "s4", instruction: "Step 4" },
+        ];
+        const deleted = captureDeletedStepEntries(steps, ["s4", "s2"]);
+        expect(deleted.map((e) => [e.index, e.step.id])).toEqual([
+            [1, "s2"],
+            [3, "s4"],
+        ]);
+
+        const remaining = steps.filter((s) => s.id !== "s2" && s.id !== "s4");
+        const restored = restoreDeletedStepEntries(remaining, deleted);
+        expect(restored.restoredCount).toBe(2);
+        expect(restored.steps.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
+    });
+
+    it("moves steps up/down and reconciles Dry-Run index on insert and move", () => {
+        const steps = [
+            { id: "s1", instruction: "Step 1" },
+            { id: "s2", instruction: "Step 2" },
+            { id: "s3", instruction: "Step 3" },
+        ];
+        const up = moveStepByOffset(steps, "s2", -1);
+        expect(up.moved).toBe(true);
+        expect(up.steps.map((s) => s.id)).toEqual(["s2", "s1", "s3"]);
+
+        const noop = moveStepByOffset(steps, "s1", -1);
+        expect(noop.moved).toBe(false);
+
+        const afterInsert = reconcileDryRunAfterStepInsertion(
+            { active: true, stepIndex: 1, skippedPromptStepNumber: 2 },
+            1,
+            1,
+            4
+        );
+        expect(afterInsert.stepIndex).toBe(2);
+        expect(afterInsert.skippedPromptStepNumber).toBe(3);
+
+        const afterMove = reconcileDryRunAfterStepMove({ active: true, stepIndex: 1 }, 1, 0);
+        expect(afterMove.stepIndex).toBe(0);
     });
 });

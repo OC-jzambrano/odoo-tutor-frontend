@@ -3072,3 +3072,105 @@
     color: var(--tutor-text);
 }
 #offcanvasAiSidebar.is-dark-theme .o_ai_rec_review_detail .form-control::placeholder { color: var(--tutor-text-soft); }
+
+/* Undo delete banner, step reorder/insert buttons, and active insert slot */
+#offcanvasAiSidebar .o_ai_rec_undo_banner {
+    padding: 6px 10px;
+    border-radius: var(--tutor-radius-sm);
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: var(--tutor-text);
+}
+
+#offcanvasAiSidebar .o_ai_rec_insert_start_btn {
+    border: 1px dashed var(--tutor-border);
+    background: transparent;
+    color: var(--tutor-text-muted);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+#offcanvasAiSidebar .o_ai_rec_insert_start_btn:hover,
+#offcanvasAiSidebar .o_ai_rec_insert_start_btn.is-active {
+    border-color: var(--tutor-accent);
+    color: var(--tutor-accent-strong);
+    background: rgba(113, 75, 103, 0.1);
+}
+
+#offcanvasAiSidebar .o_ai_rec_icon_btn {
+    flex: 0 0 auto;
+    padding: 0.2rem 0.38rem;
+    line-height: 1;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 24px;
+}
+
+#offcanvasAiSidebar .o_ai_rec_insert_after_btn.is-active {
+    background: var(--tutor-accent);
+    border-color: var(--tutor-accent);
+    color: #fff;
+}
+
+#offcanvasAiSidebar .o_ai_rec_insert_slot {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    margin: 6px 0;
+    border-radius: 8px;
+    border: 1.5px dashed var(--tutor-accent);
+    background: rgba(113, 75, 103, 0.08);
+}
+
+#offcanvasAiSidebar .o_ai_rec_insert_slot_badge {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--tutor-accent-strong);
+}
+
+#offcanvasAiSidebar .o_ai_rec_insert_slot_close {
+    border: 0;
+    background: transparent;
+    color: var(--tutor-text-muted);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+}
+
+#offcanvasAiSidebar .o_ai_rec_insert_slot_multi {
+    color: var(--tutor-text-muted);
+    cursor: pointer;
+}
+
+#offcanvasAiSidebar .o_ai_rec_feed_item.is-recently-inserted {
+    border-radius: 8px;
+    padding: 10px;
+    margin: 3px 0;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_undo_banner {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(96, 165, 250, 0.36);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_insert_slot {
+    background: rgba(135, 90, 123, 0.2);
+    border-color: rgba(186, 139, 173, 0.55);
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_insert_slot_badge {
+    color: #f3d7eb;
+}
+
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_feed_item.is-recently-inserted {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: rgba(52, 211, 153, 0.4);
+}

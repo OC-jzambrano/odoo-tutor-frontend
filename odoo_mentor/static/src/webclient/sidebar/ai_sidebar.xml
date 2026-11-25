@@ -369,6 +369,14 @@
                                     <div class="d-flex justify-content-between align-items-center gap-2 mb-1 flex-wrap">
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
                                             <div class="o_ai_rec_feed_title mb-0" t-out="this.translate('Generated steps')"/>
+                                            <button t-if="(this.state.recorderSteps || []).length > 0 and this.state.recorderStatus !== 'idle'"
+                                                    type="button"
+                                                    class="o_ai_rec_insert_start_btn"
+                                                    t-att-class="{ 'is-active': this.state.recorderInsertAt === 0 }"
+                                                    t-att-title="this.translate('Insert a step before Step 1')"
+                                                    t-on-click.stop.prevent="() => this.onRecorderOpenInsertSlot(0)">
+                                                + <t t-out="this.translate('Insert at start')"/>
+                                            </button>
                                             <span t-if="this.recorderSuspectCount > 0"
                                                   class="o_ai_rec_suspect_count_pill"
                                                   t-att-title="this.translate('Possible extra steps flagged for your review')">
@@ -450,6 +458,29 @@
                                         </div>
                                     </t>
 
+                                    <div t-if="this.recorderLastUndoItem"
+                                         class="o_ai_rec_undo_banner d-flex align-items-center justify-content-between gap-2 mb-2"
+                                         role="status"
+                                         aria-live="polite">
+                                        <span class="small">
+                                            <t t-if="this.recorderLastUndoItem.count === 1" t-out="this.translate('Deleted 1 step')"/>
+                                            <t t-else="" t-out="this.recorderLastUndoItem.count + ' ' + this.translate('steps deleted')"/>
+                                        </span>
+                                        <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                    t-on-click.stop.prevent="this.onRecorderUndoDelete">
+                                                <t t-out="this.translate('Undo')"/>
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary py-0 px-1"
+                                                    t-att-aria-label="this.translate('Dismiss undo')"
+                                                    t-on-click.stop.prevent="this.onRecorderDismissUndo">
+                                                ×
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     <div t-if="(this.state.selectedRecorderStepIds || []).length > 0"
                                          class="o_ai_rec_batch_bar d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap"
                                          role="region"
@@ -489,6 +520,51 @@
                                             <t t-out="this.translate('Start capture and interact with Odoo to generate editable steps.')"/>
                                         </div>
                                         <t t-foreach="this.state.recorderSteps" t-as="step" t-key="step.id">
+                                            <div t-if="this.state.recorderInsertAt === step_index"
+                                                 class="o_ai_rec_insert_slot"
+                                                 role="region"
+                                                 t-att-aria-label="this.translate('Insert step here')">
+                                                <div class="o_ai_rec_insert_slot_head d-flex align-items-center justify-content-between gap-2">
+                                                    <span class="o_ai_rec_insert_slot_badge">
+                                                        <t t-out="this.translate('Insert as Step') + ' #' + (step_index + 1)"/>
+                                                    </span>
+                                                    <button type="button"
+                                                            class="o_ai_rec_insert_slot_close"
+                                                            t-att-aria-label="this.translate('Cancel insert')"
+                                                            t-on-click.stop.prevent="this.onRecorderCancelInsert">
+                                                        ×
+                                                    </button>
+                                                </div>
+                                                <div class="o_ai_rec_insert_slot_actions d-flex align-items-center gap-1 flex-wrap">
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-primary py-0 px-2"
+                                                            t-att-disabled="this.state.recorderPicking"
+                                                            t-on-click.stop.prevent="this.onRecorderStartLiveInsert">
+                                                        <i class="oi" data-icon="play_arrow"/>
+                                                        <t t-out="this.translate('Perform action')"/>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                                            t-att-disabled="this.state.recorderPicking"
+                                                            t-on-click.stop.prevent="this.onRecorderPickInsertStep">
+                                                        <i class="oi" data-icon="my_location"/>
+                                                        <t t-out="this.translate('Pick element')"/>
+                                                    </button>
+                                                    <button t-if="this.recorderInsertPreviousStep and this.recorderInsertPreviousStep.nav"
+                                                            type="button"
+                                                            class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                                            t-att-title="this.translate('Navigate to the previous step screen')"
+                                                            t-on-click.stop.prevent="this.onRecorderGoToPreviousStepScreen">
+                                                        <t t-out="this.translate('Go to Step') + ' #' + step_index"/>
+                                                    </button>
+                                                </div>
+                                                <label class="o_ai_rec_insert_slot_multi d-inline-flex align-items-center gap-1 small mb-0">
+                                                    <input type="checkbox"
+                                                           t-att-checked="this.state.recorderInsertMulti"
+                                                           t-on-change="this.onRecorderToggleInsertMulti"/>
+                                                    <span t-out="this.translate('Keep inserting multiple steps')"/>
+                                                </label>
+                                            </div>
                                             <t t-set="suspect" t-value="this.recorderSuspectWarnings[step.id]"/>
                                             <t t-set="isCurrentDryRun" t-value="this.state.dryRunActive and this.dryRunCurrentStep and this.dryRunCurrentStep.id === step.id"/>
                                             <div class="o_ai_rec_feed_item d-flex flex-column gap-1"
@@ -499,6 +575,7 @@
                                                      'is-suspect-step': !!suspect,
                                                      'is-selected-step': this.isRecorderStepSelected(step.id),
                                                      'is-dry-run-editing': this.state.dryRunEditStepId === step.id or isCurrentDryRun,
+                                                     'is-recently-inserted': this.state.recorderRecentInsertedStepId === step.id,
                                                  }">
                                                 <div t-if="isCurrentDryRun" class="o_ai_rec_dry_run_current_pill">
                                                     <span class="o_ai_rec_dry_run_current_dot" aria-hidden="true"/>
@@ -522,6 +599,31 @@
                                                             t-att-title="step.is_optional ? this.translate('Step is optional (click to make required)') : this.translate('Mark step as optional')"
                                                             t-on-click.stop.prevent="() => this.onRecorderToggleStepOptional(step.id)">
                                                         <t t-out="this.translate('Optional')"/>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary o_ai_rec_icon_btn"
+                                                            t-att-disabled="step_index === 0"
+                                                            t-att-title="this.translate('Move step up')"
+                                                            t-att-aria-label="this.translate('Move step up')"
+                                                            t-on-click.stop.prevent="() => this.onRecorderMoveStep(step.id, -1)">
+                                                        ↑
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-secondary o_ai_rec_icon_btn"
+                                                            t-att-disabled="step_index === (this.state.recorderSteps || []).length - 1"
+                                                            t-att-title="this.translate('Move step down')"
+                                                            t-att-aria-label="this.translate('Move step down')"
+                                                            t-on-click.stop.prevent="() => this.onRecorderMoveStep(step.id, 1)">
+                                                        ↓
+                                                    </button>
+                                                    <button t-if="this.state.recorderStatus !== 'idle'"
+                                                            type="button"
+                                                            class="btn btn-sm btn-outline-primary o_ai_rec_icon_btn o_ai_rec_insert_after_btn"
+                                                            t-att-class="{ 'is-active': this.state.recorderInsertAt === step_index + 1 }"
+                                                            t-att-title="this.translate('Insert step after') + ' #' + (step_index + 1)"
+                                                            t-att-aria-label="this.translate('Insert step after')"
+                                                            t-on-click.stop.prevent="() => this.onRecorderOpenInsertSlot(step_index + 1)">
+                                                        +
                                                     </button>
                                                     <button type="button"
                                                             class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn"
@@ -603,6 +705,51 @@
                                                 </div>
                                             </div>
                                         </t>
+                                        <div t-if="this.state.recorderInsertAt === (this.state.recorderSteps || []).length and (this.state.recorderSteps || []).length > 0"
+                                             class="o_ai_rec_insert_slot"
+                                             role="region"
+                                             t-att-aria-label="this.translate('Insert step here')">
+                                            <div class="o_ai_rec_insert_slot_head d-flex align-items-center justify-content-between gap-2">
+                                                <span class="o_ai_rec_insert_slot_badge">
+                                                    <t t-out="this.translate('Insert as Step') + ' #' + ((this.state.recorderSteps || []).length + 1)"/>
+                                                </span>
+                                                <button type="button"
+                                                        class="o_ai_rec_insert_slot_close"
+                                                        t-att-aria-label="this.translate('Cancel insert')"
+                                                        t-on-click.stop.prevent="this.onRecorderCancelInsert">
+                                                    ×
+                                                </button>
+                                            </div>
+                                            <div class="o_ai_rec_insert_slot_actions d-flex align-items-center gap-1 flex-wrap">
+                                                <button type="button"
+                                                        class="btn btn-sm btn-primary py-0 px-2"
+                                                        t-att-disabled="this.state.recorderPicking"
+                                                        t-on-click.stop.prevent="this.onRecorderStartLiveInsert">
+                                                    <i class="oi" data-icon="play_arrow"/>
+                                                    <t t-out="this.translate('Perform action')"/>
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                                        t-att-disabled="this.state.recorderPicking"
+                                                        t-on-click.stop.prevent="this.onRecorderPickInsertStep">
+                                                    <i class="oi" data-icon="my_location"/>
+                                                    <t t-out="this.translate('Pick element')"/>
+                                                </button>
+                                                <button t-if="this.recorderInsertPreviousStep and this.recorderInsertPreviousStep.nav"
+                                                        type="button"
+                                                        class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                                        t-att-title="this.translate('Navigate to the previous step screen')"
+                                                        t-on-click.stop.prevent="this.onRecorderGoToPreviousStepScreen">
+                                                    <t t-out="this.translate('Go to Step') + ' #' + (this.state.recorderSteps || []).length"/>
+                                                </button>
+                                            </div>
+                                            <label class="o_ai_rec_insert_slot_multi d-inline-flex align-items-center gap-1 small mb-0">
+                                                <input type="checkbox"
+                                                       t-att-checked="this.state.recorderInsertMulti"
+                                                       t-on-change="this.onRecorderToggleInsertMulti"/>
+                                                <span t-out="this.translate('Keep inserting multiple steps')"/>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             </t>

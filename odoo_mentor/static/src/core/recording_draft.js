@@ -1017,6 +1017,152 @@ export function reconcileDryRunAfterStepRemoval(
     };
 }
 
+export function insertStepsAt(steps = [], newSteps = [], insertIndex = null) {
+    const list = Array.isArray(steps) ? steps.slice() : [];
+    const incoming = (Array.isArray(newSteps) ? newSteps : [newSteps]).filter(
+        (step) => step && typeof step === "object" && step.id
+    );
+    if (!incoming.length) {
+        return { steps: recomputeOptionalGroups(list), insertedIndex: list.length, insertedCount: 0 };
+    }
+
+    const existingIds = new Set(list.map((s) => s?.id).filter(Boolean));
+    const uniqueIncoming = [];
+    for (const step of incoming) {
+        if (!existingIds.has(step.id)) {
+            existingIds.add(step.id);
+            uniqueIncoming.push(step);
+        }
+    }
+    if (!uniqueIncoming.length) {
+        return { steps: recomputeOptionalGroups(list), insertedIndex: list.length, insertedCount: 0 };
+    }
+
+    const rawIndex =
+        insertIndex === null || insertIndex === undefined
+            ? list.length
+            : Math.floor(Number(insertIndex));
+    const clampedIndex = Number.isFinite(rawIndex)
+        ? Math.max(0, Math.min(list.length, rawIndex))
+        : list.length;
+
+    list.splice(clampedIndex, 0, ...uniqueIncoming);
+    return {
+        steps: recomputeOptionalGroups(list),
+        insertedIndex: clampedIndex,
+        insertedCount: uniqueIncoming.length,
+    };
+}
+
+export function moveStepByOffset(steps = [], stepId = null, delta = 0) {
+    const list = Array.isArray(steps) ? steps.slice() : [];
+    const offset = Math.trunc(Number(delta) || 0);
+    if (!stepId || !offset || list.length < 2) {
+        return { steps: list, fromIndex: -1, toIndex: -1, moved: false };
+    }
+    const fromIndex = list.findIndex((s) => s?.id === stepId);
+    if (fromIndex < 0) {
+        return { steps: list, fromIndex: -1, toIndex: -1, moved: false };
+    }
+    const toIndex = Math.max(0, Math.min(list.length - 1, fromIndex + offset));
+    if (toIndex === fromIndex) {
+        return { steps: list, fromIndex, toIndex, moved: false };
+    }
+    const [item] = list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, item);
+    return {
+        steps: recomputeOptionalGroups(list),
+        fromIndex,
+        toIndex,
+        moved: true,
+    };
+}
+
+export function captureDeletedStepEntries(steps = [], stepIds = []) {
+    const list = Array.isArray(steps) ? steps : [];
+    const idSet = new Set((Array.isArray(stepIds) ? stepIds : []).filter(Boolean));
+    if (!idSet.size || !list.length) return [];
+    const entries = [];
+    for (let i = 0; i < list.length; i += 1) {
+        if (list[i] && idSet.has(list[i].id)) {
+            entries.push({ index: i, step: { ...list[i] } });
+        }
+    }
+    return entries;
+}
+
+export function restoreDeletedStepEntries(steps = [], entries = []) {
+    const list = Array.isArray(steps) ? steps.slice() : [];
+    const validEntries = (Array.isArray(entries) ? entries : [])
+        .filter((e) => e && e.step && typeof e.step === "object" && e.step.id)
+        .slice()
+        .sort((a, b) => (Number(a.index) || 0) - (Number(b.index) || 0));
+    if (!validEntries.length) {
+        return { steps: recomputeOptionalGroups(list), restoredCount: 0, restoredIds: [] };
+    }
+
+    const existingIds = new Set(list.map((s) => s?.id).filter(Boolean));
+    const restoredIds = [];
+    for (const entry of validEntries) {
+        if (existingIds.has(entry.step.id)) continue;
+        const targetIndex = Math.max(0, Math.min(list.length, Math.floor(Number(entry.index) || 0)));
+        list.splice(targetIndex, 0, entry.step);
+        existingIds.add(entry.step.id);
+        restoredIds.push(entry.step.id);
+    }
+
+    return {
+        steps: recomputeOptionalGroups(list),
+        restoredCount: restoredIds.length,
+        restoredIds,
+    };
+}
+
+export function reconcileDryRunAfterStepInsertion(
+    dryRunState = null,
+    insertIndex = 0,
+    insertedCount = 1,
+    nextStepCount = 0
+) {
+    if (!dryRunState?.active || insertedCount <= 0 || nextStepCount <= 0) {
+        return dryRunState;
+    }
+    const oldIdx = Math.max(0, Math.floor(Number(dryRunState.stepIndex) || 0));
+    const nextIdx =
+        insertIndex <= oldIdx
+            ? Math.min(nextStepCount - 1, oldIdx + insertedCount)
+            : Math.min(nextStepCount - 1, oldIdx);
+    const oldSkippedNum = normalizePositiveId(dryRunState.skippedPromptStepNumber);
+    const nextSkippedNum =
+        oldSkippedNum && insertIndex <= oldSkippedNum - 1
+            ? oldSkippedNum + insertedCount
+            : oldSkippedNum;
+    return {
+        ...dryRunState,
+        stepIndex: nextIdx,
+        skippedPromptStepNumber: nextSkippedNum,
+    };
+}
+
+export function reconcileDryRunAfterStepMove(dryRunState = null, fromIndex = -1, toIndex = -1) {
+    if (!dryRunState?.active || fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+        return dryRunState;
+    }
+    const oldIdx = Math.max(0, Math.floor(Number(dryRunState.stepIndex) || 0));
+    let nextIdx = oldIdx;
+    if (oldIdx === fromIndex) {
+        nextIdx = toIndex;
+    } else if (fromIndex < oldIdx && toIndex >= oldIdx) {
+        nextIdx = oldIdx - 1;
+    } else if (fromIndex > oldIdx && toIndex <= oldIdx) {
+        nextIdx = oldIdx + 1;
+    }
+    return {
+        ...dryRunState,
+        stepIndex: nextIdx,
+    };
+}
+
 function normalizeMatchToken(value) {
     return trimText(value || "", 240).toLowerCase();
 }
