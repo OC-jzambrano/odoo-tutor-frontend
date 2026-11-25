@@ -38,6 +38,8 @@
                 </div>
 
                 <div class="ai-sidebar-header-actions">
+                    <a t-if="!this.state.showRecorderPanel" class="ai-sidebar-upgrade" t-att-href="this.plansUrl" target="_blank" rel="noopener noreferrer" t-out="this.translate('Upgrade')"/>
+
                     <button
                         t-if="this.state.canSeeRecorderToggle"
                         type="button"

@@ -1337,6 +1337,10 @@ export class AiSidebar extends Component {
         this._manualSelecting = false;
     }
 
+    get plansUrl() {
+        return TUTOR_PLANS_URL;
+    }
+
     get hintTimeAgo() {
         return formatTimeAgo(this.state.hintTimestamp);
     }
