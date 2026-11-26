@@ -4200,6 +4200,8 @@ export class AiSidebar extends Component {
             }
             this._editingExerciseId = null;
             this._editingReviewDraft = null;
+            this.state.reviewDetail = null;
+            this.state.reviewComment = "";
             const strippedFields = Array.isArray(result?.stripped_fields)
                 ? result.stripped_fields
                 : [];
@@ -4486,6 +4488,8 @@ export class AiSidebar extends Component {
         this.state.recorderFeed = [];
         this.state.recorderTab = "record";
         this.state.recorderReviewTab = false;
+        this.state.reviewDetail = null;
+        this.state.reviewComment = "";
 
         this.notification.add(
             _t("Loaded exercise into Recorder. Edit steps and save to update it."),
@@ -4556,7 +4560,13 @@ export class AiSidebar extends Component {
                 this.notification.add(result.error, { type: "danger" });
                 return;
             }
-            this.state.reviewQueue = Array.isArray(result?.data) ? result.data : [];
+            const queue = Array.isArray(result?.data) ? result.data : [];
+            this.state.reviewQueue = queue;
+            const openId = this.state.reviewDetail?.draft?.recording_id;
+            if (openId && !queue.some((item) => item.recording_id === openId)) {
+                this.state.reviewDetail = null;
+                this.state.reviewComment = "";
+            }
         } catch (err) {
             this.notification.add(
                 err?.message || _t("Could not load review queue."),
@@ -4727,6 +4737,8 @@ export class AiSidebar extends Component {
         this.state.recorderFeed = [];
         this.state.recorderTab = "record";
         this.state.recorderReviewTab = false;
+        this.state.reviewDetail = null;
+        this.state.reviewComment = "";
 
         this.notification.add(
             _t("Loaded recording into Recorder. Edit steps and click Save for later review to update it."),

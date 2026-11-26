@@ -178,6 +178,7 @@
                                         <t t-foreach="this.state.reviewQueue" t-as="item" t-key="item.recording_id + '_' + item.author_id">
                                             <button type="button"
                                                     class="btn btn-sm btn-outline-secondary text-start d-flex justify-content-between align-items-center o_ai_rec_review_item"
+                                                    t-att-class="{ 'is-selected': this.state.reviewDetail and this.state.reviewDetail.draft and this.state.reviewDetail.draft.recording_id === item.recording_id }"
                                                     t-on-click.stop.prevent="() => this.inspectReviewDraft(item.recording_id, item.author_id)">
                                                 <span>
                                                     <strong t-out="item.title"/> (<span t-out="item.module"/>)

@@ -3063,6 +3063,16 @@
 #offcanvasAiSidebar .o_ai_rec_review { min-width: 0; }
 #offcanvasAiSidebar .o_ai_rec_review_item { width: 100%; gap: 8px; padding: 11px; }
 #offcanvasAiSidebar .o_ai_rec_review_item > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+#offcanvasAiSidebar .o_ai_rec_review_item.is-selected {
+    border-color: var(--tutor-accent);
+    background: var(--tutor-accent-soft);
+    color: var(--tutor-text);
+}
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_review_item.is-selected {
+    border-color: rgba(216, 180, 208, 0.55);
+    background: rgba(135, 90, 123, 0.22);
+    color: var(--tutor-text);
+}
 #offcanvasAiSidebar .o_ai_rec_review_detail { border-top: 1px solid var(--tutor-border); padding-top: 14px; }
 #offcanvasAiSidebar .o_ai_rec_review_actions .btn-outline-danger { border-color: transparent; }
 #offcanvasAiSidebar.is-dark-theme .o_ai_recorder_panel { background: #1d2533; box-shadow: none; }
