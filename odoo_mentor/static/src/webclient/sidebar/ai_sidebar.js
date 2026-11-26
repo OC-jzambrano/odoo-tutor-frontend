@@ -19,7 +19,11 @@ import {
     normalizeForCopyTargetLookup,
     stripNewlinesAroundCopyTargets,
 } from "../../core/copy_targets";
-import { shouldQueueTutorMessage } from "../../core/tutor_message_delivery";
+import {
+    buildTutorStepKey,
+    isDuplicateTutorAssistantMessage,
+    shouldQueueTutorMessage,
+} from "../../core/tutor_message_delivery";
 import {
     applyPolishedInstructionsToSteps,
     buildDraftStepFromEvent,
@@ -282,6 +286,7 @@ export class AiSidebar extends Component {
         this._tutorPushTtlMs = 8000;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
+        this._lastInjectedTutorStepKey = null;
         this._contextAckSubscribed = false;
         this._pendingRedirectStepWaiter = null;
 
@@ -1543,26 +1548,18 @@ export class AiSidebar extends Component {
             .filter(Boolean);
     }
 
-    _isDuplicateAssistantText(text) {
+    _isDuplicateAssistantText(text, { stepKey = null } = {}) {
         const normalized = normalizeAssistantTextForCompare(text);
-        if (!normalized) return true;
-
-        const now = Date.now();
-        const lastInjectedNormalized = normalizeAssistantTextForCompare(this._lastInjectedTutorText || "");
-
-        if (
-            lastInjectedNormalized === normalized &&
-            now - this._lastInjectedTutorAt < 6000
-        ) {
-            return true;
-        }
-
-        const recentDomTexts = this._getRecentAssistantTextsFromDom?.(12) || [];
-        if (recentDomTexts.includes(normalized)) {
-            return true;
-        }
-
-        return false;
+        const lastInjectedText = normalizeAssistantTextForCompare(this._lastInjectedTutorText || "");
+        const lastDomText = (this._getRecentAssistantTextsFromDom?.(1) || [])[0] || "";
+        return isDuplicateTutorAssistantMessage({
+            normalizedText: normalized,
+            stepKey,
+            lastInjectedText,
+            lastInjectedAt: this._lastInjectedTutorAt || 0,
+            lastInjectedStepKey: this._lastInjectedTutorStepKey || null,
+            lastDomText,
+        });
     }
 
     _ensureConversationVisible() {
@@ -2273,18 +2270,25 @@ export class AiSidebar extends Component {
                 this._extractCopyTargets(response)
             );
 
+            const stepKey = buildTutorStepKey(rawPayload, normalizedExerciseId);
             if (
                 !shouldSuppressModuleGatePrompt(rawPayload, redirected) &&
                 responseText &&
-                !this._isDuplicateAssistantText(responseText)
+                !this._isDuplicateAssistantText(responseText, { stepKey })
             ) {
                 // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || normalizedExerciseId,
+                        stepKey,
                     });
                 } else {
-                    this._pushAssistantMessageToNlux(responseText);
+                    const inserted = this._pushAssistantMessageToNlux(responseText);
+                    if (inserted) {
+                        this._lastInjectedTutorText = responseText;
+                        this._lastInjectedTutorAt = Date.now();
+                        this._lastInjectedTutorStepKey = stepKey;
+                    }
                 }
             }
 
@@ -2364,7 +2368,9 @@ export class AiSidebar extends Component {
                     context: this.state.currentContext || {},
                 })
             );
-            this._syncStepTargetFromPayload(response?.raw || response);
+            const rawPayload = response?.raw || response;
+            this._syncStepTargetFromPayload(rawPayload);
+            const stepKey = buildTutorStepKey(rawPayload, exerciseId);
             const responseText = getVisibleSkipResponse(
                 response,
                 (payload) =>
@@ -2372,16 +2378,22 @@ export class AiSidebar extends Component {
                         this._extractResponseText(payload),
                         this._extractCopyTargets(payload)
                     ),
-                (text) => this._isDuplicateAssistantText(text)
+                (text) => this._isDuplicateAssistantText(text, { stepKey })
             );
             if (responseText) {
                 // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || exerciseId,
+                        stepKey,
                     });
                 } else {
-                    this._pushAssistantMessageToNlux(responseText);
+                    const inserted = this._pushAssistantMessageToNlux(responseText);
+                    if (inserted) {
+                        this._lastInjectedTutorText = responseText;
+                        this._lastInjectedTutorAt = Date.now();
+                        this._lastInjectedTutorStepKey = stepKey;
+                    }
                 }
             }
             if (
@@ -4942,7 +4954,8 @@ export class AiSidebar extends Component {
         const queue = getTutorPendingQueue();
         const exerciseId = this._normalizeExerciseId(meta.exerciseId);
         const allowExercisePromptWhileActive = !!meta.allowExercisePromptWhileActive;
-        const key = `${displayText}__${timestamp || ""}__${exerciseId || ""}`;
+        const stepKey = meta.stepKey || null;
+        const key = `${displayText}__${timestamp || ""}__${exerciseId || ""}__${stepKey || ""}`;
 
         const alreadyQueued = queue.some((item) => item.key === key);
         if (alreadyQueued) return;
@@ -4952,6 +4965,7 @@ export class AiSidebar extends Component {
             text: displayText,
             timestamp: timestamp || new Date().toISOString(),
             exerciseId,
+            stepKey,
             allowExercisePromptWhileActive,
         });
 
@@ -4975,7 +4989,7 @@ export class AiSidebar extends Component {
             if (!cleaned) continue;
             const displayText = translateKnownTutorText(cleaned);
 
-            if (this._isDuplicateAssistantText(displayText)) {
+            if (this._isDuplicateAssistantText(displayText, { stepKey: item.stepKey || null })) {
                 if (item.exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         item.exerciseId,
@@ -4999,6 +5013,7 @@ export class AiSidebar extends Component {
             if (inserted) {
                 this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
+                this._lastInjectedTutorStepKey = item.stepKey || null;
             } else {
                 failed.push(item);
             }
@@ -5346,7 +5361,8 @@ export class AiSidebar extends Component {
                 sidebarOpen: this._isSidebarOpen(),
             });
 
-            if (this._isDuplicateAssistantText(displayText)) {
+            const stepKey = buildTutorStepKey(msg, exerciseId || this.state.exerciseId);
+            if (this._isDuplicateAssistantText(displayText, { stepKey })) {
                 if (exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         exerciseId,
@@ -5368,6 +5384,7 @@ export class AiSidebar extends Component {
             if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
+                    stepKey,
                     allowExercisePromptWhileActive,
                 });
                 return;
@@ -5383,10 +5400,12 @@ export class AiSidebar extends Component {
             if (inserted) {
                 this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
+                this._lastInjectedTutorStepKey = stepKey;
             } else {
                 // Keep the message if insertion fails.
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
+                    stepKey,
                     allowExercisePromptWhileActive,
                 });
             }
@@ -5690,6 +5709,7 @@ export class AiSidebar extends Component {
         this._historyReadyPromise = null;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
+        this._lastInjectedTutorStepKey = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
         this._cancelRedirectStepWaiter();
