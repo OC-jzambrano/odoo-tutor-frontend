@@ -5369,8 +5369,8 @@ export class AiSidebar extends Component {
                 sidebarOpen: this._isSidebarOpen(),
             });
 
-            const stepKey = buildTutorStepKey(msg, exerciseId || this.state.exerciseId);
-            if (this._isDuplicateAssistantText(displayText, { stepKey })) {
+            const tutorStepKey = buildTutorStepKey(msg, exerciseId || this.state.exerciseId);
+            if (this._isDuplicateAssistantText(displayText, { stepKey: tutorStepKey })) {
                 if (exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         exerciseId,
@@ -5392,7 +5392,7 @@ export class AiSidebar extends Component {
             if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
-                    stepKey,
+                    stepKey: tutorStepKey,
                     allowExercisePromptWhileActive,
                 });
                 return;
@@ -5408,12 +5408,12 @@ export class AiSidebar extends Component {
             if (inserted) {
                 this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
-                this._lastInjectedTutorStepKey = stepKey;
+                this._lastInjectedTutorStepKey = tutorStepKey;
             } else {
                 // Keep the message if insertion fails.
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
-                    stepKey,
+                    stepKey: tutorStepKey,
                     allowExercisePromptWhileActive,
                 });
             }
