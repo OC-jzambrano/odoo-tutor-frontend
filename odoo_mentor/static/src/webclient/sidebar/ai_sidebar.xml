@@ -74,13 +74,6 @@
                             <i t-else="" class="oi timer-cancel-icon" data-icon="close"/>
                         </button>
                     </div>
-
-                    <button
-                        type="button"
-                        class="btn ai-sidebar-close text-reset"
-                        t-att-aria-label="this.translate('Close')"
-                        t-on-click.stop.prevent="this.onCloseSidebar"
-                    ><i class="oi" data-icon="close"/></button>
                 </div>
             </div>
 

@@ -97,7 +97,6 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
         <a class="ai-sidebar-upgrade" href="https://odoo-tutor.odoo.com/pricing" target="_blank" rel="noopener noreferrer">Upgrade</a>
         <button type="button" class="btn ai-sidebar-recorder-toggle">Record an exercise</button>
         <button type="button" class="btn ai-sidebar-reset" aria-label="Reset">↻</button>
-        <button type="button" class="btn ai-sidebar-close" aria-label="Close">×</button>
       </div>
     </div>
 
