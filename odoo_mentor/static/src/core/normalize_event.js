@@ -26,6 +26,12 @@ function safeCssEscape(x) {
   try { return CSS.escape(x); } catch { return x; }
 }
 
+const EPHEMERAL_OWL_ID_RE = /^checkbox-comp-\d+$/i;
+
+function isEphemeralDomId(id) {
+  return !!(id && EPHEMERAL_OWL_ID_RE.test(String(id).trim()));
+}
+
 function cssPath(el) {
   if (!el || el.nodeType !== 1) return "";
   const parts = [];
@@ -33,7 +39,7 @@ function cssPath(el) {
   const body = globalThis.document?.body || null;
   while (node && node.nodeType === 1 && node !== body) {
     let sel = node.nodeName.toLowerCase();
-    if (node.id) {
+    if (node.id && !isEphemeralDomId(node.id)) {
       sel += "#" + node.id;
       parts.unshift(sel);
       break;
@@ -61,7 +67,7 @@ function cssPath(el) {
 
 function buildSelector(el) {
   if (!el) return null;
-  if (el.id) return `#${safeCssEscape(el.id)}`;
+  if (el.id && !isEphemeralDomId(el.id)) return `#${safeCssEscape(el.id)}`;
   if (el.dataset?.name) return `[data-name="${safeCssEscape(el.dataset.name)}"]`;
   const name = el.getAttribute?.("name");
   if (name) return `${(el.tagName || "").toLowerCase()}[name="${safeCssEscape(name)}"]`;
@@ -120,10 +126,100 @@ function resolveFieldName(el, owlFieldMeta = resolveOwlFieldMeta(el)) {
   if (name) return name;
 
   // Fall back to element ID prefix for portaled autocomplete dropdown options.
-  const idMatch = /^([a-z_][a-z0-9_]*?)(?:_\d+)+$/i.exec(el.id || "");
-  if (idMatch) return idMatch[1];
+  if (!isEphemeralDomId(el.id)) {
+    const idMatch = /^([a-z_][a-z0-9_]*?)(?:_\d+)+$/i.exec(el.id || "");
+    if (idMatch) return idMatch[1];
+  }
 
   return null;
+}
+
+function resolveListRecordSelector(rawTarget, domEventType) {
+  if (!rawTarget?.closest) return null;
+  const rowCell = rawTarget.closest("td.o_list_record_selector");
+  const headerCell = !rowCell ? rawTarget.closest("th.o_list_record_selector") : null;
+  const selectorCell = rowCell || headerCell;
+  if (!selectorCell) return null;
+
+  const listRoot = selectorCell.closest("table, .o_list_renderer, .o_list_view");
+  const rowCheckboxes = listRoot?.querySelectorAll
+    ? Array.from(
+        listRoot.querySelectorAll(
+          "tbody tr.o_data_row td.o_list_record_selector input[type='checkbox']"
+        )
+      )
+    : [];
+  let selectedCount = rowCheckboxes.filter((cb) => !!cb.checked).length;
+
+  const cellCheckbox = selectorCell.querySelector?.("input[type='checkbox']") || null;
+  const clickedWrapperBeforeToggle =
+    domEventType === "click" && cellCheckbox && rawTarget !== cellCheckbox;
+
+  let checked = cellCheckbox ? !!cellCheckbox.checked : true;
+  if (rowCell) {
+    if (clickedWrapperBeforeToggle) {
+      checked = !cellCheckbox.checked;
+      selectedCount = Math.max(0, selectedCount + (checked ? 1 : -1));
+    }
+  } else if (headerCell) {
+    if (clickedWrapperBeforeToggle) {
+      checked = !cellCheckbox.checked;
+      selectedCount = checked ? rowCheckboxes.length : 0;
+    } else if (checked && selectedCount === 0 && rowCheckboxes.length > 0) {
+      selectedCount = rowCheckboxes.length;
+    }
+  }
+
+  return {
+    isSelectAll: !!headerCell,
+    target_name: headerCell ? "list.select_all" : "list.select_row",
+    selector: headerCell
+      ? "th.o_list_record_selector input[type='checkbox']"
+      : "td.o_list_record_selector input[type='checkbox']",
+    label: headerCell ? "Select all records" : "Select record",
+    selected_count: selectedCount,
+    total_rows: rowCheckboxes.length,
+    checked,
+  };
+}
+
+const BREADCRUMB_TOOLTIP_PREFIX_RE =
+  /^(?:back\s+to|volver\s+a|regresar\s+a|retour\s+[àa]|zur[üu]ck\s+zu|torna\s+a)\s+/i;
+
+function stripBreadcrumbTooltipPrefix(text) {
+  const cleaned = cleanText(text);
+  if (!cleaned) return "";
+  const withoutPrefix = cleaned.replace(BREADCRUMB_TOOLTIP_PREFIX_RE, "").trim();
+  return cleanText(withoutPrefix.replace(/^["'«“”]+|["'»“”]+$/g, ""));
+}
+
+function resolveBreadcrumbTarget(rawTarget) {
+  if (!rawTarget?.closest) return null;
+  const anchor = rawTarget.closest(
+    ".o_control_panel_breadcrumbs .breadcrumb-item a, " +
+      ".o_navbar_breadcrumbs .breadcrumb-item a, " +
+      ".o_fallback_breadcrumbs .breadcrumb-item a, " +
+      ".o_breadcrumb .breadcrumb-item a, " +
+      ".o_back_button"
+  );
+  if (!anchor) return null;
+
+  const visibleText = cleanText(anchor.innerText || anchor.textContent || "");
+  const tooltipText = stripBreadcrumbTooltipPrefix(
+    anchor.getAttribute?.("data-tooltip") ||
+      anchor.getAttribute?.("title") ||
+      anchor.getAttribute?.("aria-label") ||
+      ""
+  );
+  const label = visibleText || tooltipText || "Back";
+  const slug = slugify(label);
+
+  return {
+    element: anchor,
+    label,
+    target_name: slug ? `breadcrumb.${slug}` : "breadcrumb.back",
+    selector: ".o_control_panel_breadcrumbs .breadcrumb-item a, .o_back_button",
+  };
 }
 
 function resolveRowResId(el) {
@@ -313,10 +409,14 @@ export function normalizeDomEvent({
 
   const hash = parseHashParams();
   const kanbanRecord = resolveKanbanRecord(rawTarget);
+  const listSelection = resolveListRecordSelector(rawTarget, domEventType);
+  const breadcrumbTarget =
+    domEventType === "click" && !listSelection ? resolveBreadcrumbTarget(rawTarget) : null;
 
   const model = owlFieldMeta?.model || ctx.model || hash.model || null;
   const view_type =
     (kanbanRecord && "kanban") ||
+    (listSelection && "list") ||
     ctx.view_type ||
     ctx.viewType ||
     ctx.view ||
@@ -341,7 +441,16 @@ export function normalizeDomEvent({
   let autocompleteOption = null;
   let radioOption = null;
 
-  if (domEventType === "change" || domEventType === "input_final") {
+  if (listSelection && (domEventType === "click" || domEventType === "change")) {
+    type = "list_selection_changed";
+    field = null;
+    target_name = listSelection.target_name;
+    value = listSelection.selected_count;
+  } else if (breadcrumbTarget && domEventType === "click") {
+    type = "link_clicked";
+    field = null;
+    target_name = breadcrumbTarget.target_name;
+  } else if (domEventType === "change" || domEventType === "input_final") {
       type = "field_changed";
       field = resolveFieldName(el, owlFieldMeta);
 
@@ -418,6 +527,8 @@ export function normalizeDomEvent({
 
   // label strategy: never rely on visible labels for identity, but we can emit for human readability
   const label =
+    listSelection?.label ||
+    breadcrumbTarget?.label ||
     menuVisibleText ||
     kanbanRecord?.label ||
     autocompleteOption?.text ||
@@ -428,10 +539,13 @@ export function normalizeDomEvent({
     cleanText(el?.innerText || el?.textContent || "") ||
     null;
 
-  const selector = buildSelector(el);
-  const dom_key =
-    (el?.tagName ? el.tagName.toLowerCase() : "el") +
-    (field ? `.${field}` : target_name ? `.${slugify(target_name)}` : selector ? `.${slugify(selector)}` : "");
+  const selector = listSelection?.selector || breadcrumbTarget?.selector || buildSelector(el);
+  const dom_key = listSelection
+    ? listSelection.target_name
+    : breadcrumbTarget
+      ? breadcrumbTarget.target_name
+      : (el?.tagName ? el.tagName.toLowerCase() : "el") +
+        (field ? `.${field}` : target_name ? `.${slugify(target_name)}` : selector ? `.${slugify(selector)}` : "");
 
   const quality = computeQuality({ model, view_type, field, target_name, owlFieldMeta });
 
@@ -455,10 +569,23 @@ export function normalizeDomEvent({
       in_modal: inModal || undefined,
       m2o_action: autocompleteOption?.action,
       radio_value: radioOption?.value ?? undefined,
+      ...(listSelection
+        ? {
+            selected_count: listSelection.selected_count,
+            total_rows: listSelection.total_rows,
+            selection_checked: listSelection.checked,
+          }
+        : {}),
+      ...(breadcrumbTarget
+        ? {
+            navigation_kind: "breadcrumb_back",
+            breadcrumb_label: breadcrumbTarget.label,
+          }
+        : {}),
     },
     dom: {
       tag: (el?.tagName || "").toLowerCase() || null,
-      id: el?.id || null,
+      id: isEphemeralDomId(el?.id) ? null : el?.id || null,
       nameAttr: el?.getAttribute?.("name") || null,
       dataName: el?.dataset?.name || el?.getAttribute?.("data-name") || null,
       className: (el?.className || "").toString().slice(0, 200),

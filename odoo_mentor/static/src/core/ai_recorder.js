@@ -8,7 +8,7 @@ import {
     buildStepNavSnapshot,
     clearPersistedRecordingSession,
     getRecorderStorageKey,
-    insertStepsAt,
+    insertOrMergeRecordedStep,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
     isSensitiveInputElement,
@@ -260,8 +260,8 @@ export const aiRecorderService = {
             if (!step?.id) return null;
             const isInserting = !!(insertTarget && Number.isInteger(insertTarget.index));
             const targetIdx = isInserting ? insertTarget.index : null;
-            const res = insertStepsAt(recordedSteps, [step], targetIdx);
-            if (!res.insertedCount) return null;
+            const res = insertOrMergeRecordedStep(recordedSteps, step, targetIdx);
+            if (!res.insertedCount && !res.merged) return null;
             recordedSteps = res.steps;
             const afterStepId =
                 res.insertedIndex > 0 ? recordedSteps[res.insertedIndex - 1]?.id || null : null;
@@ -270,6 +270,8 @@ export const aiRecorderService = {
                 isInserting,
                 insertedIndex: res.insertedIndex,
                 afterStepId,
+                merged: !!res.merged,
+                step: res.step || step,
             };
         }
 
@@ -404,13 +406,16 @@ export const aiRecorderService = {
             return;
           }
 
-          // dedupe: type + (field/target_name/dom_key) + res_id + value?
+          // dedupe: type + (field/target_name/dom_key) + res_id + selected_count
           const keyPart =
             normalized.field ||
             normalized.meta?.target_name ||
             normalized.dom?.dom_key ||
             "unknown";
-          const dedupeKey = `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}`;
+          const dedupeKey =
+            normalized.type === "list_selection_changed"
+              ? `${normalized.type}|${keyPart}|${normalized.meta?.selected_count ?? "null"}|${normalized.meta?.row_res_id ?? "null"}`
+              : `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}`;
 
           if (isDuplicate(dedupeKey, ts)) return;
 
@@ -426,14 +431,15 @@ export const aiRecorderService = {
           if (generatedStep) {
             captureMeta = recordCapturedStep(generatedStep);
             if (captureMeta) {
+              const emittedStep = captureMeta.step || generatedStep;
               pushLog({
-                _id: generatedStep.id,
+                _id: emittedStep.id,
                 session_id: sessionId,
                 exercise_id: exerciseId,
                 timestamp: normalized.ts,
-                event_type: "STEP_GENERATED",
-                target: generatedStep.target?.target_key || keyPart,
-                step: generatedStep,
+                event_type: captureMeta.merged ? "STEP_UPDATED" : "STEP_GENERATED",
+                target: emittedStep.target?.target_key || keyPart,
+                step: emittedStep,
                 insert_index: captureMeta.isInserting ? captureMeta.insertedIndex : null,
                 after_step_id: captureMeta.afterStepId,
               });

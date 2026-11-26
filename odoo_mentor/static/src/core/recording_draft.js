@@ -386,12 +386,22 @@ function pickCleanLabel(candidate, rawTechnical = "") {
 }
 
 export function resolveDomHumanLabel(el, normalized = null) {
+    const rawTargetName = trimText(normalized?.meta?.target_name || "", 240);
+    const rawTargetLower = rawTargetName.toLowerCase();
+    if (
+        normalized?.meta?.navigation_kind === "breadcrumb_back" ||
+        rawTargetLower.startsWith("breadcrumb.")
+    ) {
+        const bcLabel = trimText(normalized?.meta?.breadcrumb_label || normalized?.label || "", 120);
+        if (bcLabel && !isTechnicalKey(bcLabel)) {
+            return bcLabel;
+        }
+    }
+
     if (!el) return "";
 
-    const rawTargetName = trimText(normalized?.meta?.target_name || "", 240);
     const rawField = trimText(normalized?.field || "", 240);
     const rawTechnical = rawField || rawTargetName;
-    const rawTargetLower = rawTargetName.toLowerCase();
 
     // Standard Odoo toolbar/form buttons (e.g. icon-only Save button with "Save manually" tooltip).
     if (
@@ -537,6 +547,14 @@ export function resolveStepHumanLabel(normalized, { el = null } = {}) {
 export function buildStepInstruction(normalized, { el = null } = {}) {
     const label = resolveStepHumanLabel(normalized, { el });
     const type = normalized?.type || "click";
+    const targetName = trimText(normalized?.meta?.target_name || "", 240).toLowerCase();
+
+    if (
+        normalized?.meta?.navigation_kind === "breadcrumb_back" ||
+        targetName.startsWith("breadcrumb.")
+    ) {
+        return label && label.toLowerCase() !== "back" ? `Return to ${label}` : "Go back";
+    }
 
     if (isCheckboxOrToggleTarget(el, normalized)) {
         const verb = resolveToggleVerb(el, normalized);
@@ -809,6 +827,39 @@ export function isElementRequiredField(el) {
     return false;
 }
 
+function normalizeStepAction(rawAction) {
+    if (rawAction === "change") return "change";
+    if (rawAction === "select_rows") return "select_rows";
+    return "click";
+}
+
+function normalizeMinSelected(value) {
+    const num = Math.floor(Number(value));
+    return Number.isFinite(num) && num >= 1 ? num : null;
+}
+
+function extractViewNameFromBreadcrumb(breadcrumb = "") {
+    const clean = trimText(breadcrumb || "", 240);
+    if (!clean) return "";
+    const parts = clean
+        .split("/")
+        .map((p) => trimText(p, 120))
+        .filter((p) => p && p !== "...");
+    return parts[parts.length - 1] || "";
+}
+
+export function buildListSelectionInstruction({ minSelected = 1, selectAll = false, viewName = "" } = {}) {
+    const cleanView = trimText(viewName || "", 120);
+    if (selectAll) {
+        return cleanView ? `Select all ${cleanView}` : "Select all records";
+    }
+    const count = Math.max(1, Math.floor(Number(minSelected) || 1));
+    if (cleanView) {
+        return `Select ${count} ${cleanView}`;
+    }
+    return count === 1 ? "Select 1 record" : `Select ${count} records`;
+}
+
 export function buildDraftStepFromEvent(
     normalized,
     { id = null, el = null, module = null, moduleRootXmlid = null, nav = null, selector = null } = {}
@@ -817,6 +868,59 @@ export function buildDraftStepFromEvent(
     if (isRecorderUiElement(el)) return null;
     if (isSensitiveInputElement(el, normalized)) return null;
     if (isModuleEntryNavigationEvent(normalized, { module, moduleRootXmlid, el })) return null;
+
+    const rawTargetName = trimText(normalized.meta?.target_name || "", 240);
+    const isListSelection =
+        normalized.type === "list_selection_changed" ||
+        rawTargetName === "list.select_row" ||
+        rawTargetName === "list.select_all";
+
+    if (isListSelection) {
+        const isSelectAll = rawTargetName === "list.select_all";
+        const selectedCount = Number.isFinite(Number(normalized.meta?.selected_count))
+            ? Math.max(0, Math.floor(Number(normalized.meta.selected_count)))
+            : 1;
+        if (selectedCount === 0) {
+            return null;
+        }
+        const model = trimText(normalized.meta?.model || "", 240) || null;
+        const viewName = extractViewNameFromBreadcrumb(nav?.breadcrumb || "");
+        const minSelected = Math.max(1, selectedCount);
+        const instruction = buildListSelectionInstruction({
+            minSelected,
+            selectAll: isSelectAll,
+            viewName,
+        });
+        const targetKey = isSelectAll ? "list.select_all" : "list.select_rows";
+        const step = {
+            id: id || generateUuid(),
+            instruction,
+            target: {
+                action: "select_rows",
+                model,
+                field: null,
+                target_key: targetKey,
+                min_selected: minSelected,
+            },
+            is_optional: false,
+            optional_group: null,
+            target_hint: {
+                kind: "selector",
+                field: null,
+                name: targetKey,
+                xmlid: null,
+                label: viewName || (isSelectAll ? "Select all records" : "Select records"),
+                selector: isSelectAll
+                    ? "th.o_list_record_selector input[type='checkbox']"
+                    : "td.o_list_record_selector input[type='checkbox']",
+                actionLabel: instruction,
+            },
+        };
+        if (nav && typeof nav === "object") {
+            step.nav = nav;
+        }
+        return step;
+    }
 
     const action = normalized.type === "field_changed" ? "change" : "click";
     const model = trimText(normalized.meta?.model || "", 240) || null;
@@ -1054,6 +1158,81 @@ export function insertStepsAt(steps = [], newSteps = [], insertIndex = null) {
     };
 }
 
+export function insertOrMergeRecordedStep(steps = [], newStep = null, insertIndex = null) {
+    const list = Array.isArray(steps) ? steps.slice() : [];
+    if (!newStep || typeof newStep !== "object" || !newStep.id) {
+        return {
+            steps: recomputeOptionalGroups(list),
+            insertedIndex: list.length,
+            insertedCount: 0,
+            merged: false,
+            step: null,
+        };
+    }
+
+    const rawIndex =
+        insertIndex === null || insertIndex === undefined
+            ? list.length
+            : Math.floor(Number(insertIndex));
+    const clampedIndex = Number.isFinite(rawIndex)
+        ? Math.max(0, Math.min(list.length, rawIndex))
+        : list.length;
+
+    const prevIndex = clampedIndex - 1;
+    const prevStep = prevIndex >= 0 ? list[prevIndex] : null;
+    if (
+        prevStep?.target?.target_key === "list.select_rows" &&
+        newStep.target?.target_key === "list.select_rows" &&
+        normalizeMatchToken(prevStep.target?.model) === normalizeMatchToken(newStep.target?.model)
+    ) {
+        const prevCount = normalizeMinSelected(prevStep.target?.min_selected) || 1;
+        const incomingCount = normalizeMinSelected(newStep.target?.min_selected);
+        const nextMinSelected =
+            incomingCount && incomingCount > prevCount ? incomingCount : prevCount + 1;
+        const viewName = extractViewNameFromBreadcrumb(
+            newStep.nav?.breadcrumb || prevStep.nav?.breadcrumb || ""
+        );
+        const nextInstruction = buildListSelectionInstruction({
+            minSelected: nextMinSelected,
+            selectAll: false,
+            viewName,
+        });
+        const mergedStep = {
+            ...prevStep,
+            instruction: nextInstruction,
+            target: {
+                ...prevStep.target,
+                action: "select_rows",
+                target_key: "list.select_rows",
+                min_selected: nextMinSelected,
+            },
+            ...(prevStep.target_hint || newStep.target_hint
+                ? {
+                      target_hint: {
+                          ...(prevStep.target_hint || newStep.target_hint),
+                          actionLabel: nextInstruction,
+                      },
+                  }
+                : {}),
+        };
+        list[prevIndex] = mergedStep;
+        return {
+            steps: recomputeOptionalGroups(list),
+            insertedIndex: prevIndex,
+            insertedCount: 0,
+            merged: true,
+            step: mergedStep,
+        };
+    }
+
+    const res = insertStepsAt(list, [newStep], insertIndex);
+    return {
+        ...res,
+        merged: false,
+        step: res.insertedCount > 0 ? newStep : null,
+    };
+}
+
 export function moveStepByOffset(steps = [], stepId = null, delta = 0) {
     const list = Array.isArray(steps) ? steps.slice() : [];
     const offset = Math.trunc(Number(delta) || 0);
@@ -1196,6 +1375,61 @@ function normalizeMatchToken(value) {
 export function doesEventMatchDraftStep(step, normalized) {
     if (!step || !normalized) return false;
     const target = step.target || {};
+    const expectedKey = normalizeMatchToken(target.target_key);
+
+    if (
+        target.action === "select_rows" ||
+        expectedKey === "list.select_rows" ||
+        expectedKey === "list.select_all"
+    ) {
+        const eventTargetName = normalizeMatchToken(normalized.meta?.target_name);
+        const isListSelEvent =
+            normalized.type === "list_selection_changed" ||
+            eventTargetName === "list.select_row" ||
+            eventTargetName === "list.select_all";
+        if (!isListSelEvent) return false;
+
+        const expectedModel = normalizeMatchToken(target.model);
+        const eventModel = normalizeMatchToken(normalized.meta?.model);
+        if (expectedModel && eventModel && expectedModel !== eventModel) {
+            return false;
+        }
+        if (expectedKey === "list.select_all") {
+            return eventTargetName === "list.select_all" && normalized.meta?.selection_checked !== false;
+        }
+        const minSelected = normalizeMinSelected(target.min_selected) || 1;
+        const selectedCount = Math.max(0, Math.floor(Number(normalized.meta?.selected_count) || 0));
+        return selectedCount >= minSelected;
+    }
+
+    if (
+        expectedKey.startsWith("breadcrumb.") ||
+        expectedKey.startsWith("btn.back-to-")
+    ) {
+        const expectedModel = normalizeMatchToken(target.model);
+        const eventModel = normalizeMatchToken(normalized.meta?.model);
+        if (expectedModel && eventModel && expectedModel !== eventModel) {
+            return false;
+        }
+        if (
+            normalized.meta?.navigation_kind === "breadcrumb_back" ||
+            normalizeMatchToken(normalized.meta?.target_name).startsWith("breadcrumb.")
+        ) {
+            return true;
+        }
+        const stripBackPrefix = (v) =>
+            normalizeMatchToken(v)
+                .replace(/^(?:back\s+to|volver\s+a|regresar\s+a|retour\s+[àa]|return\s+to)\s+/i, "")
+                .replace(/^["'«“”]+|["'»“”]+$/g, "")
+                .trim();
+        const expectedBc = stripBackPrefix(step.target_hint?.label || step.instruction || "");
+        const eventLbl = stripBackPrefix(normalized.label || "");
+        if (expectedBc && eventLbl && expectedBc === eventLbl) {
+            return true;
+        }
+        return false;
+    }
+
     const expectedAction = target.action === "change" ? "change" : "click";
     const eventAction = normalized.type === "field_changed" ? "change" : "click";
     if (expectedAction !== eventAction) return false;
@@ -1212,7 +1446,6 @@ export function doesEventMatchDraftStep(step, normalized) {
         return true;
     }
 
-    const expectedKey = normalizeMatchToken(target.target_key);
     const eventCandidates = [
         normalized.meta?.target_name,
         normalized.field,
@@ -1539,8 +1772,10 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
     const validSteps = (Array.isArray(steps) ? steps : [])
         .map((step) => {
             const instruction = trimText(step?.instruction || "", 2000);
-            const action = step?.target?.action === "change" ? "change" : "click";
+            const action = normalizeStepAction(step?.target?.action);
             if (!instruction) return null;
+            const targetKey = trimText(step?.target?.target_key || "", 240) || null;
+            const minSelected = normalizeMinSelected(step?.target?.min_selected);
             const item = {
                 id: step.id || generateUuid(),
                 instruction,
@@ -1548,7 +1783,8 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
                     action,
                     model: trimText(step?.target?.model || "", 240) || null,
                     field: trimText(step?.target?.field || "", 240) || null,
-                    target_key: trimText(step?.target?.target_key || "", 240) || null,
+                    target_key: targetKey,
+                    ...(minSelected ? { min_selected: minSelected } : {}),
                 },
             };
             const label = trimText(step?.target_hint?.label || step?.label || "", 120);
@@ -1587,14 +1823,28 @@ export function hydrateDraftForEditing(draft) {
             if (!step || typeof step !== "object") return null;
             const instruction = trimText(step.instruction || "", 2000);
             if (!instruction) return null;
-            const action = step?.target?.action === "change" ? "change" : "click";
+            const action = normalizeStepAction(step?.target?.action);
             const model = trimText(step?.target?.model || "", 240) || null;
             const field = trimText(step?.target?.field || "", 240) || null;
             const targetKey = trimText(step?.target?.target_key || "", 240) || null;
+            const minSelected = normalizeMinSelected(step?.target?.min_selected);
             const label = trimText(step.label || step?.target_hint?.label || "", 120) || null;
 
             let targetHint = null;
-            if (targetKey && targetKey.startsWith("menu.")) {
+            if (targetKey === "list.select_rows" || targetKey === "list.select_all") {
+                targetHint = {
+                    kind: "selector",
+                    field: null,
+                    name: targetKey,
+                    xmlid: null,
+                    label: label || instruction,
+                    selector:
+                        targetKey === "list.select_all"
+                            ? "th.o_list_record_selector input[type='checkbox']"
+                            : "td.o_list_record_selector input[type='checkbox']",
+                    actionLabel: instruction,
+                };
+            } else if (targetKey && targetKey.startsWith("menu.")) {
                 targetHint = {
                     kind: "menu",
                     field: null,
@@ -1636,6 +1886,7 @@ export function hydrateDraftForEditing(draft) {
                     model,
                     field,
                     target_key: targetKey,
+                    ...(minSelected ? { min_selected: minSelected } : {}),
                 },
             };
             if (targetHint) {
@@ -1666,7 +1917,8 @@ export function buildPolishDraftPayload({ title = "", module = "", steps = [] } 
             const id = trimText(step?.id || "", 128);
             const instruction = trimText(step?.instruction || "", 2000);
             if (!id || !instruction) return null;
-            const action = step?.target?.action === "change" ? "change" : "click";
+            const action = normalizeStepAction(step?.target?.action);
+            const minSelected = normalizeMinSelected(step?.target?.min_selected);
             const item = {
                 id,
                 instruction,
@@ -1675,6 +1927,7 @@ export function buildPolishDraftPayload({ title = "", module = "", steps = [] } 
                     model: trimText(step?.target?.model || "", 240) || null,
                     field: trimText(step?.target?.field || "", 240) || null,
                     target_key: trimText(step?.target?.target_key || "", 240) || null,
+                    ...(minSelected ? { min_selected: minSelected } : {}),
                 },
             };
             const label = trimText(step?.target_hint?.label || "", 120);
@@ -1849,7 +2102,8 @@ export function sanitizePersistedRecordingSession(
                 const id = trimText(step.id || "", 128);
                 const instruction = trimText(step.instruction || "", 2000);
                 if (!id || !instruction) return null;
-                const action = step.target?.action === "change" ? "change" : "click";
+                const action = normalizeStepAction(step.target?.action);
+                const minSelected = normalizeMinSelected(step.target?.min_selected);
                 const cleanStep = {
                     id,
                     instruction,
@@ -1858,6 +2112,7 @@ export function sanitizePersistedRecordingSession(
                         model: trimText(step.target?.model || "", 240) || null,
                         field: trimText(step.target?.field || "", 240) || null,
                         target_key: trimText(step.target?.target_key || "", 240) || null,
+                        ...(minSelected ? { min_selected: minSelected } : {}),
                     },
                     is_optional: step.is_optional === true,
                     optional_group: trimText(step.optional_group || "", 64) || null,

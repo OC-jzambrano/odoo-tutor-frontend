@@ -664,6 +664,14 @@ export class AiSidebar extends Component {
                 this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
                 if (!ev) return;
 
+                if (ev.event_type === "STEP_UPDATED" && ev.step?.id) {
+                    const updatedSteps = (this.state.recorderSteps || []).map((s) =>
+                        s?.id === ev.step.id ? ev.step : s
+                    );
+                    this.state.recorderSteps = updatedSteps;
+                    return;
+                }
+
                 if (ev.event_type === "STEP_GENERATED" && ev.step) {
                     const stepId = ev.step.id;
                     const insertIdx = Number.isInteger(ev.insert_index) ? ev.insert_index : null;
