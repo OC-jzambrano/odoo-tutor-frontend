@@ -19,7 +19,11 @@ import {
     normalizeForCopyTargetLookup,
     stripNewlinesAroundCopyTargets,
 } from "../../core/copy_targets";
-import { shouldQueueTutorMessage } from "../../core/tutor_message_delivery";
+import {
+    buildTutorStepKey,
+    isDuplicateTutorAssistantMessage,
+    shouldQueueTutorMessage,
+} from "../../core/tutor_message_delivery";
 import {
     applyPolishedInstructionsToSteps,
     buildDraftStepFromEvent,
@@ -28,19 +32,29 @@ import {
     buildRecorderModuleOptions,
     buildRecordingDraftPayload,
     buildStepLocateActionRequest,
+    captureDeletedStepEntries,
     checkDryRunToggleAlreadySatisfied,
     detectOptionalBlockSuggestions,
+    extractExerciseExplorerModules,
     extractModuleFromApp,
     extractNavigateToModule,
+    filterExercisesForExplorer,
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
     getPreviousDryRunIndex,
     hydrateDraftForEditing,
+    insertStepsAt,
     isRecorderUiElement,
     matchDryRunStepIndex,
+    moveStepByOffset,
+    moveStepToIndex,
+    normalizeExerciseExplorerItem,
     recomputeOptionalGroups,
+    reconcileDryRunAfterStepInsertion,
+    reconcileDryRunAfterStepMove,
     reconcileDryRunAfterStepRemoval,
+    restoreDeletedStepEntries,
     shouldSuppressModuleGatePrompt,
 } from "../../core/recording_draft";
 import {
@@ -272,6 +286,7 @@ export class AiSidebar extends Component {
         this._tutorPushTtlMs = 8000;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
+        this._lastInjectedTutorStepKey = null;
         this._contextAckSubscribed = false;
         this._pendingRedirectStepWaiter = null;
 
@@ -357,17 +372,39 @@ export class AiSidebar extends Component {
             selectedRecorderStepIds: [],
             dismissedBlockSuggestionIds: [],
             recorderLocatingStepId: null,
+            recorderUndoStack: [],
+            recorderInsertAt: null,
+            recorderInsertMulti: false,
+            recorderInsertCapturing: false,
+            recorderRecentInsertedStepId: null,
+            recorderDragStepId: null,
+            recorderDragOverStepId: null,
+            recorderDragOverPosition: null,
 
             wsStatus: "unknown",
             showRecorderPanel: false,
             canSeeRecorderToggle: false,
             canReviewRecordings: false,
+            recorderTab: "record", // record | review | exercises
             recorderReviewTab: false,
             reviewQueue: [],
             reviewLoading: false,
             reviewDetail: null,
             reviewComment: "",
             reviewPublishFailure: null,
+
+            explorerExercises: [],
+            explorerLoading: false,
+            explorerUsingFallback: false,
+            explorerQuery: "",
+            explorerModuleFilter: "",
+            explorerStatusFilter: "published",
+            explorerScopeFilter: "tenant",
+            explorerSelectedId: null,
+            explorerDetail: null,
+            explorerDetailLoading: false,
+            explorerConfirmDeleteId: null,
+            explorerDeletingId: null,
 
             hintMessage: "",
             hintTimestamp: null,
@@ -627,11 +664,52 @@ export class AiSidebar extends Component {
                 this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
                 if (!ev) return;
 
+                if (ev.event_type === "STEP_UPDATED" && ev.step?.id) {
+                    const updatedSteps = (this.state.recorderSteps || []).map((s) =>
+                        s?.id === ev.step.id ? ev.step : s
+                    );
+                    this.state.recorderSteps = updatedSteps;
+                    return;
+                }
+
                 if (ev.event_type === "STEP_GENERATED" && ev.step) {
                     const stepId = ev.step.id;
-                    if (!(this.state.recorderSteps || []).some((s) => s?.id === stepId)) {
-                        this.state.recorderSteps = [...(this.state.recorderSteps || []), ev.step];
+                    const insertIdx = Number.isInteger(ev.insert_index) ? ev.insert_index : null;
+                    const res = insertStepsAt(this.state.recorderSteps || [], [ev.step], insertIdx);
+                    if (res.insertedCount > 0) {
+                        this.state.recorderSteps = res.steps;
+                        if (insertIdx !== null) {
+                            this._reconcileDryRunForInsertion(res.insertedIndex, res.insertedCount);
+                            this._flashInsertedStep(stepId);
+                        }
                     }
+                    return;
+                }
+
+                if (ev.event_type === "INSERT_CAPTURE_COMPLETED") {
+                    this.state.recorderInsertCapturing = false;
+                    this.state.recorderInsertAt = null;
+                    this.state.recorderStatus = "paused";
+                    this.showSidebar?.();
+                    if (ev.step?.id) {
+                        this._flashInsertedStep(ev.step.id);
+                        this._scrollToRecorderStep?.(ev.step.id);
+                    }
+                    this.notification?.add?.(
+                        _t("Inserted step #%s.", (Number(ev.insert_index) || 0) + 1),
+                        { type: "success" }
+                    );
+                    return;
+                }
+
+                if (ev.event_type === "INSERT_CURSOR_ADVANCED") {
+                    if (Number.isInteger(ev.next_index)) {
+                        this.state.recorderInsertAt = ev.next_index;
+                    }
+                    this.notification?.add?.(
+                        _t("Inserted step #%s. Perform the next action or pause.", (Number(ev.insert_index) || 0) + 1),
+                        { type: "info" }
+                    );
                     return;
                 }
 
@@ -1273,6 +1351,10 @@ export class AiSidebar extends Component {
         this._manualSelecting = false;
     }
 
+    get plansUrl() {
+        return TUTOR_PLANS_URL;
+    }
+
     get hintTimeAgo() {
         return formatTimeAgo(this.state.hintTimestamp);
     }
@@ -1474,26 +1556,18 @@ export class AiSidebar extends Component {
             .filter(Boolean);
     }
 
-    _isDuplicateAssistantText(text) {
+    _isDuplicateAssistantText(text, { stepKey = null } = {}) {
         const normalized = normalizeAssistantTextForCompare(text);
-        if (!normalized) return true;
-
-        const now = Date.now();
-        const lastInjectedNormalized = normalizeAssistantTextForCompare(this._lastInjectedTutorText || "");
-
-        if (
-            lastInjectedNormalized === normalized &&
-            now - this._lastInjectedTutorAt < 6000
-        ) {
-            return true;
-        }
-
-        const recentDomTexts = this._getRecentAssistantTextsFromDom?.(12) || [];
-        if (recentDomTexts.includes(normalized)) {
-            return true;
-        }
-
-        return false;
+        const lastInjectedText = normalizeAssistantTextForCompare(this._lastInjectedTutorText || "");
+        const lastDomText = (this._getRecentAssistantTextsFromDom?.(1) || [])[0] || "";
+        return isDuplicateTutorAssistantMessage({
+            normalizedText: normalized,
+            stepKey,
+            lastInjectedText,
+            lastInjectedAt: this._lastInjectedTutorAt || 0,
+            lastInjectedStepKey: this._lastInjectedTutorStepKey || null,
+            lastDomText,
+        });
     }
 
     _ensureConversationVisible() {
@@ -2083,44 +2157,30 @@ export class AiSidebar extends Component {
         const beforeCtx = this.contextService?.getContext?.() || this.state.currentContext || {};
         const beforeModel = String(beforeCtx?.model || "").trim().toLowerCase();
         const isHomeMenuOpen = !!document.querySelector(".o_home_menu, .o_apps");
-        const inSharedSettingsForOtherApp =
-            beforeModel === "res.config.settings" && targetModule !== "base";
 
         let navigated = false;
         let switchedApp = false;
 
         if (targetApp && this.menuService?.selectMenu) {
             switchedApp = currentApp?.id !== targetApp.id;
-            const needsMenuSelection =
-                switchedApp ||
-                isHomeMenuOpen ||
-                inSharedSettingsForOtherApp ||
-                !beforeModel ||
-                beforeModel === "unknown" ||
-                beforeModel === "ir.ui.menu";
-            if (needsMenuSelection) {
-                try {
-                    await this.menuService.selectMenu(targetApp);
-                    navigated = true;
-                } catch (e) {
-                    console.warn("[AiSidebar] auto module selectMenu failed:", e);
-                    return false;
-                }
-            } else {
+            // Always select the target app's root menu so exercises start
+            // consistently from the app's home view (even when the user is
+            // already inside a record form or submenu of the same app).
+            try {
+                await this.menuService.selectMenu(targetApp);
                 navigated = true;
+            } catch (e) {
+                console.warn("[AiSidebar] auto module selectMenu failed:", e);
+                return false;
             }
         } else if (targetModule === "base" && this.actionService?.doAction) {
-            if (beforeModel !== "res.config.settings" || isHomeMenuOpen) {
-                try {
-                    await this.actionService.doAction("base.action_general_configuration");
-                    switchedApp = true;
-                    navigated = true;
-                } catch (e) {
-                    console.warn("[AiSidebar] auto Settings navigation failed:", e);
-                    return false;
-                }
-            } else {
+            try {
+                await this.actionService.doAction("base.action_general_configuration");
+                switchedApp = beforeModel !== "res.config.settings" || isHomeMenuOpen;
                 navigated = true;
+            } catch (e) {
+                console.warn("[AiSidebar] auto Settings navigation failed:", e);
+                return false;
             }
         }
 
@@ -2218,18 +2278,25 @@ export class AiSidebar extends Component {
                 this._extractCopyTargets(response)
             );
 
+            const stepKey = buildTutorStepKey(rawPayload, normalizedExerciseId);
             if (
                 !shouldSuppressModuleGatePrompt(rawPayload, redirected) &&
                 responseText &&
-                !this._isDuplicateAssistantText(responseText)
+                !this._isDuplicateAssistantText(responseText, { stepKey })
             ) {
                 // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || normalizedExerciseId,
+                        stepKey,
                     });
                 } else {
-                    this._pushAssistantMessageToNlux(responseText);
+                    const inserted = this._pushAssistantMessageToNlux(responseText);
+                    if (inserted) {
+                        this._lastInjectedTutorText = responseText;
+                        this._lastInjectedTutorAt = Date.now();
+                        this._lastInjectedTutorStepKey = stepKey;
+                    }
                 }
             }
 
@@ -2309,7 +2376,9 @@ export class AiSidebar extends Component {
                     context: this.state.currentContext || {},
                 })
             );
-            this._syncStepTargetFromPayload(response?.raw || response);
+            const rawPayload = response?.raw || response;
+            this._syncStepTargetFromPayload(rawPayload);
+            const stepKey = buildTutorStepKey(rawPayload, exerciseId);
             const responseText = getVisibleSkipResponse(
                 response,
                 (payload) =>
@@ -2317,16 +2386,22 @@ export class AiSidebar extends Component {
                         this._extractResponseText(payload),
                         this._extractCopyTargets(payload)
                     ),
-                (text) => this._isDuplicateAssistantText(text)
+                (text) => this._isDuplicateAssistantText(text, { stepKey })
             );
             if (responseText) {
                 // Queue the response while the sidebar is closed to preserve chat order.
                 if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                     this._queueTutorMessage(responseText, response?.raw?.timestamp || response?.timestamp, {
                         exerciseId: response?.raw?.exercise_id || exerciseId,
+                        stepKey,
                     });
                 } else {
-                    this._pushAssistantMessageToNlux(responseText);
+                    const inserted = this._pushAssistantMessageToNlux(responseText);
+                    if (inserted) {
+                        this._lastInjectedTutorText = responseText;
+                        this._lastInjectedTutorAt = Date.now();
+                        this._lastInjectedTutorStepKey = stepKey;
+                    }
                 }
             }
             if (
@@ -2553,7 +2628,10 @@ export class AiSidebar extends Component {
         this._sendCurrentLiveContext();
 
         this._flushPendingHistory?.();
-        this._flushPendingTutorMessages?.();
+        this._flushPendingTutorMessages?.({ preserveScroll: false });
+        if (!this.state.showRecorderPanel) {
+            this._scrollToLatestMessageOnOpen?.();
+        }
         this._scheduleConversationReadStateSync?.();
         if (this.state.hintVisible && this.state.hintMessage && !this.state.hintExiting) {
             this._scheduleInlineHintAutoHide?.();
@@ -2728,6 +2806,7 @@ export class AiSidebar extends Component {
         } else {
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
             window.dispatchEvent(new Event("resize"));
+            this._scrollToLatestMessageOnOpen?.();
             this._focusComposerInput();
         }
     }
@@ -2757,12 +2836,15 @@ export class AiSidebar extends Component {
         const apps = this.menuService?.getApps?.() || [];
         const selectedApp = findAppForModule(apps, mod);
         if (selectedApp && this.menuService?.selectMenu) {
-            const currentAppId = this.menuService?.getCurrentApp?.()?.id;
-            if (currentAppId !== selectedApp.id) {
-                try {
-                    await this.menuService.selectMenu(selectedApp);
-                } catch {}
-            }
+            // Always navigate to the selected app's home view before starting
+            // recording so every recorded exercise begins from a consistent screen.
+            try {
+                await this.menuService.selectMenu(selectedApp);
+            } catch {}
+        } else if (mod === "base" && this.actionService?.doAction) {
+            try {
+                await this.actionService.doAction("base.action_general_configuration");
+            } catch {}
         }
 
         await this.hideSidebar();
@@ -2781,6 +2863,7 @@ export class AiSidebar extends Component {
     async onRecorderPause() {
         await this.aiRecorder.pauseRecording();
         this.state.recorderStatus = "paused";
+        this.state.recorderInsertCapturing = false;
     }
 
     async onRecorderFinishCapture() {
@@ -2946,6 +3029,10 @@ export class AiSidebar extends Component {
             this.state.recorderSteps = [];
             this.state.selectedRecorderStepIds = [];
             this._lastSelectedRecorderStepId = null;
+            this.state.recorderUndoStack = [];
+            this.state.recorderInsertAt = null;
+            this.state.recorderInsertCapturing = false;
+            this.state.recorderRecentInsertedStepId = null;
             this.state.recorderPicked = null;
             this.state.recorderPicking = false;
             this.state.recorderNote = "";
@@ -3013,6 +3100,17 @@ export class AiSidebar extends Component {
         if (!idSet.size) return;
 
         const prevSteps = this.state.recorderSteps || [];
+        const deletedEntries = captureDeletedStepEntries(prevSteps, Array.from(idSet));
+        if (deletedEntries.length) {
+            this.state.recorderUndoStack = [
+                ...(this.state.recorderUndoStack || []).slice(-19),
+                {
+                    entries: deletedEntries,
+                    count: deletedEntries.length,
+                },
+            ];
+        }
+
         const reconciled = reconcileDryRunAfterStepRemoval(
             prevSteps,
             Array.from(idSet),
@@ -3030,6 +3128,12 @@ export class AiSidebar extends Component {
         );
 
         this.state.recorderSteps = reconciled.steps;
+        if (Number.isInteger(this.state.recorderInsertAt)) {
+            this.state.recorderInsertAt = Math.min(
+                reconciled.steps.length,
+                Math.max(0, this.state.recorderInsertAt)
+            );
+        }
         this.state.selectedRecorderStepIds = (this.state.selectedRecorderStepIds || []).filter(
             (id) => !idSet.has(id)
         );
@@ -3078,6 +3182,323 @@ export class AiSidebar extends Component {
             warning.signature
         );
         this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+    }
+
+    get recorderLastUndoItem() {
+        const stack = this.state.recorderUndoStack || [];
+        return stack.length ? stack[stack.length - 1] : null;
+    }
+
+    get recorderInsertPreviousStep() {
+        if (!Number.isInteger(this.state.recorderInsertAt) || this.state.recorderInsertAt <= 0) {
+            return null;
+        }
+        const steps = this.state.recorderSteps || [];
+        return steps[this.state.recorderInsertAt - 1] || null;
+    }
+
+    _flashInsertedStep(stepId) {
+        if (!stepId) return;
+        this.state.recorderRecentInsertedStepId = stepId;
+        if (this._insertedStepFlashTimer) {
+            clearTimeout(this._insertedStepFlashTimer);
+        }
+        this._insertedStepFlashTimer = setTimeout(() => {
+            if (this.state.recorderRecentInsertedStepId === stepId) {
+                this.state.recorderRecentInsertedStepId = null;
+            }
+            this._insertedStepFlashTimer = null;
+        }, 2800);
+    }
+
+    _reconcileDryRunForInsertion(insertIndex, insertedCount) {
+        if (!this.state.dryRunActive || insertedCount <= 0) return;
+        const nextDryRun = reconcileDryRunAfterStepInsertion(
+            {
+                active: true,
+                paused: this.state.dryRunPaused,
+                stepIndex: this.state.dryRunStepIndex,
+                editStepId: this.state.dryRunEditStepId,
+                skippedPromptStepId: this.state.dryRunSkippedPromptStepId,
+                skippedPromptStepNumber: this.state.dryRunSkippedPromptStepNumber,
+            },
+            insertIndex,
+            insertedCount,
+            (this.state.recorderSteps || []).length
+        );
+        if (nextDryRun) {
+            this.state.dryRunStepIndex = nextDryRun.stepIndex;
+            this.state.dryRunSkippedPromptStepNumber = nextDryRun.skippedPromptStepNumber;
+            this._emitDryRunState();
+        }
+    }
+
+    onRecorderUndoDelete() {
+        const stack = (this.state.recorderUndoStack || []).slice();
+        if (!stack.length) return;
+        const last = stack.pop();
+        this.state.recorderUndoStack = stack;
+
+        const restored = restoreDeletedStepEntries(this.state.recorderSteps || [], last.entries);
+        if (!restored.restoredCount) return;
+
+        this.state.recorderSteps = restored.steps;
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+
+        const firstEntryIndex = Math.min(
+            ...last.entries.map((e) => Math.max(0, Number(e.index) || 0))
+        );
+        this._reconcileDryRunForInsertion(firstEntryIndex, restored.restoredCount);
+        if (restored.restoredIds[0]) {
+            this._flashInsertedStep(restored.restoredIds[0]);
+            this._scrollToRecorderStep?.(restored.restoredIds[0]);
+        }
+        this.notification.add(
+            restored.restoredCount === 1
+                ? _t("Restored deleted step.")
+                : _t("Restored %s deleted steps.", restored.restoredCount),
+            { type: "success" }
+        );
+    }
+
+    onRecorderDismissUndo() {
+        this.state.recorderUndoStack = [];
+    }
+
+    onRecorderMoveStep(stepId, delta) {
+        const moved = moveStepByOffset(this.state.recorderSteps || [], stepId, delta);
+        if (!moved.moved) return;
+
+        this.state.recorderSteps = moved.steps;
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+
+        if (this.state.dryRunActive) {
+            const nextDryRun = reconcileDryRunAfterStepMove(
+                { active: true, stepIndex: this.state.dryRunStepIndex },
+                moved.fromIndex,
+                moved.toIndex
+            );
+            if (nextDryRun) {
+                this.state.dryRunStepIndex = nextDryRun.stepIndex;
+                this._emitDryRunState();
+            }
+        }
+    }
+
+    onRecorderDragStart(stepId, ev) {
+        if (!stepId) return;
+        this.state.recorderDragStepId = stepId;
+        this.state.recorderDragOverStepId = null;
+        this.state.recorderDragOverPosition = null;
+        if (ev?.dataTransfer) {
+            ev.dataTransfer.effectAllowed = "move";
+            try {
+                ev.dataTransfer.setData("text/plain", stepId);
+            } catch {}
+            const cardEl = ev.currentTarget?.closest?.(".o_ai_rec_feed_item");
+            if (cardEl && ev.dataTransfer.setDragImage) {
+                try {
+                    ev.dataTransfer.setDragImage(cardEl, 18, 18);
+                } catch {}
+            }
+        }
+    }
+
+    onRecorderDragOver(stepId, ev) {
+        const dragId = this.state.recorderDragStepId;
+        if (!dragId || !stepId || dragId === stepId) return;
+        ev.preventDefault();
+        if (ev.dataTransfer) {
+            ev.dataTransfer.dropEffect = "move";
+        }
+        const rect = ev.currentTarget?.getBoundingClientRect?.();
+        const pos = rect && ev.clientY > rect.top + rect.height / 2 ? "after" : "before";
+        if (this.state.recorderDragOverStepId !== stepId || this.state.recorderDragOverPosition !== pos) {
+            this.state.recorderDragOverStepId = stepId;
+            this.state.recorderDragOverPosition = pos;
+        }
+    }
+
+    onRecorderDrop(targetStepId, ev) {
+        ev.preventDefault();
+        const draggedId =
+            this.state.recorderDragStepId || ev?.dataTransfer?.getData?.("text/plain") || null;
+        const pos = this.state.recorderDragOverPosition || "before";
+        this.onRecorderDragEnd();
+        if (!draggedId || !targetStepId || draggedId === targetStepId) return;
+
+        const steps = this.state.recorderSteps || [];
+        const fromIdx = steps.findIndex((s) => s?.id === draggedId);
+        const targetIdx = steps.findIndex((s) => s?.id === targetStepId);
+        if (fromIdx < 0 || targetIdx < 0) return;
+
+        let desiredIdx = pos === "after" ? targetIdx + 1 : targetIdx;
+        if (fromIdx < desiredIdx) {
+            desiredIdx -= 1;
+        }
+        const moved = moveStepToIndex(steps, draggedId, desiredIdx);
+        if (!moved.moved) return;
+
+        this.state.recorderSteps = moved.steps;
+        this.aiRecorder?.syncSessionMeta?.({ steps: this.state.recorderSteps });
+
+        if (this.state.dryRunActive) {
+            const nextDryRun = reconcileDryRunAfterStepMove(
+                { active: true, stepIndex: this.state.dryRunStepIndex },
+                moved.fromIndex,
+                moved.toIndex
+            );
+            if (nextDryRun) {
+                this.state.dryRunStepIndex = nextDryRun.stepIndex;
+                this._emitDryRunState();
+            }
+        }
+    }
+
+    onRecorderDragEnd() {
+        this.state.recorderDragStepId = null;
+        this.state.recorderDragOverStepId = null;
+        this.state.recorderDragOverPosition = null;
+    }
+
+    async onRecorderOpenInsertSlot(index) {
+        if (this.state.recorderStatus === "idle") return;
+        const steps = this.state.recorderSteps || [];
+        const clamped = Math.max(0, Math.min(steps.length, Math.floor(Number(index) || 0)));
+        if (this.state.recorderInsertAt === clamped && !this.state.recorderInsertCapturing) {
+            await this.onRecorderCancelInsert();
+            return;
+        }
+        if (this.state.recorderStatus === "recording") {
+            await this.aiRecorder.pauseRecording();
+            this.state.recorderStatus = "paused";
+        }
+        this.state.recorderInsertCapturing = false;
+        this.state.recorderInsertAt = clamped;
+    }
+
+    async onRecorderCancelInsert() {
+        if (this.state.recorderInsertCapturing) {
+            await this.aiRecorder?.cancelInsertCapture?.();
+            this.state.recorderStatus = "paused";
+        }
+        this.state.recorderInsertCapturing = false;
+        this.state.recorderInsertAt = null;
+    }
+
+    onRecorderToggleInsertMulti() {
+        this.state.recorderInsertMulti = !this.state.recorderInsertMulti;
+    }
+
+    async onRecorderStartLiveInsert() {
+        if (!Number.isInteger(this.state.recorderInsertAt)) return;
+        if (this.state.dryRunActive) {
+            this.onRecorderStopDryRun();
+        }
+        const targetIndex = this.state.recorderInsertAt;
+        this.state.recorderInsertCapturing = true;
+        await this.hideSidebar();
+        const res = await this.aiRecorder.startInsertCapture({
+            index: targetIndex,
+            autoStop: !this.state.recorderInsertMulti,
+        });
+        this.state.recorderSessionId = res.sessionId;
+        this.state.recorderStatus = "recording";
+        this.state.wsStatus = this.aiWs?.isOpen?.() ? "online" : "offline";
+    }
+
+    async onRecorderPickInsertStep() {
+        if (!Number.isInteger(this.state.recorderInsertAt) || this.state.recorderPicking) return;
+        const targetIndex = this.state.recorderInsertAt;
+        this.state.recorderPicking = true;
+        await this.hideSidebar();
+        document.body.classList.add("o_ai_pick_mode");
+
+        try {
+            const picked = await this.aiRecorder.pickTarget({ timeoutMs: 30000 });
+            if (!picked) return;
+
+            const stepId =
+                picked.draft_step?.id ||
+                crypto?.randomUUID?.() ||
+                `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+            const newStep = picked.draft_step
+                ? { ...picked.draft_step, id: stepId }
+                : {
+                      id: stepId,
+                      instruction: buildPickedStepInstruction(picked),
+                      is_optional: false,
+                      optional_group: null,
+                      target: {
+                          action: "click",
+                          model: this.state.currentContext?.model || null,
+                          field: picked?.name || null,
+                          target_key: picked?.target_key || null,
+                      },
+                      ...(picked.nav ? { nav: picked.nav } : {}),
+                  };
+
+            const res = insertStepsAt(this.state.recorderSteps || [], [newStep], targetIndex);
+            if (res.insertedCount > 0) {
+                this.state.recorderSteps = res.steps;
+                this.state.recorderStepIndex = Math.max(
+                    this.state.recorderStepIndex || 0,
+                    this.state.recorderSteps.length
+                );
+                this.aiRecorder?.syncSessionMeta?.({
+                    steps: this.state.recorderSteps,
+                    stepIndex: this.state.recorderStepIndex,
+                });
+                this._reconcileDryRunForInsertion(res.insertedIndex, res.insertedCount);
+                this._flashInsertedStep(newStep.id);
+
+                const afterStepId =
+                    res.insertedIndex > 0 ? this.state.recorderSteps[res.insertedIndex - 1]?.id || null : null;
+                this.aiWs
+                    ?.sendEvent?.({
+                        type: "exercise_step",
+                        event_name: "step_saved",
+                        event_data: {
+                            recorder_session_id: this.state.recorderSessionId,
+                            step_id: newStep.id,
+                            step_index: res.insertedIndex + 1,
+                            insert_index: res.insertedIndex,
+                            after_step_id: afterStepId,
+                            timestamp: new Date().toISOString(),
+                            instruction: newStep.instruction || "",
+                            target: newStep.target?.target_key || picked?.target_key || null,
+                            target_meta: picked,
+                            context: this.state.currentContext || null,
+                        },
+                    })
+                    .catch(() => {});
+
+                if (this.state.recorderInsertMulti) {
+                    this.state.recorderInsertAt = Math.min(
+                        this.state.recorderSteps.length,
+                        res.insertedIndex + 1
+                    );
+                } else {
+                    this.state.recorderInsertAt = null;
+                }
+                this.notification.add(
+                    _t("Inserted step #%s.", res.insertedIndex + 1),
+                    { type: "success" }
+                );
+            }
+        } catch (e) {
+            console.warn("[ai_recorder] insert pick failed:", e);
+        } finally {
+            document.body.classList.remove("o_ai_pick_mode");
+            await this.showSidebar();
+            this.state.recorderPicking = false;
+        }
+    }
+
+    async onRecorderGoToPreviousStepScreen() {
+        const prevStep = this.recorderInsertPreviousStep;
+        if (!prevStep) return;
+        await this.onRecorderLocateStep(prevStep);
     }
 
     isRecorderStepSelected(stepId) {
@@ -3752,10 +4173,63 @@ export class AiSidebar extends Component {
 
         this.state.recorderSaving = true;
         try {
-            const result = await rpc("/ai_chat/recording_drafts/save", { draft });
+            let result;
+            let supersededOldDraft = null;
+            if (this._editingExerciseId) {
+                result = await rpc("/ai_chat/exercises/update", {
+                    exercise_id: this._editingExerciseId,
+                    draft,
+                });
+            } else {
+                result = await rpc("/ai_chat/recording_drafts/save", { draft });
+                if (result?.status === 409) {
+                    const previousRecordingId = draft.recording_id;
+                    const retryDraft = buildRecordingDraftPayload({
+                        recordingId:
+                            crypto?.randomUUID?.() ||
+                            `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+                        title: this.state.recorderTitle,
+                        module: this.state.recorderModule,
+                        steps: this.state.recorderSteps,
+                    });
+                    result = await rpc("/ai_chat/recording_drafts/save", { draft: retryDraft });
+                    if (!result?.error && previousRecordingId) {
+                        supersededOldDraft = {
+                            recordingId: previousRecordingId,
+                            authorId:
+                                this._editingReviewDraft?.recordingId === previousRecordingId
+                                    ? this._editingReviewDraft.authorId
+                                    : null,
+                        };
+                    }
+                }
+            }
             if (result?.error) {
                 this.notification.add(result.error, { type: "danger" });
                 return;
+            }
+            if (supersededOldDraft && this.state.canReviewRecordings) {
+                try {
+                    await rpc("/ai_chat/recording_drafts/review_decision", {
+                        recording_id: supersededOldDraft.recordingId,
+                        decision: "rejected",
+                        comment: "Superseded by edited version",
+                        author_id: supersededOldDraft.authorId,
+                    });
+                } catch {}
+            }
+            this._editingExerciseId = null;
+            this._editingReviewDraft = null;
+            this.state.reviewDetail = null;
+            this.state.reviewComment = "";
+            const strippedFields = Array.isArray(result?.stripped_fields)
+                ? result.stripped_fields
+                : [];
+            if (strippedFields.includes("is_optional")) {
+                this.notification.add(
+                    _t("Saved draft, but the backend does not persist 'Optional' step flags yet."),
+                    { type: "warning" }
+                );
             }
             this.onRecorderStopDryRun();
             if (this.state.recorderStatus !== "idle") {
@@ -3772,6 +4246,10 @@ export class AiSidebar extends Component {
             this.state.recorderSteps = [];
             this.state.selectedRecorderStepIds = [];
             this._lastSelectedRecorderStepId = null;
+            this.state.recorderUndoStack = [];
+            this.state.recorderInsertAt = null;
+            this.state.recorderInsertCapturing = false;
+            this.state.recorderRecentInsertedStepId = null;
             this.state.recorderPicked = null;
             this.state.recorderNote = "";
             this.state.recorderFeed = [];
@@ -3787,10 +4265,307 @@ export class AiSidebar extends Component {
     }
 
     async toggleRecorderReviewTab(showReview) {
-        if (!this.state.canReviewRecordings) return;
-        this.state.recorderReviewTab = !!showReview;
-        if (this.state.recorderReviewTab) {
+        await this.setRecorderTab(showReview ? "review" : "record");
+    }
+
+    async setRecorderTab(tab) {
+        if (!this.state.canSeeRecorderToggle) return;
+        const target =
+            tab === "review" && this.state.canReviewRecordings
+                ? "review"
+                : tab === "exercises"
+                  ? "exercises"
+                  : "record";
+        this.state.recorderTab = target;
+        this.state.recorderReviewTab = target === "review";
+        if (target === "review") {
             await this.loadReviewQueue();
+        } else if (target === "exercises") {
+            await this.loadExplorerExercises();
+        }
+    }
+
+    get explorerModules() {
+        return extractExerciseExplorerModules(this.state.explorerExercises || []);
+    }
+
+    get filteredExplorerExercises() {
+        return filterExercisesForExplorer(this.state.explorerExercises || [], {
+            query: this.state.explorerQuery,
+            module: this.state.explorerModuleFilter,
+            status:
+                this.state.explorerScopeFilter === "global"
+                    ? ""
+                    : this.state.explorerStatusFilter,
+            scope: this.state.explorerUsingFallback ? "" : this.state.explorerScopeFilter,
+        });
+    }
+
+    async onExplorerScopeChange(scope) {
+        const nextScope = scope === "global" || scope === "all" ? scope : "tenant";
+        if (this.state.explorerScopeFilter === nextScope) return;
+        this.state.explorerScopeFilter = nextScope;
+        if (nextScope === "global") {
+            this.state.explorerStatusFilter = "published";
+        }
+        this.state.explorerSelectedId = null;
+        this.state.explorerDetail = null;
+        this.state.explorerConfirmDeleteId = null;
+        await this.loadExplorerExercises();
+    }
+
+    async onExplorerStatusChange(ev) {
+        const nextStatus = ev?.target?.value || "published";
+        this.state.explorerStatusFilter = nextStatus;
+        this.state.explorerSelectedId = null;
+        this.state.explorerDetail = null;
+        this.state.explorerConfirmDeleteId = null;
+        if (!this.state.explorerUsingFallback) {
+            await this.loadExplorerExercises();
+        }
+    }
+
+    async loadExplorerExercises() {
+        if (!this.state.canSeeRecorderToggle) return;
+        const seq = (this._explorerLoadSeq = (this._explorerLoadSeq || 0) + 1);
+        this.state.explorerLoading = true;
+        this.state.explorerConfirmDeleteId = null;
+        try {
+            const scope = this.state.explorerScopeFilter || "tenant";
+            const statusFilter =
+                scope === "global"
+                    ? "published"
+                    : this.state.explorerStatusFilter || "published";
+            const params = { scope };
+            if (statusFilter === "all") {
+                params.status = "all";
+            } else if (statusFilter) {
+                params.status = statusFilter;
+            }
+            const result = await rpc("/ai_chat/exercises/list", params);
+            if (seq !== this._explorerLoadSeq) return;
+            if (result?.ok) {
+                const rawItems = Array.isArray(result?.data?.items)
+                    ? result.data.items
+                    : Array.isArray(result?.data)
+                      ? result.data
+                      : [];
+                this.state.explorerExercises = rawItems
+                    .map((item) => normalizeExerciseExplorerItem(item, { source: "exercise" }))
+                    .filter(Boolean);
+                this.state.explorerUsingFallback = false;
+                if (
+                    this.state.explorerModuleFilter &&
+                    !this.explorerModules.includes(this.state.explorerModuleFilter)
+                ) {
+                    this.state.explorerModuleFilter = "";
+                }
+                return;
+            }
+
+            // Graceful fallback while backend /exercises endpoint is not deployed yet:
+            // list the creator's own drafts (+ pending review queue for reviewers/admins).
+            const fallbackItems = [];
+            const seen = new Set();
+            const addUnique = (raw, source) => {
+                const norm = normalizeExerciseExplorerItem(raw, { source });
+                if (norm && !seen.has(norm.id)) {
+                    seen.add(norm.id);
+                    fallbackItems.push(norm);
+                }
+            };
+            const ownDrafts = await rpc("/ai_chat/recording_drafts/list", {});
+            if (seq !== this._explorerLoadSeq) return;
+            for (const item of ownDrafts?.data?.items || []) {
+                addUnique(item, "draft");
+            }
+            if (this.state.canReviewRecordings) {
+                const reviewDrafts = await rpc("/ai_chat/recording_drafts/review_list", {});
+                if (seq !== this._explorerLoadSeq) return;
+                for (const item of reviewDrafts?.data?.items || []) {
+                    addUnique(item, "draft");
+                }
+            }
+            this.state.explorerExercises = fallbackItems;
+            this.state.explorerUsingFallback = true;
+        } catch (err) {
+            if (seq !== this._explorerLoadSeq) return;
+            this.notification.add(
+                err?.message || _t("Could not load exercises."),
+                { type: "danger" }
+            );
+        } finally {
+            if (seq === this._explorerLoadSeq) {
+                this.state.explorerLoading = false;
+            }
+        }
+    }
+
+    async inspectExplorerExercise(item) {
+        if (!item?.id) return;
+        if (this.state.explorerSelectedId === item.id && this.state.explorerDetail) {
+            this.state.explorerSelectedId = null;
+            this.state.explorerDetail = null;
+            this.state.explorerConfirmDeleteId = null;
+            return;
+        }
+        this.state.explorerSelectedId = item.id;
+        this.state.explorerConfirmDeleteId = null;
+        this.state.explorerDetailLoading = true;
+        try {
+            if (item.source === "exercise" && !this.state.explorerUsingFallback) {
+                const result = await rpc("/ai_chat/exercises/detail", { exercise_id: item.id });
+                if (result?.ok && result.data) {
+                    const mergedRaw = {
+                        scope: item.scope,
+                        read_only: item.readOnly,
+                        can_edit: item.canEdit,
+                        can_delete: item.canDelete,
+                        ...result.data,
+                    };
+                    const norm = normalizeExerciseExplorerItem(mergedRaw, { source: "exercise" });
+                    this.state.explorerDetail = norm || item;
+                    return;
+                }
+            } else if (this.state.canReviewRecordings && item.recordingId) {
+                const result = await rpc("/ai_chat/recording_drafts/review_detail", {
+                    recording_id: item.recordingId,
+                    author_id: item.authorId,
+                });
+                if (result?.ok && result.data) {
+                    const norm = normalizeExerciseExplorerItem(result.data, { source: "draft" });
+                    this.state.explorerDetail = norm || item;
+                    return;
+                }
+            }
+            this.state.explorerDetail = item;
+        } catch {
+            this.state.explorerDetail = item;
+        } finally {
+            this.state.explorerDetailLoading = false;
+        }
+    }
+
+    async editExplorerExercise(item = null) {
+        const target = item || this.state.explorerDetail;
+        if (!this.state.canSeeRecorderToggle || !target) return;
+        if (target.readOnly || !target.canEdit) return;
+
+        let fullItem = target;
+        if (!Array.isArray(fullItem.steps) || !fullItem.steps.length) {
+            await this.inspectExplorerExercise(target);
+            fullItem = this.state.explorerDetail || target;
+        }
+        if (fullItem.readOnly || !fullItem.canEdit) return;
+
+        const hydrated = hydrateDraftForEditing({
+            recording_id: fullItem.recordingId || fullItem.id,
+            title: fullItem.title,
+            module: fullItem.module,
+            steps: fullItem.steps || [],
+        });
+        if (!hydrated) return;
+
+        this.onRecorderStopDryRun();
+        this._polishRequestSeq += 1;
+        this.state.recorderPolishing = false;
+        this.state.recorderPrePolishSnapshot = null;
+        this._editedDuringPolishStepIds = new Set();
+
+        const apps = this.menuService?.getApps?.() || [];
+        const selectedApp = findAppForModule(apps, hydrated.module);
+
+        this.aiRecorder.loadDraftSession({
+            sessionId: hydrated.recordingId,
+            title: hydrated.title,
+            module: hydrated.module,
+            moduleRootXmlid: selectedApp?.xmlid || null,
+            steps: hydrated.steps,
+        });
+
+        this.state.recorderStatus = "paused";
+        this.state.recorderSessionId = hydrated.recordingId;
+        this._editingExerciseId =
+            fullItem.source === "exercise" && !this.state.explorerUsingFallback ? fullItem.id : null;
+        this._editingReviewDraft =
+            fullItem.source === "draft"
+                ? { recordingId: hydrated.recordingId, authorId: fullItem.authorId || null }
+                : null;
+        this.state.recorderTitle = hydrated.title;
+        this.state.recorderModule = hydrated.module;
+        this.state.recorderSteps = hydrated.steps;
+        this.state.selectedRecorderStepIds = [];
+        this._lastSelectedRecorderStepId = null;
+        this.state.recorderUndoStack = [];
+        this.state.recorderInsertAt = null;
+        this.state.recorderInsertCapturing = false;
+        this.state.recorderRecentInsertedStepId = null;
+        this.state.dismissedSuspectKeys = [];
+        this.state.dismissedBlockSuggestionIds = [];
+        this.state.recorderStepIndex = hydrated.steps.length;
+        this.state.recorderPicked = null;
+        this.state.recorderNote = "";
+        this.state.recorderFeed = [];
+        this.state.recorderTab = "record";
+        this.state.recorderReviewTab = false;
+        this.state.reviewDetail = null;
+        this.state.reviewComment = "";
+
+        this.notification.add(
+            _t("Loaded exercise into Recorder. Edit steps and save to update it."),
+            { type: "info" }
+        );
+    }
+
+    onExplorerRequestDelete(exerciseId) {
+        if (!exerciseId) return;
+        const found = (this.state.explorerExercises || []).find((ex) => ex.id === exerciseId);
+        if (found && (found.readOnly || !found.canDelete)) return;
+        this.state.explorerConfirmDeleteId =
+            this.state.explorerConfirmDeleteId === exerciseId ? null : exerciseId;
+    }
+
+    async onExplorerConfirmDelete(item) {
+        if (!item?.id || item.readOnly || !item.canDelete || this.state.explorerDeletingId) return;
+        this.state.explorerDeletingId = item.id;
+        try {
+            let result;
+            if (item.source === "exercise" && !this.state.explorerUsingFallback) {
+                result = await rpc("/ai_chat/exercises/delete", { exercise_id: item.id });
+            } else if (this.state.canReviewRecordings && item.recordingId) {
+                result = await rpc("/ai_chat/recording_drafts/review_decision", {
+                    recording_id: item.recordingId,
+                    decision: "rejected",
+                    comment: "Deleted from Exercises panel",
+                    author_id: item.authorId,
+                });
+            } else {
+                this.notification.add(
+                    _t("Delete requires the backend /exercises endpoint or reviewer permission."),
+                    { type: "warning" }
+                );
+                return;
+            }
+            if (result?.error) {
+                this.notification.add(result.error, { type: "danger" });
+                return;
+            }
+            this.state.explorerExercises = (this.state.explorerExercises || []).filter(
+                (ex) => ex.id !== item.id
+            );
+            if (this.state.explorerSelectedId === item.id) {
+                this.state.explorerSelectedId = null;
+                this.state.explorerDetail = null;
+            }
+            this.state.explorerConfirmDeleteId = null;
+            this.notification.add(_t("Exercise deleted."), { type: "success" });
+        } catch (err) {
+            this.notification.add(
+                err?.message || _t("Could not delete exercise."),
+                { type: "danger" }
+            );
+        } finally {
+            this.state.explorerDeletingId = null;
         }
     }
 
@@ -3805,7 +4580,13 @@ export class AiSidebar extends Component {
                 this.notification.add(result.error, { type: "danger" });
                 return;
             }
-            this.state.reviewQueue = Array.isArray(result?.data) ? result.data : [];
+            const queue = Array.isArray(result?.data) ? result.data : [];
+            this.state.reviewQueue = queue;
+            const openId = this.state.reviewDetail?.draft?.recording_id;
+            if (openId && !queue.some((item) => item.recording_id === openId)) {
+                this.state.reviewDetail = null;
+                this.state.reviewComment = "";
+            }
         } catch (err) {
             this.notification.add(
                 err?.message || _t("Could not load review queue."),
@@ -3955,18 +4736,29 @@ export class AiSidebar extends Component {
 
         this.state.recorderStatus = "paused";
         this.state.recorderSessionId = hydrated.recordingId;
+        this._editingReviewDraft = {
+            recordingId: hydrated.recordingId,
+            authorId: targetDetail.author_id || null,
+        };
         this.state.recorderTitle = hydrated.title;
         this.state.recorderModule = hydrated.module;
         this.state.recorderSteps = hydrated.steps;
         this.state.selectedRecorderStepIds = [];
         this._lastSelectedRecorderStepId = null;
+        this.state.recorderUndoStack = [];
+        this.state.recorderInsertAt = null;
+        this.state.recorderInsertCapturing = false;
+        this.state.recorderRecentInsertedStepId = null;
         this.state.dismissedSuspectKeys = [];
         this.state.dismissedBlockSuggestionIds = [];
         this.state.recorderStepIndex = hydrated.steps.length;
         this.state.recorderPicked = null;
         this.state.recorderNote = "";
         this.state.recorderFeed = [];
+        this.state.recorderTab = "record";
         this.state.recorderReviewTab = false;
+        this.state.reviewDetail = null;
+        this.state.reviewComment = "";
 
         this.notification.add(
             _t("Loaded recording into Recorder. Edit steps and click Save for later review to update it."),
@@ -4113,19 +4905,37 @@ export class AiSidebar extends Component {
             });
 
             this._pushSavedStepToFeed(payload);
-            this.state.recorderSteps = [
-                ...(this.state.recorderSteps || []),
-                {
-                    id: stepId,
-                    instruction: instruction || buildPickedStepInstruction(picked),
-                    target: {
-                        action: "click",
-                        model: this.state.currentContext?.model || null,
-                        field: picked?.name || null,
-                        target_key: picked?.target_key || null,
-                    },
-                },
-            ];
+            const builtStep = picked?.draft_step
+                ? {
+                      ...picked.draft_step,
+                      id: stepId,
+                      instruction: instruction || picked.draft_step.instruction || buildPickedStepInstruction(picked),
+                  }
+                : {
+                      id: stepId,
+                      instruction: instruction || buildPickedStepInstruction(picked),
+                      is_optional: false,
+                      optional_group: null,
+                      target: {
+                          action: "click",
+                          model: this.state.currentContext?.model || null,
+                          field: picked?.name || null,
+                          target_key: picked?.target_key || null,
+                      },
+                      ...(picked?.nav ? { nav: picked.nav } : {}),
+                  };
+            const targetInsertIdx = Number.isInteger(this.state.recorderInsertAt)
+                ? this.state.recorderInsertAt
+                : null;
+            const inserted = insertStepsAt(this.state.recorderSteps || [], [builtStep], targetInsertIdx);
+            this.state.recorderSteps = inserted.steps;
+            if (targetInsertIdx !== null && inserted.insertedCount > 0) {
+                this._reconcileDryRunForInsertion(inserted.insertedIndex, inserted.insertedCount);
+                this._flashInsertedStep(stepId);
+                this.state.recorderInsertAt = this.state.recorderInsertMulti
+                    ? Math.min(this.state.recorderSteps.length, inserted.insertedIndex + 1)
+                    : null;
+            }
 
             this.state.recorderStepIndex = stepIndex;
             this.state.recorderNote = "";
@@ -4152,7 +4962,8 @@ export class AiSidebar extends Component {
         const queue = getTutorPendingQueue();
         const exerciseId = this._normalizeExerciseId(meta.exerciseId);
         const allowExercisePromptWhileActive = !!meta.allowExercisePromptWhileActive;
-        const key = `${displayText}__${timestamp || ""}__${exerciseId || ""}`;
+        const stepKey = meta.stepKey || null;
+        const key = `${displayText}__${timestamp || ""}__${exerciseId || ""}__${stepKey || ""}`;
 
         const alreadyQueued = queue.some((item) => item.key === key);
         if (alreadyQueued) return;
@@ -4162,6 +4973,7 @@ export class AiSidebar extends Component {
             text: displayText,
             timestamp: timestamp || new Date().toISOString(),
             exerciseId,
+            stepKey,
             allowExercisePromptWhileActive,
         });
 
@@ -4170,7 +4982,7 @@ export class AiSidebar extends Component {
         }
     }
 
-    _flushPendingTutorMessages() {
+    _flushPendingTutorMessages({ preserveScroll: allowPreserveScroll = true } = {}) {
         if (!this.aiChat) return;
         if (!this._isSidebarOpen()) return;
 
@@ -4185,7 +4997,7 @@ export class AiSidebar extends Component {
             if (!cleaned) continue;
             const displayText = translateKnownTutorText(cleaned);
 
-            if (this._isDuplicateAssistantText(displayText)) {
+            if (this._isDuplicateAssistantText(displayText, { stepKey: item.stepKey || null })) {
                 if (item.exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         item.exerciseId,
@@ -4198,7 +5010,8 @@ export class AiSidebar extends Component {
                 continue;
             }
 
-            const preserveScroll = this._shouldPreserveScrollForIncomingMessage();
+            const preserveScroll =
+                allowPreserveScroll && this._shouldPreserveScrollForIncomingMessage();
             const inserted = this._pushAssistantMessageToNlux(displayText, {
                 exerciseId: item.exerciseId || null,
                 allowExercisePromptWhileActive: !!item.allowExercisePromptWhileActive,
@@ -4208,6 +5021,7 @@ export class AiSidebar extends Component {
             if (inserted) {
                 this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
+                this._lastInjectedTutorStepKey = item.stepKey || null;
             } else {
                 failed.push(item);
             }
@@ -4353,6 +5167,9 @@ export class AiSidebar extends Component {
         this._pendingHistory = null;
         this._resolveHistoryReady?.();
         this._resolveHistoryReady = null;
+        if (this._isSidebarOpen() && !this.state.showRecorderPanel) {
+            this._scrollToLatestMessageOnOpen?.();
+        }
         return true;
     }
 
@@ -4536,7 +5353,10 @@ export class AiSidebar extends Component {
             }
 
             if (isExerciseCompleted) {
-                this.completeProcess();
+                this.completeProcess({
+                    preservePreview: true,
+                    completedMessage: cleaned || "",
+                });
             }
 
             const normalized = normalizeAssistantTextForCompare(cleaned);
@@ -4549,7 +5369,8 @@ export class AiSidebar extends Component {
                 sidebarOpen: this._isSidebarOpen(),
             });
 
-            if (this._isDuplicateAssistantText(displayText)) {
+            const tutorStepKey = buildTutorStepKey(msg, exerciseId || this.state.exerciseId);
+            if (this._isDuplicateAssistantText(displayText, { stepKey: tutorStepKey })) {
                 if (exerciseId) {
                     this._scheduleExerciseActionsForLastMessage(
                         exerciseId,
@@ -4571,6 +5392,7 @@ export class AiSidebar extends Component {
             if (shouldQueueTutorMessage({ aiChat: this.aiChat, isSidebarOpen: this._isSidebarOpen() })) {
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
+                    stepKey: tutorStepKey,
                     allowExercisePromptWhileActive,
                 });
                 return;
@@ -4586,10 +5408,12 @@ export class AiSidebar extends Component {
             if (inserted) {
                 this._lastInjectedTutorText = displayText;
                 this._lastInjectedTutorAt = Date.now();
+                this._lastInjectedTutorStepKey = tutorStepKey;
             } else {
                 // Keep the message if insertion fails.
                 this._queueTutorMessage(displayText, msg.timestamp, {
                     exerciseId,
+                    stepKey: tutorStepKey,
                     allowExercisePromptWhileActive,
                 });
             }
@@ -4893,6 +5717,7 @@ export class AiSidebar extends Component {
         this._historyReadyPromise = null;
         this._lastInjectedTutorText = null;
         this._lastInjectedTutorAt = 0;
+        this._lastInjectedTutorStepKey = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
         this._cancelRedirectStepWaiter();
@@ -5014,7 +5839,10 @@ export class AiSidebar extends Component {
             }
 
             if (isExerciseCompleted) {
-                this.completeProcess();
+                this.completeProcess({
+                    preservePreview: true,
+                    completedMessage: messageText || "",
+                });
             }
 
             return new String(messageText);
@@ -5303,7 +6131,7 @@ export class AiSidebar extends Component {
         window.dispatchEvent(new CustomEvent("ai:preview_reset"));
     }
 
-    completeProcess() {
+    completeProcess({ preservePreview = false, completedMessage = "" } = {}) {
         if (this.state.timerInterval) {
             clearInterval(this.state.timerInterval);
         }
@@ -5324,10 +6152,22 @@ export class AiSidebar extends Component {
         this.state.timerValue = "00:00:00";
         this.state.exerciseId = null;
         this._syncComposerDisabledState();
+        if (preservePreview) {
+            window.dispatchEvent(
+                new CustomEvent("ai:exercise_completed_preview", {
+                    detail: {
+                        message: completedMessage || _t("Exercise completed! Great job."),
+                        timestamp: new Date().toISOString(),
+                    },
+                })
+            );
+            return;
+        }
         window.__AI_TUTOR_OWL_PREVIEW__ = {
             message: "",
             timestamp: "",
             visible: false,
+            completed: false,
         };
         window.dispatchEvent(new CustomEvent("ai:preview_reset"));
     }
@@ -5507,6 +6347,34 @@ export class AiSidebar extends Component {
         this.aiChatStore?.setAtBottom?.(true);
     }
 
+    _scrollToLatestMessageOnOpen() {
+        if (this.state.showRecorderPanel) return;
+        this._stopLock();
+        this._userScrollingUntil = 0;
+
+        if (this._openScrollTimer) {
+            clearTimeout(this._openScrollTimer);
+            this._openScrollTimer = null;
+        }
+
+        const scrollNow = () => {
+            if (this.state.showRecorderPanel || !this._isSidebarOpen()) return;
+            if (performance.now() < (this._userScrollingUntil || 0)) return;
+            this._scrollConversationToBottom({ smooth: false });
+        };
+
+        scrollNow();
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                scrollNow();
+            });
+        });
+        this._openScrollTimer = setTimeout(() => {
+            this._openScrollTimer = null;
+            scrollNow();
+        }, 160);
+    }
+
     _disconnectContainerFinder() {
         if (this._containerFinderObs) {
             this._containerFinderObs.disconnect();
@@ -5586,6 +6454,10 @@ export class AiSidebar extends Component {
             this._observerAA = null;
         }
         this._stopLock();
+        if (this._openScrollTimer) {
+            clearTimeout(this._openScrollTimer);
+            this._openScrollTimer = null;
+        }
         this._conv = null;
         this._segments = null;
     }

@@ -8,6 +8,7 @@ import {
     buildStepNavSnapshot,
     clearPersistedRecordingSession,
     getRecorderStorageKey,
+    insertOrMergeRecordedStep,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
     isSensitiveInputElement,
@@ -186,6 +187,7 @@ export const aiRecorderService = {
         let recordedStepIndex = 0;
         let recordedNote = "";
         let recordedDryRun = null;
+        let insertTarget = null; // null | { index: number, autoStop: boolean }
 
         const listeners = new Set();
         const logs = [];
@@ -254,11 +256,56 @@ export const aiRecorderService = {
             persistSessionState();
         }
 
-        function appendRecordedStep(step) {
-            if (!step?.id) return;
-            if (!recordedSteps.some((existing) => existing?.id === step.id)) {
-                recordedSteps = [...recordedSteps, step];
+        function recordCapturedStep(step) {
+            if (!step?.id) return null;
+            const isInserting = !!(insertTarget && Number.isInteger(insertTarget.index));
+            const targetIdx = isInserting ? insertTarget.index : null;
+            const res = insertOrMergeRecordedStep(recordedSteps, step, targetIdx);
+            if (!res.insertedCount && !res.merged) return null;
+            recordedSteps = res.steps;
+            const afterStepId =
+                res.insertedIndex > 0 ? recordedSteps[res.insertedIndex - 1]?.id || null : null;
+            persistSessionState();
+            return {
+                isInserting,
+                insertedIndex: res.insertedIndex,
+                afterStepId,
+                merged: !!res.merged,
+                step: res.step || step,
+            };
+        }
+
+        function finalizeInsertCaptureIfNeeded(captureMeta, step) {
+            if (!captureMeta?.isInserting || !insertTarget) return;
+            if (insertTarget.autoStop !== false) {
+                insertTarget = null;
+                status = "paused";
+                detachDomListeners();
                 persistSessionState();
+                pushLog({
+                    _id: uuid(),
+                    session_id: sessionId,
+                    exercise_id: exerciseId,
+                    timestamp: nowIso(),
+                    event_type: "INSERT_CAPTURE_COMPLETED",
+                    insert_index: captureMeta.insertedIndex,
+                    target: step?.target?.target_key || "-",
+                    step,
+                });
+            } else {
+                const nextIndex = Math.min(recordedSteps.length, captureMeta.insertedIndex + 1);
+                insertTarget = { ...insertTarget, index: nextIndex };
+                pushLog({
+                    _id: uuid(),
+                    session_id: sessionId,
+                    exercise_id: exerciseId,
+                    timestamp: nowIso(),
+                    event_type: "INSERT_CURSOR_ADVANCED",
+                    insert_index: captureMeta.insertedIndex,
+                    next_index: nextIndex,
+                    target: step?.target?.target_key || "-",
+                    step,
+                });
             }
         }
 
@@ -359,13 +406,16 @@ export const aiRecorderService = {
             return;
           }
 
-          // dedupe: type + (field/target_name/dom_key) + res_id + value?
+          // dedupe: type + (field/target_name/dom_key) + res_id + selected_count
           const keyPart =
             normalized.field ||
             normalized.meta?.target_name ||
             normalized.dom?.dom_key ||
             "unknown";
-          const dedupeKey = `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}`;
+          const dedupeKey =
+            normalized.type === "list_selection_changed"
+              ? `${normalized.type}|${keyPart}|${normalized.meta?.selected_count ?? "null"}|${normalized.meta?.row_res_id ?? "null"}`
+              : `${normalized.type}|${keyPart}|${normalized.meta?.res_id ?? "null"}`;
 
           if (isDuplicate(dedupeKey, ts)) return;
 
@@ -377,17 +427,23 @@ export const aiRecorderService = {
             nav: getNavSnapshot(e?.target),
             selector: buildSelector(e?.target),
           });
+          let captureMeta = null;
           if (generatedStep) {
-            appendRecordedStep(generatedStep);
-            pushLog({
-              _id: generatedStep.id,
-              session_id: sessionId,
-              exercise_id: exerciseId,
-              timestamp: normalized.ts,
-              event_type: "STEP_GENERATED",
-              target: generatedStep.target?.target_key || keyPart,
-              step: generatedStep,
-            });
+            captureMeta = recordCapturedStep(generatedStep);
+            if (captureMeta) {
+              const emittedStep = captureMeta.step || generatedStep;
+              pushLog({
+                _id: emittedStep.id,
+                session_id: sessionId,
+                exercise_id: exerciseId,
+                timestamp: normalized.ts,
+                event_type: captureMeta.merged ? "STEP_UPDATED" : "STEP_GENERATED",
+                target: emittedStep.target?.target_key || keyPart,
+                step: emittedStep,
+                insert_index: captureMeta.isInserting ? captureMeta.insertedIndex : null,
+                after_step_id: captureMeta.afterStepId,
+              });
+            }
           }
 
           // payload “ticket style” (el de la imagen) - exclude raw input values
@@ -400,6 +456,12 @@ export const aiRecorderService = {
             quality: normalized.quality,
             ts: normalized.ts,
             v: normalized.v,
+            ...(captureMeta?.isInserting
+              ? {
+                  insert_index: captureMeta.insertedIndex,
+                  after_step_id: captureMeta.afterStepId,
+                }
+              : {}),
           };
 
           sendWS("normalized_event", ticketPayload).catch((err) => {
@@ -413,6 +475,10 @@ export const aiRecorderService = {
               error: err?.message || String(err),
             });
           });
+
+          if (captureMeta && generatedStep) {
+            finalizeInsertCaptureIfNeeded(captureMeta, generatedStep);
+          }
         }
 
         function onDomChange(e) {
@@ -449,17 +515,22 @@ export const aiRecorderService = {
             nav: getNavSnapshot(el),
             selector: buildSelector(el),
           });
+          let captureMeta = null;
           if (generatedStep) {
-            appendRecordedStep(generatedStep);
-            pushLog({
-              _id: generatedStep.id,
-              session_id: sessionId,
-              exercise_id: exerciseId,
-              timestamp: normalized.ts,
-              event_type: "STEP_GENERATED",
-              target: generatedStep.target?.target_key || keyPart,
-              step: generatedStep,
-            });
+            captureMeta = recordCapturedStep(generatedStep);
+            if (captureMeta) {
+              pushLog({
+                _id: generatedStep.id,
+                session_id: sessionId,
+                exercise_id: exerciseId,
+                timestamp: normalized.ts,
+                event_type: "STEP_GENERATED",
+                target: generatedStep.target?.target_key || keyPart,
+                step: generatedStep,
+                insert_index: captureMeta.isInserting ? captureMeta.insertedIndex : null,
+                after_step_id: captureMeta.afterStepId,
+              });
+            }
           }
 
           const ticketPayload = {
@@ -471,9 +542,19 @@ export const aiRecorderService = {
             quality: normalized.quality,
             ts: normalized.ts,
             v: normalized.v,
+            ...(captureMeta?.isInserting
+              ? {
+                  insert_index: captureMeta.insertedIndex,
+                  after_step_id: captureMeta.afterStepId,
+                }
+              : {}),
           };
 
           sendWS("normalized_event", ticketPayload).catch(() => {});
+
+          if (captureMeta && generatedStep) {
+            finalizeInsertCaptureIfNeeded(captureMeta, generatedStep);
+          }
         }
 
         function attachDomListeners() {
@@ -530,7 +611,8 @@ export const aiRecorderService = {
         }
 
         async function pauseRecording() {
-            if (status !== "recording") return;
+            if (status !== "recording" && !insertTarget) return;
+            insertTarget = null;
             status = "paused";
             detachDomListeners();
             persistSessionState();
@@ -546,6 +628,65 @@ export const aiRecorderService = {
             await sendWS("recording_paused", payload).catch(() => {});
         }
 
+        async function startInsertCapture({ index = null, autoStop = true } = {}) {
+            if (!sessionId || status === "idle") {
+                sessionId = uuid();
+                recordedSteps = [];
+                recordedFeed = [];
+                recordedStepIndex = 0;
+                recordedNote = "";
+                recordedDryRun = null;
+            }
+            const rawIdx =
+                index === null || index === undefined
+                    ? recordedSteps.length
+                    : Math.floor(Number(index));
+            const targetIdx = Number.isFinite(rawIdx)
+                ? Math.max(0, Math.min(recordedSteps.length, rawIdx))
+                : recordedSteps.length;
+
+            insertTarget = {
+                index: targetIdx,
+                autoStop: autoStop !== false,
+            };
+            status = "recording";
+            lastSeen.clear();
+            attachDomListeners();
+            persistSessionState();
+
+            const payload = {
+                _id: uuid(),
+                session_id: sessionId,
+                exercise_id: exerciseId,
+                timestamp: nowIso(),
+                status: "recording_resumed",
+                insert_index: targetIdx,
+                context: getCtxSnapshot(),
+            };
+            pushLog({ ...payload, event_type: "SESSION", target: "-" });
+            await sendWS("recording_resumed", payload).catch(() => {});
+            return {
+                sessionId,
+                insertIndex: targetIdx,
+                autoStop: insertTarget.autoStop,
+            };
+        }
+
+        async function cancelInsertCapture() {
+            const wasActive = !!insertTarget;
+            insertTarget = null;
+            if (status === "recording") {
+                status = "paused";
+                detachDomListeners();
+                persistSessionState();
+            }
+            return wasActive;
+        }
+
+        function getInsertTarget() {
+            return insertTarget ? { ...insertTarget } : null;
+        }
+
         function loadDraftSession({
             sessionId: nextSessionId = null,
             title = "",
@@ -554,6 +695,7 @@ export const aiRecorderService = {
             steps = [],
         } = {}) {
             detachDomListeners();
+            insertTarget = null;
             status = "paused";
             sessionId = nextSessionId || uuid();
             exerciseId = null;
@@ -572,6 +714,7 @@ export const aiRecorderService = {
 
         async function finishRecording() {
             detachDomListeners();
+            insertTarget = null;
             status = "idle";
 
             const payload = {
@@ -647,8 +790,49 @@ export const aiRecorderService = {
                 ev.stopPropagation();
                 try {
                     const el = document.elementFromPoint(ev.clientX, ev.clientY);
+                    if (!el || isRecorderUiElement(el) || isSensitiveInputElement(el)) {
+                        safeResolve(null);
+                        return;
+                    }
                     const picked = describeTarget(el);
-                    safeResolve(picked || null);
+                    const tag = (el.tagName || "").toUpperCase();
+                    const inputType = (el.getAttribute?.("type") || el.type || "").toLowerCase();
+                    const domEventType =
+                        ["INPUT", "TEXTAREA", "SELECT"].includes(tag) &&
+                        inputType !== "checkbox" &&
+                        inputType !== "radio"
+                            ? "change"
+                            : "click";
+                    const nav = getNavSnapshot(el);
+                    let draftStep = null;
+                    try {
+                        const normalized = normalizeDomEvent({
+                            domEventType,
+                            originalEvent: { target: el, type: domEventType },
+                            contextService,
+                        });
+                        if (normalized && !isSensitiveInputElement(el, normalized)) {
+                            draftStep = buildDraftStepFromEvent(normalized, {
+                                id: uuid(),
+                                el,
+                                module: recordingModule,
+                                moduleRootXmlid: recordingModuleRootXmlid,
+                                nav,
+                                selector: buildSelector(el),
+                            });
+                        }
+                    } catch (draftErr) {
+                        console.warn("[ai_recorder] pickTarget draft build warning:", draftErr);
+                    }
+                    safeResolve(
+                        picked
+                            ? {
+                                  ...picked,
+                                  nav,
+                                  draft_step: draftStep,
+                              }
+                            : null
+                    );
                 } catch (err) {
                     console.warn("[ai_recorder] pickTarget onMouseUp error:", err);
                     safeResolve(null);
@@ -739,6 +923,9 @@ export const aiRecorderService = {
             startRecording,
             resumeRecording,
             pauseRecording,
+            startInsertCapture,
+            cancelInsertCapture,
+            getInsertTarget,
             finishRecording,
             pickTarget,
             sendStep,

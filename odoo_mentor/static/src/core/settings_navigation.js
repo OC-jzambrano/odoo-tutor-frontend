@@ -1,7 +1,7 @@
 /** @odoo-module **/
 
 export const TUTOR_SETTINGS_ACTION = "base.res_config_setting_act_window";
-export const TUTOR_PLANS_URL = "https://odooconcept.com/pricing";
+export const TUTOR_PLANS_URL = "https://odoo-tutor.odoo.com/pricing";
 export const TRIAL_QUOTA_EXHAUSTED_MESSAGE =
     "Your trial quota has finished. Get a subscription to continue.";
 

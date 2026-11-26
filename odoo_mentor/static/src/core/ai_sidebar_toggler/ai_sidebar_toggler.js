@@ -450,6 +450,7 @@ class AiFloatingButton extends Component {
             previewCopyTargets: [],
             previewCopiedText: null,
             previewQuotaCtaVisible: false,
+            previewCompleted: false,
             exerciseCtaVisible: false,
             exerciseCtaId: null,
             exerciseCtaStatus: "",
@@ -458,6 +459,9 @@ class AiFloatingButton extends Component {
             optionalStepLoading: false,
             optionalStepExerciseId: null,
             recorderStatus: this.aiRecorder?.status || "idle",
+            recorderTitle: "",
+            recorderStepCount: 0,
+            recorderBubbleDismissed: false,
             dryRun: window[DRY_RUN_STATE_KEY]?.active ? window[DRY_RUN_STATE_KEY] : null,
         });
 
@@ -471,6 +475,7 @@ class AiFloatingButton extends Component {
             ? previewState.copyTargets
             : [];
         this.state.previewQuotaCtaVisible = !!previewState.quotaCtaVisible;
+        this.state.previewCompleted = !!previewState.completed;
         this.state.exerciseCtaVisible = !!exerciseCtaState.visible;
         this.state.exerciseCtaId = exerciseCtaState.exerciseId || null;
         this.state.exerciseCtaStatus = exerciseCtaState.status || "";
@@ -513,6 +518,7 @@ class AiFloatingButton extends Component {
             this.state.previewCopyTargets = Array.isArray(copyTargets) ? copyTargets : [];
             this.state.previewCopiedText = null;
             this.state.previewQuotaCtaVisible = Boolean(options?.quotaCta);
+            this.state.previewCompleted = Boolean(options?.completed);
 
             const offcanvasEl = document.getElementById("offcanvasAiSidebar");
             const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
@@ -541,6 +547,26 @@ class AiFloatingButton extends Component {
             this.state.previewHovered = false;
         };
 
+        this._applyHistoryPreview = (historyData) => {
+            if (!historyData || typeof historyData !== "object") return;
+            if (this.state.previewMessage || this._previewDismissed) return;
+            const messages = Array.isArray(historyData.messages) ? historyData.messages : [];
+            for (let i = messages.length - 1; i >= 0; i -= 1) {
+                const entry = messages[i];
+                if (!entry || entry.role === "user") continue;
+                const text = String(
+                    entry.text || entry.response || entry.message || entry.content || ""
+                ).trim();
+                if (!text) continue;
+                this._setPreviewMessage(
+                    text,
+                    entry.timestamp || entry.created_at || null,
+                    entry.copy_targets || []
+                );
+                return;
+            }
+        };
+
         this._applyConnectionEstablishedPreview = (msg) => {
             if (!msg || typeof msg !== "object") return;
             if (
@@ -567,11 +593,22 @@ class AiFloatingButton extends Component {
                 this.state.optionalStepVisible = false;
                 this.state.optionalStepExerciseId = null;
                 this.state.optionalStepLoading = false;
-                this._onPreviewReset?.();
+                if (msg.is_resumed) {
+                    const cachedHistory = this.aiWs?.getLastHistory?.();
+                    if (cachedHistory) {
+                        this._applyHistoryPreview(cachedHistory);
+                    }
+                } else {
+                    this._onPreviewReset?.();
+                }
             }
         };
 
         this._onPreviewMessage = (ev) => {
+            if (ev?.kind === "history") {
+                this._applyHistoryPreview(ev.data);
+                return;
+            }
             const msg = ev?.kind ? ev.data : ev;
             if (!msg || typeof msg !== "object") return;
 
@@ -623,12 +660,13 @@ class AiFloatingButton extends Component {
 
             if (TUTOR_PUSH_TYPES.has(msg.type)) {
                 if (msg.type === "exercise_completed_push") {
-                    const offcanvasEl = document.getElementById("offcanvasAiSidebar");
-                    const isChatOpen = this.state.chatOpen || !!offcanvasEl?.classList?.contains("show");
-                    if (isChatOpen) {
-                        this._onPreviewReset?.();
-                        return;
-                    }
+                    this._setPreviewMessage(
+                        msg.response || _t("Exercise completed! Great job."),
+                        msg.timestamp,
+                        msg.copy_targets,
+                        { completed: true }
+                    );
+                    return;
                 }
                 this._setPreviewMessage(msg.response || "", msg.timestamp, msg.copy_targets);
                 return;
@@ -802,9 +840,20 @@ class AiFloatingButton extends Component {
             this.aiWs?.subscribe?.(this._onTutorHintForBadge);
             window.addEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
 
-            this.state.recorderStatus = this.aiRecorder?.status || "idle";
+            const syncRecorderBubbleState = () => {
+                const prevStatus = this.state.recorderStatus;
+                const nextStatus = this.aiRecorder?.status || "idle";
+                const sess = this.aiRecorder?.getSessionState?.() || null;
+                this.state.recorderStatus = nextStatus;
+                this.state.recorderTitle = (sess?.title || "").trim();
+                this.state.recorderStepCount = Array.isArray(sess?.steps) ? sess.steps.length : 0;
+                if (nextStatus === "recording" && prevStatus !== "recording") {
+                    this.state.recorderBubbleDismissed = false;
+                }
+            };
+            syncRecorderBubbleState();
             this._onRecorderStatusChange = () => {
-                this.state.recorderStatus = this.aiRecorder?.status || "idle";
+                syncRecorderBubbleState();
             };
             this.aiRecorder?.subscribe?.(this._onRecorderStatusChange);
 
@@ -857,14 +906,36 @@ class AiFloatingButton extends Component {
                 this.state.previewCopyTargets = [];
                 this.state.previewCopiedText = null;
                 this.state.previewQuotaCtaVisible = false;
+                this.state.previewCompleted = false;
                 this._syncPreviewState?.();
             };
 
             window.addEventListener("ai:preview_reset", this._onPreviewReset);
 
+            this._onExerciseCompletedPreview = (e) => {
+                const detail = e?.detail || {};
+                this._setPreviewMessage(
+                    detail.message || _t("Exercise completed! Great job."),
+                    detail.timestamp || new Date().toISOString(),
+                    detail.copyTargets || [],
+                    { completed: true }
+                );
+            };
+            window.addEventListener("ai:exercise_completed_preview", this._onExerciseCompletedPreview);
+
             const cachedConn = this.aiWs?.getLastConnectionInfo?.();
             if (cachedConn) {
                 this._applyConnectionEstablishedPreview(cachedConn);
+            }
+
+            this._onHistoryLoadedForPreview = (e) => {
+                this._applyHistoryPreview(e?.detail);
+            };
+            window.addEventListener("ai:history_loaded", this._onHistoryLoadedForPreview);
+
+            const cachedHistory = this.aiWs?.getLastHistory?.();
+            if (cachedHistory) {
+                this._applyHistoryPreview(cachedHistory);
             }
 
             this._onExerciseCtaUpdate = (e) => {
@@ -1785,6 +1856,20 @@ class AiFloatingButton extends Component {
         );
     }
 
+    get recordingBubbleVisible() {
+        return !!(
+            this.state.recorderStatus === "recording" &&
+            !this.state.recorderBubbleDismissed &&
+            !this.dryRunBubbleVisible &&
+            !this.state.chatOpen &&
+            !this.state.dragging
+        );
+    }
+
+    closeRecordingBubble() {
+        this.state.recorderBubbleDismissed = true;
+    }
+
     get launcherExerciseCtaVisible() {
         return (
             !!this.state.exerciseCtaVisible &&
@@ -2166,6 +2251,16 @@ class AiFloatingButton extends Component {
         if (this._onTutorHintEventForBadge) {
             window.removeEventListener("ai:tutor_hint", this._onTutorHintEventForBadge);
             this._onTutorHintEventForBadge = null;
+        }
+
+        if (this._onHistoryLoadedForPreview) {
+            window.removeEventListener("ai:history_loaded", this._onHistoryLoadedForPreview);
+            this._onHistoryLoadedForPreview = null;
+        }
+
+        if (this._onExerciseCompletedPreview) {
+            window.removeEventListener("ai:exercise_completed_preview", this._onExerciseCompletedPreview);
+            this._onExerciseCompletedPreview = null;
         }
 
         if (this._onWindowCaptureCopyMousedown) {
