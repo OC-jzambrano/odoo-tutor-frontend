@@ -393,7 +393,8 @@ export class AiSidebar extends Component {
             explorerUsingFallback: false,
             explorerQuery: "",
             explorerModuleFilter: "",
-            explorerStatusFilter: "",
+            explorerStatusFilter: "published",
+            explorerScopeFilter: "tenant",
             explorerSelectedId: null,
             explorerDetail: null,
             explorerDetailLoading: false,
@@ -4270,16 +4271,57 @@ export class AiSidebar extends Component {
         return filterExercisesForExplorer(this.state.explorerExercises || [], {
             query: this.state.explorerQuery,
             module: this.state.explorerModuleFilter,
-            status: this.state.explorerStatusFilter,
+            status:
+                this.state.explorerScopeFilter === "global"
+                    ? ""
+                    : this.state.explorerStatusFilter,
+            scope: this.state.explorerUsingFallback ? "" : this.state.explorerScopeFilter,
         });
+    }
+
+    async onExplorerScopeChange(scope) {
+        const nextScope = scope === "global" || scope === "all" ? scope : "tenant";
+        if (this.state.explorerScopeFilter === nextScope) return;
+        this.state.explorerScopeFilter = nextScope;
+        if (nextScope === "global") {
+            this.state.explorerStatusFilter = "published";
+        }
+        this.state.explorerSelectedId = null;
+        this.state.explorerDetail = null;
+        this.state.explorerConfirmDeleteId = null;
+        await this.loadExplorerExercises();
+    }
+
+    async onExplorerStatusChange(ev) {
+        const nextStatus = ev?.target?.value || "published";
+        this.state.explorerStatusFilter = nextStatus;
+        this.state.explorerSelectedId = null;
+        this.state.explorerDetail = null;
+        this.state.explorerConfirmDeleteId = null;
+        if (!this.state.explorerUsingFallback) {
+            await this.loadExplorerExercises();
+        }
     }
 
     async loadExplorerExercises() {
         if (!this.state.canSeeRecorderToggle) return;
+        const seq = (this._explorerLoadSeq = (this._explorerLoadSeq || 0) + 1);
         this.state.explorerLoading = true;
         this.state.explorerConfirmDeleteId = null;
         try {
-            const result = await rpc("/ai_chat/exercises/list", {});
+            const scope = this.state.explorerScopeFilter || "tenant";
+            const statusFilter =
+                scope === "global"
+                    ? "published"
+                    : this.state.explorerStatusFilter || "published";
+            const params = { scope };
+            if (statusFilter === "all") {
+                params.status = "all";
+            } else if (statusFilter) {
+                params.status = statusFilter;
+            }
+            const result = await rpc("/ai_chat/exercises/list", params);
+            if (seq !== this._explorerLoadSeq) return;
             if (result?.ok) {
                 const rawItems = Array.isArray(result?.data?.items)
                     ? result.data.items
@@ -4290,6 +4332,12 @@ export class AiSidebar extends Component {
                     .map((item) => normalizeExerciseExplorerItem(item, { source: "exercise" }))
                     .filter(Boolean);
                 this.state.explorerUsingFallback = false;
+                if (
+                    this.state.explorerModuleFilter &&
+                    !this.explorerModules.includes(this.state.explorerModuleFilter)
+                ) {
+                    this.state.explorerModuleFilter = "";
+                }
                 return;
             }
 
@@ -4305,11 +4353,13 @@ export class AiSidebar extends Component {
                 }
             };
             const ownDrafts = await rpc("/ai_chat/recording_drafts/list", {});
+            if (seq !== this._explorerLoadSeq) return;
             for (const item of ownDrafts?.data?.items || []) {
                 addUnique(item, "draft");
             }
             if (this.state.canReviewRecordings) {
                 const reviewDrafts = await rpc("/ai_chat/recording_drafts/review_list", {});
+                if (seq !== this._explorerLoadSeq) return;
                 for (const item of reviewDrafts?.data?.items || []) {
                     addUnique(item, "draft");
                 }
@@ -4317,12 +4367,15 @@ export class AiSidebar extends Component {
             this.state.explorerExercises = fallbackItems;
             this.state.explorerUsingFallback = true;
         } catch (err) {
+            if (seq !== this._explorerLoadSeq) return;
             this.notification.add(
                 err?.message || _t("Could not load exercises."),
                 { type: "danger" }
             );
         } finally {
-            this.state.explorerLoading = false;
+            if (seq === this._explorerLoadSeq) {
+                this.state.explorerLoading = false;
+            }
         }
     }
 
@@ -4341,7 +4394,14 @@ export class AiSidebar extends Component {
             if (item.source === "exercise" && !this.state.explorerUsingFallback) {
                 const result = await rpc("/ai_chat/exercises/detail", { exercise_id: item.id });
                 if (result?.ok && result.data) {
-                    const norm = normalizeExerciseExplorerItem(result.data, { source: "exercise" });
+                    const mergedRaw = {
+                        scope: item.scope,
+                        read_only: item.readOnly,
+                        can_edit: item.canEdit,
+                        can_delete: item.canDelete,
+                        ...result.data,
+                    };
+                    const norm = normalizeExerciseExplorerItem(mergedRaw, { source: "exercise" });
                     this.state.explorerDetail = norm || item;
                     return;
                 }
@@ -4367,12 +4427,14 @@ export class AiSidebar extends Component {
     async editExplorerExercise(item = null) {
         const target = item || this.state.explorerDetail;
         if (!this.state.canSeeRecorderToggle || !target) return;
+        if (target.readOnly || !target.canEdit) return;
 
         let fullItem = target;
         if (!Array.isArray(fullItem.steps) || !fullItem.steps.length) {
             await this.inspectExplorerExercise(target);
             fullItem = this.state.explorerDetail || target;
         }
+        if (fullItem.readOnly || !fullItem.canEdit) return;
 
         const hydrated = hydrateDraftForEditing({
             recording_id: fullItem.recordingId || fullItem.id,
@@ -4433,12 +4495,14 @@ export class AiSidebar extends Component {
 
     onExplorerRequestDelete(exerciseId) {
         if (!exerciseId) return;
+        const found = (this.state.explorerExercises || []).find((ex) => ex.id === exerciseId);
+        if (found && (found.readOnly || !found.canDelete)) return;
         this.state.explorerConfirmDeleteId =
             this.state.explorerConfirmDeleteId === exerciseId ? null : exerciseId;
     }
 
     async onExplorerConfirmDelete(item) {
-        if (!item?.id || this.state.explorerDeletingId) return;
+        if (!item?.id || item.readOnly || !item.canDelete || this.state.explorerDeletingId) return;
         this.state.explorerDeletingId = item.id;
         try {
             let result;

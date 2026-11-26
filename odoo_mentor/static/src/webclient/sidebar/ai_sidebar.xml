@@ -246,6 +246,33 @@
                                     </div>
 
                                     <div class="o_ai_rec_explorer_filters d-flex flex-column gap-2">
+                                        <div class="o_ai_rec_scope_tabs" role="tablist" t-att-aria-label="this.translate('Exercise source')">
+                                            <button type="button"
+                                                    role="tab"
+                                                    class="o_ai_rec_scope_tab"
+                                                    t-att-aria-selected="this.state.explorerScopeFilter === 'tenant' ? 'true' : 'false'"
+                                                    t-att-class="{ 'is-active': this.state.explorerScopeFilter === 'tenant' }"
+                                                    t-on-click.stop.prevent="() => this.onExplorerScopeChange('tenant')">
+                                                <t t-out="this.translate('My exercises')"/>
+                                            </button>
+                                            <button type="button"
+                                                    role="tab"
+                                                    class="o_ai_rec_scope_tab"
+                                                    t-att-aria-selected="this.state.explorerScopeFilter === 'global' ? 'true' : 'false'"
+                                                    t-att-class="{ 'is-active': this.state.explorerScopeFilter === 'global' }"
+                                                    t-on-click.stop.prevent="() => this.onExplorerScopeChange('global')">
+                                                <t t-out="this.translate('General catalog')"/>
+                                            </button>
+                                            <button type="button"
+                                                    role="tab"
+                                                    class="o_ai_rec_scope_tab"
+                                                    t-att-aria-selected="this.state.explorerScopeFilter === 'all' ? 'true' : 'false'"
+                                                    t-att-class="{ 'is-active': this.state.explorerScopeFilter === 'all' }"
+                                                    t-on-click.stop.prevent="() => this.onExplorerScopeChange('all')">
+                                                <t t-out="this.translate('All')"/>
+                                            </button>
+                                        </div>
+
                                         <input type="text"
                                                class="form-control form-control-sm"
                                                t-att-value="this.state.explorerQuery"
@@ -271,12 +298,23 @@
 
                                         <select class="form-select form-select-sm"
                                                 t-att-value="this.state.explorerStatusFilter"
-                                                t-on-change="(ev) => this.state.explorerStatusFilter = ev.target.value">
-                                            <option value="" t-out="this.translate('All statuses')"/>
-                                            <option value="published" t-out="this.translate('Published')"/>
-                                            <option value="pending_review" t-out="this.translate('Pending review')"/>
-                                            <option value="draft" t-out="this.translate('Draft')"/>
-                                            <option value="rejected" t-out="this.translate('Rejected')"/>
+                                                t-att-disabled="this.state.explorerScopeFilter === 'global'"
+                                                t-on-change="this.onExplorerStatusChange">
+                                            <option value="published"
+                                                    t-att-selected="this.state.explorerStatusFilter === 'published'"
+                                                    t-out="this.translate('Published')"/>
+                                            <option value="all"
+                                                    t-att-selected="this.state.explorerStatusFilter === 'all'"
+                                                    t-out="this.translate('All statuses')"/>
+                                            <option value="pending_review"
+                                                    t-att-selected="this.state.explorerStatusFilter === 'pending_review'"
+                                                    t-out="this.translate('Pending review')"/>
+                                            <option value="draft"
+                                                    t-att-selected="this.state.explorerStatusFilter === 'draft'"
+                                                    t-out="this.translate('Draft')"/>
+                                            <option value="rejected"
+                                                    t-att-selected="this.state.explorerStatusFilter === 'rejected'"
+                                                    t-out="this.translate('Rejected')"/>
                                         </select>
                                     </div>
 
@@ -289,7 +327,7 @@
                                          t-if="this.filteredExplorerExercises.length">
                                         <t t-foreach="this.filteredExplorerExercises" t-as="ex" t-key="ex.id">
                                             <div class="o_ai_rec_ex_card"
-                                                 t-att-class="{ 'is-selected': this.state.explorerSelectedId === ex.id }">
+                                                 t-att-class="{ 'is-selected': this.state.explorerSelectedId === ex.id, 'is-readonly': ex.readOnly }">
                                                 <div class="o_ai_rec_ex_card_main"
                                                      role="button"
                                                      tabindex="0"
@@ -301,6 +339,9 @@
                                                         <span class="o_ai_rec_ex_status"
                                                               t-att-class="'is-' + ex.status"
                                                               t-out="ex.status === 'published' ? this.translate('Published') : (ex.status === 'pending_review' ? this.translate('Pending') : (ex.status === 'rejected' ? this.translate('Rejected') : this.translate('Draft')))"/>
+                                                        <span t-if="ex.readOnly"
+                                                              class="o_ai_rec_ex_readonly_badge"
+                                                              t-out="this.translate('Read-only')"/>
                                                         <span class="small text-muted ms-auto">
                                                             <t t-out="ex.stepCount + ' ' + this.translate('steps')"/>
                                                         </span>
@@ -308,20 +349,32 @@
                                                 </div>
 
                                                 <div class="o_ai_rec_ex_actions d-flex align-items-center gap-1 flex-wrap mt-2">
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-primary py-0 px-2"
-                                                            t-on-click.stop.prevent="() => this.editExplorerExercise(ex)">
-                                                        <t t-out="this.translate('Edit')"/>
-                                                    </button>
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-danger py-0 px-2"
-                                                            t-att-disabled="this.state.explorerDeletingId === ex.id"
-                                                            t-on-click.stop.prevent="() => this.onExplorerRequestDelete(ex.id)">
-                                                        <t t-out="this.translate('Delete')"/>
-                                                    </button>
+                                                    <t t-if="ex.readOnly or (!ex.canEdit and !ex.canDelete)">
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                                                t-on-click.stop.prevent="() => this.inspectExplorerExercise(ex)">
+                                                            <t t-if="this.state.explorerSelectedId === ex.id" t-out="this.translate('Hide steps')"/>
+                                                            <t t-else="" t-out="this.translate('View')"/>
+                                                        </button>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <button t-if="ex.canEdit"
+                                                                type="button"
+                                                                class="btn btn-sm btn-outline-primary py-0 px-2"
+                                                                t-on-click.stop.prevent="() => this.editExplorerExercise(ex)">
+                                                            <t t-out="this.translate('Edit')"/>
+                                                        </button>
+                                                        <button t-if="ex.canDelete"
+                                                                type="button"
+                                                                class="btn btn-sm btn-outline-danger py-0 px-2"
+                                                                t-att-disabled="this.state.explorerDeletingId === ex.id"
+                                                                t-on-click.stop.prevent="() => this.onExplorerRequestDelete(ex.id)">
+                                                            <t t-out="this.translate('Delete')"/>
+                                                        </button>
+                                                    </t>
                                                 </div>
 
-                                                <div t-if="this.state.explorerConfirmDeleteId === ex.id"
+                                                <div t-if="!ex.readOnly and ex.canDelete and this.state.explorerConfirmDeleteId === ex.id"
                                                      class="o_ai_rec_ex_delete_confirm d-flex align-items-center justify-content-between gap-2 mt-2"
                                                      role="alert">
                                                     <span class="small" t-out="this.translate('Delete this exercise permanently?')"/>
@@ -354,7 +407,8 @@
                                                         </t>
                                                     </ol>
                                                     <div t-else="" class="small text-muted">
-                                                        <t t-out="this.translate('Click Edit to inspect and modify steps in the Recorder.')"/>
+                                                        <t t-if="ex.readOnly" t-out="this.translate('No steps available for this exercise.')"/>
+                                                        <t t-else="" t-out="this.translate('Click Edit to inspect and modify steps in the Recorder.')"/>
                                                     </div>
                                                 </div>
                                             </div>

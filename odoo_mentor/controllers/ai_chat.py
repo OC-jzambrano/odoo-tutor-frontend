@@ -569,7 +569,9 @@ class AiChatController(http.Controller):
             return {"error": "Recording service is unavailable", "status": 503}
 
     @http.route("/ai_chat/exercises/list", type="jsonrpc", auth="user", methods=["POST"])
-    def list_exercises_proxy(self, q=None, module=None, status=None, version=None, offset=0, **kwargs):
+    def list_exercises_proxy(
+        self, q=None, module=None, status=None, version=None, scope=None, offset=0, **kwargs
+    ):
         err, ctx = self._exercises_proxy_context("odoo_mentor.group_odoo_tutor_expert")
         if err:
             return err
@@ -579,8 +581,10 @@ class AiChatController(http.Controller):
             params["q"] = q.strip()[:120]
         if isinstance(module, str) and module.strip():
             params["module"] = module.strip()[:120]
-        if status in {"published", "pending_review", "draft", "rejected"}:
+        if status in {"all", "published", "pending_review", "draft", "rejected"}:
             params["status"] = status
+        if scope in {"tenant", "global", "all"}:
+            params["scope"] = scope
         if isinstance(version, str) and version.strip():
             params["version"] = version.strip()[:32]
         try:

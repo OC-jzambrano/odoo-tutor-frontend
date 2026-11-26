@@ -1328,10 +1328,26 @@ describe("recording_draft helpers", () => {
                 module: "stock",
                 status: "published",
                 odoo_version: "20.0",
+                scope: "tenant",
+                read_only: false,
+                can_edit: true,
+                can_delete: true,
                 steps: [
                     { id: "a", instruction: "Open Physical Inventory" },
                     { id: "b", instruction: "Enter counted quantity", is_optional: true },
                 ],
+            }),
+            normalizeExerciseExplorerItem({
+                exercise_id: "ex_global_1",
+                title: "Create a vendor bill",
+                module: "account",
+                status: "published",
+                odoo_version: "20.0",
+                scope: "global",
+                read_only: true,
+                can_edit: false,
+                can_delete: false,
+                step_count: 3,
             }),
             normalizeExerciseExplorerItem(
                 {
@@ -1345,11 +1361,21 @@ describe("recording_draft helpers", () => {
             ),
         ].filter(Boolean);
 
-        expect(items.length).toBe(2);
+        expect(items.length).toBe(3);
         expect(items[0].optionalCount).toBe(1);
         expect(items[0].version).toBe("20.0");
-        expect(items[1].status).toBe("pending_review");
-        expect(extractExerciseExplorerModules(items)).toEqual(["sale", "stock"]);
+        expect(items[0].scope).toBe("tenant");
+        expect(items[0].readOnly).toBe(false);
+        expect(items[0].canEdit).toBe(true);
+        expect(items[0].canDelete).toBe(true);
+        expect(items[1].scope).toBe("global");
+        expect(items[1].readOnly).toBe(true);
+        expect(items[1].canEdit).toBe(false);
+        expect(items[1].canDelete).toBe(false);
+        expect(items[2].status).toBe("pending_review");
+        expect(items[2].scope).toBe("tenant");
+        expect(items[2].readOnly).toBe(false);
+        expect(extractExerciseExplorerModules(items)).toEqual(["account", "sale", "stock"]);
 
         expect(filterExercisesForExplorer(items, { query: "counted" }).map((x) => x.id)).toEqual([
             "ex_1",
@@ -1359,6 +1385,18 @@ describe("recording_draft helpers", () => {
         ]);
         expect(
             filterExercisesForExplorer(items, { status: "published" }).map((x) => x.id)
+        ).toEqual(["ex_1", "ex_global_1"]);
+        expect(
+            filterExercisesForExplorer(items, { status: "all" }).map((x) => x.id)
+        ).toEqual(["ex_1", "ex_global_1", "rec_2"]);
+        expect(
+            filterExercisesForExplorer(items, { scope: "global" }).map((x) => x.id)
+        ).toEqual(["ex_global_1"]);
+        expect(
+            filterExercisesForExplorer(items, { scope: "tenant", status: "published" }).map((x) => x.id)
         ).toEqual(["ex_1"]);
+        expect(
+            filterExercisesForExplorer(items, { scope: "all", status: "published" }).map((x) => x.id)
+        ).toEqual(["ex_1", "ex_global_1"]);
     });
 });

@@ -2062,6 +2062,14 @@ export function normalizeExerciseExplorerItem(raw = {}, { source = "exercise" } 
     const version = trimText(raw.odoo_version || raw.version || draft.odoo_version || "", 32) || null;
     const authorId = raw.author_id ?? draft.author_id ?? null;
     const updatedAt = trimText(raw.updated_at || raw.created_at || "", 64) || null;
+    const rawScope = trimText(raw.scope || "", 32).toLowerCase();
+    const scope = rawScope === "global" ? "global" : "tenant";
+    const readOnly =
+        typeof raw.read_only === "boolean" ? raw.read_only : scope === "global";
+    const canEdit =
+        typeof raw.can_edit === "boolean" ? raw.can_edit && !readOnly : !readOnly;
+    const canDelete =
+        typeof raw.can_delete === "boolean" ? raw.can_delete && !readOnly : !readOnly;
 
     return {
         id,
@@ -2076,24 +2084,39 @@ export function normalizeExerciseExplorerItem(raw = {}, { source = "exercise" } 
         updatedAt,
         steps,
         source,
+        scope,
+        readOnly,
+        canEdit,
+        canDelete,
     };
 }
 
 export function filterExercisesForExplorer(
     items = [],
-    { query = "", module = "", status = "" } = {}
+    { query = "", module = "", status = "", scope = "" } = {}
 ) {
     const list = Array.isArray(items) ? items : [];
     const cleanQuery = trimText(query || "", 160).toLowerCase();
     const cleanModule = trimText(module || "", 120).toLowerCase();
     const cleanStatus = trimText(status || "", 48).toLowerCase();
+    const cleanScope = trimText(scope || "", 32).toLowerCase();
 
     return list.filter((item) => {
         if (!item) return false;
+        if (cleanScope && cleanScope !== "all") {
+            const itemScope = (item.scope || "tenant").toLowerCase();
+            if (itemScope !== cleanScope) {
+                return false;
+            }
+        }
         if (cleanModule && (item.module || "").toLowerCase() !== cleanModule) {
             return false;
         }
-        if (cleanStatus && (item.status || "").toLowerCase() !== cleanStatus) {
+        if (
+            cleanStatus &&
+            cleanStatus !== "all" &&
+            (item.status || "").toLowerCase() !== cleanStatus
+        ) {
             return false;
         }
         if (!cleanQuery) return true;

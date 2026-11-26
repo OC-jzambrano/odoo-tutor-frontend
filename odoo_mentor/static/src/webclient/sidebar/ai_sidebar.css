@@ -3385,7 +3385,63 @@
 #offcanvasAiSidebar .o_ai_rec_ex_delete_confirm { flex-wrap: wrap; padding: 10px; }
 #offcanvasAiSidebar .o_ai_rec_ex_detail { margin-top: 12px !important; padding-top: 12px !important; line-height: 1.6; overflow-wrap: anywhere; }
 #offcanvasAiSidebar .o_ai_rec_ex_card_main:focus-visible,
-#offcanvasAiSidebar .o_ai_rec_filter_pill:focus-visible { outline: 2px solid var(--tutor-accent); outline-offset: 3px; }
+#offcanvasAiSidebar .o_ai_rec_filter_pill:focus-visible,
+#offcanvasAiSidebar .o_ai_rec_scope_tab:focus-visible { outline: 2px solid var(--tutor-accent); outline-offset: 3px; }
+#offcanvasAiSidebar .o_ai_rec_scope_tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--tutor-surface-subtle);
+    border: 1px solid var(--tutor-border);
+}
+#offcanvasAiSidebar .o_ai_rec_scope_tab {
+    border: 0;
+    background: transparent;
+    color: var(--tutor-text-muted);
+    border-radius: 7px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+#offcanvasAiSidebar .o_ai_rec_scope_tab:hover {
+    color: var(--tutor-text);
+}
+#offcanvasAiSidebar .o_ai_rec_scope_tab.is-active {
+    background: var(--tutor-surface, #ffffff);
+    color: var(--tutor-accent-strong, var(--tutor-accent));
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+#offcanvasAiSidebar .o_ai_rec_ex_readonly_badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    background: rgba(99, 102, 241, 0.12);
+    color: #4338ca;
+}
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_scope_tabs {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_scope_tab.is-active {
+    background: rgba(135, 90, 123, 0.28);
+    color: #f3d7eb;
+    box-shadow: none;
+}
+#offcanvasAiSidebar.is-dark-theme .o_ai_rec_ex_readonly_badge {
+    background: rgba(129, 140, 248, 0.2);
+    color: #c7d2fe;
+}
 #offcanvasAiSidebar.is-dark-theme .o_ai_rec_ex_card { background: transparent; }
 #offcanvasAiSidebar.is-dark-theme .o_ai_rec_ex_card.is-selected .o_ai_rec_ex_title { color: #e9c7df; }
 
@@ -3394,7 +3450,12 @@
     color: var(--tutor-text-muted) !important;
 }
 #offcanvasAiSidebar.is-dark-theme .o_ai_rec_explorer .form-select {
+    appearance: none;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23cbd5e1' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px 12px;
+    padding-right: 2.25rem;
 }
 #offcanvasAiSidebar.is-dark-theme .o_ai_rec_step_suggest_btn {
     background: #202b3b;

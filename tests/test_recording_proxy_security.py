@@ -96,3 +96,17 @@ def test_save_draft_proxy_has_extra_field_422_fallback():
     )[0]
     assert "response.status_code == 422" in save_route
     assert "_strip_rejected_draft_step_fields" in save_route
+
+
+def test_list_exercises_proxy_forwards_scope_and_all_status():
+    controller = (ROOT / "odoo_mentor/controllers/ai_chat.py").read_text(
+        encoding="utf-8"
+    )
+    list_route = controller.split("def list_exercises_proxy", 1)[1].split(
+        "@http.route", 1
+    )[0]
+    assert 'self._exercises_proxy_context("odoo_mentor.group_odoo_tutor_expert")' in list_route
+    assert '"all"' in list_route
+    assert 'if scope in {"tenant", "global", "all"}:' in list_route
+    assert 'params["scope"] = scope' in list_route
+    assert "allow_redirects=False" in list_route

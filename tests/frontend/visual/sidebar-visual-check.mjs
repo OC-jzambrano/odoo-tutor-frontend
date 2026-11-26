@@ -688,6 +688,12 @@ const SCENARIOS = [
     name: "recorder-review-dark", kind: "recorder", review: true, theme: "dark", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
   },
   {
+    name: "recorder-exercises-light", kind: "recorder", exercises: true, theme: "light", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
+  },
+  {
+    name: "recorder-exercises-dark", kind: "recorder", exercises: true, theme: "dark", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
+  },
+  {
     name: "recorder-panel-dark",
     kind: "recorder",
     theme: "dark",
@@ -731,6 +737,11 @@ async function run() {
         await page.evaluate(() => {
           const panel = document.querySelector('.o_ai_recorder_panel');
           panel.innerHTML = `<div class="o_ai_recorder_header"><div class="o_ai_recorder_left"><span class="o_ai_rec_title">Recorder</span></div><div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-outline-secondary">Record</button><button class="btn btn-sm btn-dark">Review</button></div></div></div><div class="o_ai_rec_review d-flex flex-column gap-2"><div class="d-flex justify-content-between align-items-center"><strong>Pending drafts</strong><button class="btn btn-sm btn-outline-secondary">Refresh</button></div><button class="btn btn-sm btn-outline-secondary o_ai_rec_review_item">Create a sales quotation · Sales <span>2 steps</span></button><div class="o_ai_rec_review_detail"><strong>Draft details</strong><p>Sales · Pending review</p><ol><li>Open Sales</li><li>Create a quotation</li></ol><input class="form-control" placeholder="Review comment (optional)"><div class="o_ai_rec_review_actions d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success">Approve</button><button class="btn btn-sm btn-outline-primary">Edit</button><button class="btn btn-sm btn-outline-danger">Reject</button></div></div></div>`;
+        });
+      } else if (scenario.exercises) {
+        await page.evaluate(() => {
+          const panel = document.querySelector('.o_ai_recorder_panel');
+          panel.innerHTML = `<div class="o_ai_recorder_header"><div class="o_ai_recorder_left"><span class="o_ai_rec_title">Recorder</span></div><div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-outline-secondary">Record</button><button class="btn btn-sm btn-outline-secondary">Review</button><button class="btn btn-sm btn-dark">Exercises</button></div></div></div><div class="o_ai_rec_explorer d-flex flex-column gap-2"><div class="d-flex justify-content-between align-items-center gap-2"><strong>Exercises</strong><button type="button" class="btn btn-sm btn-outline-secondary">Refresh</button></div><div class="o_ai_rec_explorer_filters d-flex flex-column gap-2"><div class="o_ai_rec_scope_tabs" role="tablist"><button type="button" role="tab" class="o_ai_rec_scope_tab">My exercises</button><button type="button" role="tab" class="o_ai_rec_scope_tab">General catalog</button><button type="button" role="tab" class="o_ai_rec_scope_tab is-active" aria-selected="true">All</button></div><input type="text" class="form-control form-control-sm" placeholder="Search by title, module, or step..." /><div class="d-flex align-items-center gap-1 flex-wrap"><button type="button" class="o_ai_rec_filter_pill is-active">All apps</button><button type="button" class="o_ai_rec_filter_pill">sale</button><button type="button" class="o_ai_rec_filter_pill">stock</button></div><select class="form-select form-select-sm" data-testid="explorer-status-select"><option value="published" selected>Published</option><option value="all">All statuses</option><option value="pending_review">Pending review</option><option value="draft">Draft</option><option value="rejected">Rejected</option></select></div><div class="o_ai_rec_explorer_list d-flex flex-column gap-2"><div class="o_ai_rec_ex_card"><div class="o_ai_rec_ex_card_main"><div class="o_ai_rec_ex_title">Adjust stock with an inventory count</div><div class="o_ai_rec_ex_meta d-flex align-items-center gap-1 flex-wrap"><span class="o_ai_rec_ex_chip">stock</span><span class="o_ai_rec_ex_chip">v20.0</span><span class="o_ai_rec_ex_status is-published">Published</span><span class="small text-muted ms-auto">4 steps</span></div></div><div class="o_ai_rec_ex_actions d-flex align-items-center gap-1 flex-wrap mt-2"><button type="button" class="btn btn-sm btn-outline-primary py-0 px-2">Edit</button><button type="button" class="btn btn-sm btn-outline-danger py-0 px-2">Delete</button></div></div><div class="o_ai_rec_ex_card is-selected is-readonly"><div class="o_ai_rec_ex_card_main"><div class="o_ai_rec_ex_title">Create a sales quotation</div><div class="o_ai_rec_ex_meta d-flex align-items-center gap-1 flex-wrap"><span class="o_ai_rec_ex_chip">sale</span><span class="o_ai_rec_ex_chip">v20.0</span><span class="o_ai_rec_ex_status is-published">Published</span><span class="o_ai_rec_ex_readonly_badge">Read-only</span><span class="small text-muted ms-auto">3 steps</span></div></div><div class="o_ai_rec_ex_actions d-flex align-items-center gap-1 flex-wrap mt-2"><button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2">Hide steps</button></div><div class="o_ai_rec_ex_detail mt-2 pt-2"><ol class="ps-3 mb-0 small"><li>Open Sales</li><li>Click New</li><li>Select a customer and click Save</li></ol></div></div></div></div>`;
         });
       }
       await page.waitForTimeout(300);
@@ -799,7 +810,8 @@ async function run() {
           const sidebar = document.querySelector("#offcanvasAiSidebar");
           const select = document.querySelector('[data-testid="recorder-module-select"]');
           const reviewItem = document.querySelector(".o_ai_rec_review_item");
-          const measured = select || reviewItem;
+          const explorerScopeTabs = document.querySelector(".o_ai_rec_scope_tabs");
+          const measured = select || reviewItem || explorerScopeTabs;
           const selectRect = measured.getBoundingClientRect();
           const sidebarRect = sidebar.getBoundingClientRect();
           return {
