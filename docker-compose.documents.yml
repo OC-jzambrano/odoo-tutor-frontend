@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: odoo
@@ -15,6 +16,7 @@ services:
 
   odoo:
     image: odoo-mentor:local
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
