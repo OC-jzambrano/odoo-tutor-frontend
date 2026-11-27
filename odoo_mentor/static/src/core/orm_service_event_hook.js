@@ -25,7 +25,7 @@ patch(ormService, {
             type: "ui_event",
             event_name: event.name,
             event_data: event,
-          });
+          })?.catch?.(() => {});
         }
         return result;
       } catch (error) {
@@ -35,7 +35,7 @@ patch(ormService, {
             type: "ui_event",
             event_name: event.name,
             event_data: event,
-          });
+          })?.catch?.(() => {});
         }
         throw error;
       }

@@ -15,6 +15,10 @@ import {
     getVisibleSkipResponse,
 } from "../../core/skip_step";
 import {
+    extractQuickReplies,
+    getQuickReplyVariantClass,
+} from "../../core/quick_replies";
+import {
     buildCopySegments,
     normalizeForCopyTargetLookup,
     stripNewlinesAroundCopyTargets,
@@ -1280,7 +1284,7 @@ export class AiSidebar extends Component {
         return !!target.closest(
             "button, a, input, textarea, select, label, " +
             ".ai-msg-footer, .ai_feedback_bar, .ai_feedback_popover, " +
-            ".ai-copy-btn, .ai_feedback_btn, .ai-exercise-actions, .ai-quota-actions, .ai-copy-value"
+            ".ai-copy-btn, .ai_feedback_btn, .ai-exercise-actions, .ai-quick-replies, .ai-quota-actions, .ai-copy-value"
         );
     }
 
@@ -2038,6 +2042,151 @@ export class AiSidebar extends Component {
 
         textBlock.appendChild(actions);
         return true;
+    }
+
+    _cancelPendingQuickReplies() {
+        this._quickRepliesScheduleVersion = (this._quickRepliesScheduleVersion || 0) + 1;
+    }
+
+    _clearStaleQuickReplies() {
+        this._getChatContainer()
+            ?.querySelectorAll?.(".ai-quick-replies")
+            ?.forEach((node) => node.remove());
+    }
+
+    _scheduleQuickRepliesForLastMessage(
+        quickReplies,
+        attempts = 80,
+        minReceivedCount = 0,
+        scheduleVersion = null
+    ) {
+        if (!Array.isArray(quickReplies) || !quickReplies.length || attempts <= 0) return;
+
+        const version =
+            scheduleVersion || (this._quickRepliesScheduleVersion = (this._quickRepliesScheduleVersion || 0) + 1);
+
+        requestAnimationFrame(() => {
+            if (version !== this._quickRepliesScheduleVersion) return;
+
+            const receivedItems = Array.from(
+                this.chatUiRef?.el?.querySelectorAll(
+                    ".nlux-comp-chatItem.nlux-comp-chatItem--received"
+                ) || []
+            );
+            const receivedCount = receivedItems.length;
+            const hasExpectedCount = minReceivedCount <= 0 || receivedCount >= minReceivedCount;
+            const item =
+                hasExpectedCount && receivedCount > 0 ? receivedItems[receivedCount - 1] : null;
+            if (item) {
+                if (item.querySelector(".ai-quick-replies")) return;
+                if (this._attachQuickReplies(item, quickReplies)) {
+                    requestAnimationFrame(() => this._scrollConversationToBottom?.());
+                    return;
+                }
+            }
+            if (attempts > 1) {
+                window.setTimeout(
+                    () =>
+                        this._scheduleQuickRepliesForLastMessage(
+                            quickReplies,
+                            attempts - 1,
+                            minReceivedCount,
+                            version
+                        ),
+                    40
+                );
+            }
+        });
+    }
+
+    _attachQuickReplies(itemEl, quickReplies) {
+        if (!itemEl || !Array.isArray(quickReplies) || !quickReplies.length) return false;
+        if (itemEl.querySelector(".ai-quick-replies")) return true;
+
+        const messageHost = this._getMessageHost(itemEl);
+        const textBlock = this._getMessageTextBlock(messageHost);
+        if (!messageHost || !textBlock) return false;
+
+        this._trimMessageBlockEnd(textBlock);
+
+        const container = document.createElement("div");
+        container.className = "ai-quick-replies";
+        container.setAttribute("role", "group");
+        container.setAttribute("aria-label", _t("Quick replies"));
+
+        const buttonsRow = document.createElement("div");
+        buttonsRow.className = "ai-quick-replies-buttons";
+
+        for (const reply of quickReplies) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `ai-quick-reply-btn ${getQuickReplyVariantClass(reply.variant)}`;
+            btn.dataset.replyId = reply.id;
+            btn.dataset.replyMessage = reply.message;
+            btn.dataset.variant = reply.variant;
+            btn.textContent = reply.label;
+            btn.setAttribute("aria-label", reply.label);
+            btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                this._handleQuickReplyClick({ item: reply, container });
+            });
+            buttonsRow.appendChild(btn);
+        }
+
+        container.appendChild(buttonsRow);
+        textBlock.appendChild(container);
+        return true;
+    }
+
+    async _handleQuickReplyClick({ item, container }) {
+        if (!item?.message || !container) return;
+        if (container.dataset.status === "sending" || container.dataset.status === "sent") {
+            return;
+        }
+
+        container.dataset.status = "sending";
+        container.querySelectorAll("button").forEach((btn) => {
+            btn.disabled = true;
+        });
+
+        const segments = this.chatUiRef?.el?.querySelector(".nlux-chatSegments-container");
+        if (segments) {
+            const sentItem = this._buildManualSentItem(item.label || item.message);
+            segments.appendChild(sentItem);
+            requestAnimationFrame(() => this._scrollConversationToBottom?.());
+        }
+
+        try {
+            const replyText = await this.batchText(item.message);
+            container.dataset.status = "sent";
+            container.remove();
+
+            const cleanReply = String(replyText || "").trim();
+            if (cleanReply && !this._isDuplicateAssistantText(cleanReply)) {
+                if (
+                    shouldQueueTutorMessage({
+                        aiChat: this.aiChat,
+                        isSidebarOpen: this._isSidebarOpen(),
+                    })
+                ) {
+                    this._queueTutorMessage(cleanReply, new Date().toISOString());
+                } else {
+                    const inserted = this._pushAssistantMessageToNlux(cleanReply);
+                    if (inserted) {
+                        this._lastInjectedTutorText = cleanReply;
+                        this._lastInjectedTutorAt = Date.now();
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn("[AiSidebar] quick reply send failed:", error);
+            container.dataset.status = "";
+            container.querySelectorAll("button").forEach((btn) => {
+                btn.disabled = false;
+            });
+            this.notification.add(_t("Could not send your reply."), { type: "danger" });
+        }
     }
 
     _trimMessageBlockEnd(textBlock) {
@@ -5226,7 +5375,9 @@ export class AiSidebar extends Component {
             const item =
                 entry.role === "user"
                     ? this._buildManualSentItem(text)
-                    : this._buildManualReceivedItem(text);
+                    : this._buildManualReceivedItem(
+                          this._prepareAssistantDisplayText(text, this._extractCopyTargets(entry))
+                      );
             fragment.appendChild(item);
             addedCount += 1;
         }
@@ -5531,7 +5682,7 @@ export class AiSidebar extends Component {
 
             // Remove elements added by this module.
             item.querySelectorAll(
-                ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover, .ai-exercise-actions, .ai-quota-actions"
+                ".ai_feedback_bar, .ai-msg-footer, .ai-copy-btn, .ai_feedback_popover, .ai-exercise-actions, .ai-quick-replies, .ai-quota-actions"
             ).forEach((el) => el.remove());
 
             const md =
@@ -5720,6 +5871,7 @@ export class AiSidebar extends Component {
         this._lastInjectedTutorStepKey = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._cancelPendingQuickReplies();
         this._cancelRedirectStepWaiter();
         this._clearTargetHintState?.();
         this.aiChatStore?.markRead?.();
@@ -5771,6 +5923,8 @@ export class AiSidebar extends Component {
         this._expectingAssistant = true;
         this.state.isLoading = true;
         this._cancelPendingExerciseActions();
+        this._cancelPendingQuickReplies();
+        this._clearStaleQuickReplies();
         const receivedCountBefore = this._getReceivedMessageCount();
 
         try {
@@ -5812,11 +5966,27 @@ export class AiSidebar extends Component {
                 await this._autoNavigateToExerciseModule(rawPayload);
             }
 
+            const quickReplies = extractQuickReplies(rawPayload);
             const exercise_id = this._getPromptExerciseId(response.result.exercise_id);
             const isWelcomePrompt = this._isWelcomePromptPayload(response.result || response);
             const isExerciseCompleted = this._isExerciseCompletedPayload(response.raw || response.result || response);
 
-            if (exercise_id) {
+            if (rawMode === "idle" && this.state.processActive) {
+                this.cancelProcess();
+            }
+
+            if (quickReplies.length) {
+                this._cancelPendingExerciseActions();
+                setTimeout(
+                    () =>
+                        this._scheduleQuickRepliesForLastMessage(
+                            quickReplies,
+                            80,
+                            receivedCountBefore + 1
+                        ),
+                    0
+                );
+            } else if (exercise_id) {
                 this._registerExercisePrompt(exercise_id);
                 if (isWelcomePrompt) {
                     this._pauseExerciseTimer({ reason: "welcome" });
@@ -6111,6 +6281,7 @@ export class AiSidebar extends Component {
         this._timerStartedAtMs = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._cancelPendingQuickReplies();
         this._cancelRedirectStepWaiter();
         this._clearTargetHintState?.();
         this.state.showButtons = false;
@@ -6139,6 +6310,7 @@ export class AiSidebar extends Component {
         this._timerStartedAtMs = null;
         this._clearStoredActiveExercise();
         this._cancelPendingExerciseActions();
+        this._cancelPendingQuickReplies();
         this._cancelRedirectStepWaiter();
         this._clearTargetHintState?.();
         this.state.showButtons = false;

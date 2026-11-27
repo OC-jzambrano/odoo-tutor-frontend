@@ -1604,6 +1604,76 @@
     color: var(--tutor-text-muted);
 }
 
+#chat-ui-container .ai-quick-replies {
+    margin-top: 8px;
+    animation: tutor-exercise-choices-in 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #chat-ui-container .ai-quick-replies {
+        animation: none;
+    }
+}
+
+#chat-ui-container .ai-quick-replies-buttons {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-left: 0 !important;
+    margin-inline-start: 0 !important;
+    padding-left: 0 !important;
+    padding-inline-start: 0 !important;
+    text-indent: 0 !important;
+}
+
+#chat-ui-container .ai-quick-reply-btn {
+    min-height: 28px;
+    margin-left: 0 !important;
+    margin-inline-start: 0 !important;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer !important;
+    transition: transform var(--tutor-motion-fast), box-shadow var(--tutor-motion-fast), opacity var(--tutor-motion-fast), background-color var(--tutor-motion-fast);
+}
+
+#chat-ui-container .ai-quick-reply-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--tutor-shadow-sm);
+}
+
+#chat-ui-container .ai-quick-reply-btn:disabled {
+    cursor: not-allowed !important;
+    opacity: 0.6;
+}
+
+#chat-ui-container .ai-quick-reply-btn--primary {
+    background: linear-gradient(135deg, var(--tutor-accent), var(--tutor-accent-strong));
+    color: #fff;
+}
+
+#chat-ui-container .ai-quick-reply-btn--secondary {
+    background: #fff;
+    border-color: var(--tutor-border);
+    color: var(--tutor-text-muted);
+}
+
+#chat-ui-container .ai-quick-reply-btn--danger {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+
+#chat-ui-container .ai-quick-reply-btn--danger:hover:not(:disabled) {
+    background: #fee2e2;
+    border-color: #f87171;
+}
+
 #chat-ui-container.is-exercise-input-locked .nlux-composer-container {
     opacity: 0.56;
 }
@@ -2716,19 +2786,27 @@
 }
 
 #chat-ui-container .nlux-comp-chatItem--received .ai-exercise-actions,
-#chat-ui-container .nlux-comp-chatItem--received .ai-exercise-actions * {
+#chat-ui-container .nlux-comp-chatItem--received .ai-exercise-actions *,
+#chat-ui-container .nlux-comp-chatItem--received .ai-quick-replies,
+#chat-ui-container .nlux-comp-chatItem--received .ai-quick-replies * {
     white-space: normal !important;
 }
 
 #chat-ui-container .nlux-comp-chatItem--received .ai-exercise-choice-yes,
+#chat-ui-container .nlux-comp-chatItem--received .ai-quick-reply-btn--primary,
 #chat-ui-container .nlux-comp-chatItem--received .nlux-markdown-container .ai-quota-plan-btn,
 #chat-ui-container .nlux-comp-chatItem--received .nlux-comp-bubble .ai-quota-plan-btn,
 #chat-ui-container .nlux-comp-chatItem--received .ai-quota-plan-btn {
     color: #fff !important;
 }
 
-#chat-ui-container .nlux-comp-chatItem--received .ai-exercise-choice-cancel {
+#chat-ui-container .nlux-comp-chatItem--received .ai-exercise-choice-cancel,
+#chat-ui-container .nlux-comp-chatItem--received .ai-quick-reply-btn--secondary {
     color: var(--tutor-text-muted) !important;
+}
+
+#chat-ui-container .nlux-comp-chatItem--received .ai-quick-reply-btn--danger {
+    color: #dc2626 !important;
 }
 
 #chat-ui-container .nlux-comp-chatItem--received .ai-copy-btn,
@@ -2809,10 +2887,22 @@
     box-shadow: none;
 }
 
-#offcanvasAiSidebar.is-dark-theme #chat-ui-container .ai-exercise-choice-cancel {
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .ai-exercise-choice-cancel,
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .ai-quick-reply-btn--secondary {
     background: rgba(15, 23, 42, 0.72);
     border-color: rgba(148, 163, 184, 0.18);
     color: var(--tutor-text-muted);
+}
+
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .ai-quick-reply-btn--danger {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(248, 113, 113, 0.42);
+    color: #fca5a5 !important;
+}
+
+#offcanvasAiSidebar.is-dark-theme #chat-ui-container .ai-quick-reply-btn--danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.26);
+    border-color: rgba(248, 113, 113, 0.65);
 }
 
 #offcanvasAiSidebar.is-dark-theme #chat-ui-container .nlux-comp-bubble code,

@@ -38,7 +38,7 @@ export const interactionObserverService = {
         type: "ui_event",
         event_name: event.name,
         event_data: event,
-      });
+      })?.catch?.(() => {});
     };
 
     const groupName = (element) =>

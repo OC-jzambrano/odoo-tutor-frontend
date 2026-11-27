@@ -40,7 +40,7 @@ export const clientValidationEventService = {
         type: "ui_event",
         event_name: event.name,
         event_data: event,
-      });
+      })?.catch?.(() => {});
     };
 
     const scheduleScan = (delay = 0) => {

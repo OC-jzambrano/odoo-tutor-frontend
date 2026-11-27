@@ -1,6 +1,6 @@
 /** @odoo-module **/
 
-import { cleanXmlId, normalizeTargetScreen } from "./screen_signature";
+import { cleanXmlId, normalizeTargetScreen } from "./screen_signature.js";
 
 const SENSITIVE_FIELD_RE =
     /(?:^|[._-])(password|passwd|pwd|secret|token|api[_-]?key|credential|private[_-]?key|access[_-]?key|auth[_-]?key|otp|pin)(?:$|[._-])/i;

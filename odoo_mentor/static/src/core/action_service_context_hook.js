@@ -173,7 +173,7 @@ patch(actionService, {
         action_xml_id: state?.action_xml_id || null,
         menu_xml_id: state?.menu_xml_id || null,
         force: !!opts.force,
-      });
+      })?.catch?.(() => {});
     };
 
     // Poll briefly on boot because currentController may initialize asynchronously.
@@ -271,7 +271,7 @@ patch(actionService, {
             type: "ui_event",
             event_name: transition.name,
             event_data: transition,
-          });
+          })?.catch?.(() => {});
         }
       }, 150);
 

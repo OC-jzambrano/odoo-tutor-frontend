@@ -25,6 +25,7 @@ import { TRIAL_QUOTA_EXHAUSTED_MESSAGE } from "./settings_navigation";
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;
 const WS_SESSION_STORAGE_KEY = "odoo_tutor.ws_session_info";
+const BACKGROUND_CONNECT_COOLDOWN_MS = 5000;
 
 function cleanText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -348,13 +349,27 @@ export const aiWsService = {
 
     function connect(options = {}) {
       if (st.connectPromise) return st.connectPromise;
+      const isBackground = Boolean(options?.background);
+      if (
+        isBackground &&
+        st.lastConnectFailureAt &&
+        Date.now() - st.lastConnectFailureAt < BACKGROUND_CONNECT_COOLDOWN_MS
+      ) {
+        return Promise.reject(
+          new Error(st.lastConnectError || "Tutor WebSocket connection temporarily paused after error")
+        );
+      }
       const currentAttempt = connectInternal(options);
       st.connectPromise = currentAttempt;
       currentAttempt.then(
         () => {
+          st.lastConnectFailureAt = 0;
+          st.lastConnectError = null;
           if (st.connectPromise === currentAttempt) st.connectPromise = null;
         },
-        () => {
+        (error) => {
+          st.lastConnectFailureAt = Date.now();
+          st.lastConnectError = error?.message || String(error || "Connection failed");
           if (st.connectPromise === currentAttempt) st.connectPromise = null;
         }
       );
@@ -709,7 +724,15 @@ export const aiWsService = {
 
     // Send structured frontend events such as step_saved or feedback_event.
     async function sendEvent({ type, event_name, event_data, awaitAck = false, timeoutMs = 10000 }) {
-      await connect();
+      try {
+        await connect({ background: !awaitAck });
+      } catch (error) {
+        if (awaitAck) {
+          throw error;
+        }
+        console.warn("[ai_ws] sendEvent skipped (connect failed):", error?.message || error);
+        return false;
+      }
       const canonicalData = canonicalizeEvent(event_data);
       const canonicalName = canonicalEventType(event_name || canonicalData?.type);
       if (canonicalName === "context_update") {
@@ -843,7 +866,7 @@ export const aiWsService = {
       // Cache the latest context and connect if the socket is closed.
       if (!isOpen()) {
         st.pendingContextModel = pendingPayload;
-        connect().catch(() => {});
+        connect({ background: true }).catch(() => {});
         return false;
       }
 

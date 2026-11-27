@@ -677,7 +677,7 @@ class AiFloatingButton extends Component {
                 ev?.kind === "chat_final"
             ) {
                 const text = msg.response || msg.message || "";
-                this._setPreviewMessage(text, msg.timestamp);
+                this._setPreviewMessage(text, msg.timestamp, msg.copy_targets || []);
             }
         };
 
@@ -2213,7 +2213,7 @@ class AiFloatingButton extends Component {
             if (!isActive) return;
 
             if (window.aiWs?.sendEvent) {
-                window.aiWs.sendEvent(normalized);
+                window.aiWs.sendEvent(normalized)?.catch?.(() => {});
             }
         } catch (err) {
             console.warn("[AI_UI] normalize error", err);

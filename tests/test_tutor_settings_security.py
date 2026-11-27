@@ -39,3 +39,12 @@ def test_shared_service_key_is_not_used_by_server_endpoints():
     assert "X-API-Key" not in controller
     assert "chatbot_api_key" not in ai_bot
     assert "X-API-KEY" not in ai_bot
+
+
+def test_background_ws_events_suppress_unhandled_connect_rejections():
+    ws_service = (ROOT / "odoo_mentor/static/src/core/ai_ws_service.js").read_text(encoding="utf-8")
+    send_event_fn = ws_service.split("async function sendEvent", 1)[1].split("async function sendLiveContext", 1)[0]
+
+    assert "await connect({ background: !awaitAck })" in send_event_fn
+    assert "if (awaitAck)" in send_event_fn
+    assert "return false;" in send_event_fn

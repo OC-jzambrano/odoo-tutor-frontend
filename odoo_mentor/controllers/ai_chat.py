@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 import uuid
@@ -6,6 +7,8 @@ import requests
 from urllib.parse import urlsplit, urlunsplit
 from odoo import http
 from odoo.http import request
+
+_logger = logging.getLogger(__name__)
 
 from ..constants import DEFAULT_CHATBOT_WS_BASE_URL, default_chatbot_ws_base_url
 from ..services.tutor_service_config import (
@@ -138,6 +141,24 @@ class AiChatController(http.Controller):
                     params.set_str("odoo_tutor.activation_status", "revoked")
                     params.set_str("odoo_tutor.installation_credential", "")
                     return {"error": "Tutor service installation was revoked; activate it again"}
+                detail_text = (response.text or "")[:400]
+                _logger.warning(
+                    "Tutor ws-ticket rejected (status=%s, origin=%s): %s",
+                    response.status_code,
+                    origin,
+                    detail_text,
+                )
+                if (
+                    response.status_code == 422
+                    and origin.startswith("http://")
+                    and "https" in detail_text.lower()
+                ):
+                    return {
+                        "error": (
+                            "Tutor ticket service requires an HTTPS origin "
+                            "(set APP_ENV=dev on the local backend to allow loopback HTTP)"
+                        )
+                    }
                 return {"error": "Tutor ticket service rejected the request"}
             try:
                 ticket, expires_at = parse_ticket_response(response.json(), time.time())
