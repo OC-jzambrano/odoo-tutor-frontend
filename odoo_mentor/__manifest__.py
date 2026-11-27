@@ -51,6 +51,6 @@ Watch the full 1080p HD demo video: https://youtu.be/Ki0tSjDGM0k
     "application": True,
     "auto_install": False,
     "license": "OPL-1",
-    "price": 9.0,
+    "price": 0.0,
     "currency": "EUR",
 }
