@@ -333,15 +333,30 @@ class AiChatController(http.Controller):
                 continue
             raw_target = item.get("target") if isinstance(item.get("target"), dict) else {}
             action = "change" if raw_target.get("action") == "change" else "click"
+            clean_target = {
+                "action": action,
+                "model": (str(raw_target.get("model") or "").strip()[:240] or None),
+                "field": (str(raw_target.get("field") or "").strip()[:240] or None),
+                "target_key": (str(raw_target.get("target_key") or "").strip()[:240] or None),
+            }
+            raw_target_screen = raw_target.get("target_screen")
+            if isinstance(raw_target_screen, dict):
+                clean_screen = {
+                    "model": (str(raw_target_screen.get("model") or "").strip()[:240] or None),
+                    "view_type": (str(raw_target_screen.get("view_type") or "").strip()[:60] or None),
+                    "action_xml_id": (
+                        str(raw_target_screen.get("action_xml_id") or "").strip()[:240] or None
+                    ),
+                    "menu_xml_id": (
+                        str(raw_target_screen.get("menu_xml_id") or "").strip()[:240] or None
+                    ),
+                }
+                if any(clean_screen.values()):
+                    clean_target["target_screen"] = clean_screen
             clean_step = {
                 "id": step_id,
                 "instruction": instruction,
-                "target": {
-                    "action": action,
-                    "model": (str(raw_target.get("model") or "").strip()[:240] or None),
-                    "field": (str(raw_target.get("field") or "").strip()[:240] or None),
-                    "target_key": (str(raw_target.get("target_key") or "").strip()[:240] or None),
-                },
+                "target": clean_target,
             }
             label = str(item.get("label") or "").strip()[:120]
             if label:

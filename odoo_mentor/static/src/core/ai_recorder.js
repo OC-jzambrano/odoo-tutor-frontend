@@ -4,12 +4,18 @@
 import { registry } from "@web/core/registry";
 import { normalizeDomEvent } from "./normalize_event";
 import {
+    extractScreenSignatureFromRuntime,
+    screenSignaturesEqual,
+} from "./screen_signature";
+import {
     buildDraftStepFromEvent,
+    buildNavigationTargetScreen,
     buildStepNavSnapshot,
     clearPersistedRecordingSession,
     getRecorderStorageKey,
     insertOrMergeRecordedStep,
     isModuleEntryNavigationEvent,
+    isNavigationDraftStep,
     isRecorderUiElement,
     isSensitiveInputElement,
     loadPersistedRecordingSession,
@@ -175,6 +181,7 @@ export const aiRecorderService = {
         const contextService = env.services.context_service;
         const menuService = env.services.menu;
         const actionService = env.services.action;
+        const router = env.services.router;
 
         let status = "idle"; // idle | recording | paused
         let sessionId = null;
@@ -360,12 +367,75 @@ export const aiRecorderService = {
 
         function getNavSnapshot(el) {
             return buildStepNavSnapshot({
-                menuService,
-                actionService,
-                contextService,
+                menuService: env.services.menu || menuService,
+                actionService: env.services.action || actionService,
+                contextService: env.services.context_service || contextService,
                 el,
                 breadcrumb: getBreadcrumbText(),
             });
+        }
+
+        function getCurrentScreenSignature() {
+            const liveActionService = env.services.action || actionService;
+            return extractScreenSignatureFromRuntime({
+                controller: liveActionService?.currentController,
+                menuService: env.services.menu || menuService,
+                contextService: env.services.context_service || contextService,
+                router: env.services.router || router,
+            });
+        }
+
+        function scheduleNavigationTargetScreenCapture(stepId, { preClickScreen, normalized } = {}) {
+            if (!stepId) return;
+            const startedAt = Date.now();
+            const maxWaitMs = 1400;
+            const intervalMs = 160;
+
+            const poll = () => {
+                const idx = recordedSteps.findIndex((s) => s?.id === stepId);
+                if (idx < 0) return;
+
+                const postScreen = getCurrentScreenSignature();
+                const changed = !screenSignaturesEqual(postScreen, preClickScreen);
+                if (!changed) {
+                    if (Date.now() - startedAt < maxWaitMs) {
+                        setTimeout(poll, intervalMs);
+                    }
+                    return;
+                }
+
+                const currentStep = recordedSteps[idx];
+                const resolvedScreen = buildNavigationTargetScreen(currentStep, {
+                    screen: postScreen,
+                    normalized,
+                });
+                if (!resolvedScreen) return;
+                if (screenSignaturesEqual(currentStep?.target?.target_screen, resolvedScreen)) {
+                    return;
+                }
+
+                const updatedStep = {
+                    ...currentStep,
+                    target: {
+                        ...(currentStep.target || {}),
+                        target_screen: resolvedScreen,
+                    },
+                };
+                recordedSteps = recordedSteps.slice();
+                recordedSteps[idx] = updatedStep;
+                persistSessionState();
+                pushLog({
+                    _id: updatedStep.id,
+                    session_id: sessionId,
+                    exercise_id: exerciseId,
+                    timestamp: nowIso(),
+                    event_type: "STEP_UPDATED",
+                    target: updatedStep.target?.target_key || "-",
+                    step: updatedStep,
+                });
+            };
+
+            setTimeout(poll, intervalMs);
         }
 
         async function sendWS(event_name, event_data) {
@@ -419,6 +489,7 @@ export const aiRecorderService = {
 
           if (isDuplicate(dedupeKey, ts)) return;
 
+          const preClickScreen = getCurrentScreenSignature();
           const generatedStep = buildDraftStepFromEvent(normalized, {
             id: uuid(),
             el: e?.target,
@@ -443,6 +514,12 @@ export const aiRecorderService = {
                 insert_index: captureMeta.isInserting ? captureMeta.insertedIndex : null,
                 after_step_id: captureMeta.afterStepId,
               });
+              if (isNavigationDraftStep(emittedStep, normalized)) {
+                scheduleNavigationTargetScreenCapture(emittedStep.id, {
+                  preClickScreen,
+                  normalized,
+                });
+              }
             }
           }
 

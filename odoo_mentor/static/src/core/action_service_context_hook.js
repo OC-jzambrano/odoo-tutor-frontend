@@ -5,6 +5,7 @@ import { patch } from "@web/core/utils/patch";
 import { actionService } from "@web/webclient/actions/action_plugin";
 import { detectActiveViewType } from "./normalize_event";
 import { normalizePersistentRecordId } from "./record_id";
+import { extractActionXmlId, resolveMenuXmlId } from "./screen_signature";
 import {
   buildModalOpenedTransition,
   buildRecordOpenedTransition,
@@ -88,7 +89,7 @@ function extractRecordNameFromDom() {
   return null;
 }
 
-function extractStateFromController(ctrl) {
+function extractStateFromController(ctrl, { menuService = null, router = null } = {}) {
   const loc = extractStateFromLocation();
   if (!ctrl) {
     return {
@@ -96,6 +97,8 @@ function extractStateFromController(ctrl) {
       view_type: loc.view_type || detectActiveViewType(),
       res_id: loc.res_id ?? extractResIdFromDom(),
       record_name: extractRecordNameFromDom(),
+      action_xml_id: null,
+      menu_xml_id: resolveMenuXmlId({ menuService, router }),
     };
   }
   const props = ctrl.props || {};
@@ -111,6 +114,8 @@ function extractStateFromController(ctrl) {
       detectActiveViewType(),
     res_id: props.resId ?? root.resId ?? loc.res_id ?? extractResIdFromDom() ?? null,
     record_name: extractRecordNameFromDom(),
+    action_xml_id: extractActionXmlId(ctrl.action),
+    menu_xml_id: resolveMenuXmlId({ menuService, action: ctrl.action, router }),
   };
 }
 
@@ -147,13 +152,28 @@ function getCurrentRouteFromDom() {
 patch(actionService, {
   start(env) {
     const res = super.start(env);
-    const aiWs = env.services.ai_ws;
+    const getMenuService = () => env.services.menu || null;
+    const getRouter = () => env.services.router || null;
+    const getAiWs = () => env.services.ai_ws || null;
 
     const send = (model, opts = {}) => {
       if (!model) return;
       const route = getCurrentRouteFromDom();
+      const state =
+        opts.state ||
+        extractStateFromController(res.currentController, {
+          menuService: getMenuService(),
+          router: getRouter(),
+        });
       console.log("[ai_ctx] live_context ->", model, route, opts?.reason || "");
-      aiWs?.sendLiveContext?.({ context_model: model, route, force: !!opts.force });
+      getAiWs()?.sendLiveContext?.({
+        context_model: model,
+        route,
+        view_type: state?.view_type || null,
+        action_xml_id: state?.action_xml_id || null,
+        menu_xml_id: state?.menu_xml_id || null,
+        force: !!opts.force,
+      });
     };
 
     // Poll briefly on boot because currentController may initialize asynchronously.
@@ -165,7 +185,11 @@ patch(actionService, {
       const tick = () => {
         const model = extractModelFromController(res.currentController);
         if (model) {
-          send(model, { reason: "boot", force: true });
+          const state = extractStateFromController(res.currentController, {
+            menuService: getMenuService(),
+            router: getRouter(),
+          });
+          send(model, { reason: "boot", force: true, state });
           return;
         }
         if (Date.now() - start < maxMs) {
@@ -186,24 +210,35 @@ patch(actionService, {
       const preModel = extractModelFromActionRequest(actionRequest);
       const fromRoute = getCurrentRouteFromDom();
       const fromState = (() => {
+        const ctrlState = extractStateFromController(res.currentController, {
+          menuService: getMenuService(),
+          router: getRouter(),
+        });
         try {
-          return (
-            env.services.context_service?.getContext?.() ||
-            extractStateFromController(res.currentController)
-          );
-        } catch {
-          return extractStateFromController(res.currentController);
-        }
+          const ctx = env.services.context_service?.getContext?.();
+          if (ctx) {
+            return {
+              ...ctrlState,
+              model: ctx.model || ctrlState.model,
+              view_type: ctx.view_type || ctrlState.view_type,
+              resId: ctx.resId ?? ctrlState.res_id,
+            };
+          }
+        } catch {}
+        return ctrlState;
       })();
 
       const result = await _superDoAction(actionRequest, options);
 
       // Wait one tick so the new controller is mounted.
       setTimeout(() => {
-        const controllerState = extractStateFromController(res.currentController);
+        const controllerState = extractStateFromController(res.currentController, {
+          menuService: getMenuService(),
+          router: getRouter(),
+        });
         const postModel = controllerState.model || extractModelFromController(res.currentController);
         const toRoute = getCurrentRouteFromDom();
-        send(postModel || preModel, { reason: "doAction" });
+        send(postModel || preModel, { reason: "doAction", state: controllerState });
 
         const transitions = [
           buildModalOpenedTransition({
@@ -232,7 +267,7 @@ patch(actionService, {
         ].filter(Boolean);
 
         for (const transition of transitions) {
-          aiWs?.sendEvent?.({
+          getAiWs()?.sendEvent?.({
             type: "ui_event",
             event_name: transition.name,
             event_data: transition,

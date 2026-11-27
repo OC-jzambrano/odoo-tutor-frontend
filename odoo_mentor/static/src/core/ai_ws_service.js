@@ -11,6 +11,7 @@ import {
 } from "./event_types";
 import { buildOutcomeState } from "./outcome_state";
 import { normalizePersistentRecordId } from "./record_id";
+import { cleanXmlId, extractScreenSignatureFromRuntime } from "./screen_signature";
 import { buildRecordOpenedTransitionFromLiveContext } from "./state_transition";
 import {
   createAuthTicketFrame,
@@ -790,17 +791,46 @@ export const aiWsService = {
     }
 
     // Send live navigation context with the active backend session ID.
-    async function sendLiveContext({ context_model, route = null, force = false } = {}) {
+    async function sendLiveContext({
+      context_model,
+      route = null,
+      view_type = null,
+      action_xml_id = null,
+      menu_xml_id = null,
+      force = false,
+    } = {}) {
       if (!context_model) return false;
 
       const now = Date.now();
       const contextRoute = cleanText(route) || getCurrentRouteFromDom();
+      const runtimeSig =
+        !view_type || !action_xml_id || !menu_xml_id
+          ? extractScreenSignatureFromRuntime({
+              controller: env.services.action?.currentController,
+              menuService: env.services.menu,
+              contextService: env.services.context_service,
+              router: env.services.router,
+            })
+          : null;
+      const cleanViewType = cleanText(view_type) || runtimeSig?.view_type || null;
+      const cleanActionXmlId = cleanXmlId(action_xml_id) || runtimeSig?.action_xml_id || null;
+      const cleanMenuXmlId = cleanXmlId(menu_xml_id) || runtimeSig?.menu_xml_id || null;
+      const pendingPayload = {
+        context_model,
+        route: contextRoute,
+        view_type: cleanViewType,
+        action_xml_id: cleanActionXmlId,
+        menu_xml_id: cleanMenuXmlId,
+      };
 
       // Deduplicate identical context updates unless forced.
       if (!force) {
         if (
           context_model === st.lastSentContextModel &&
           contextRoute === st.lastSentContextRoute &&
+          cleanViewType === (st.lastSentContextViewType ?? null) &&
+          cleanActionXmlId === (st.lastSentContextActionXmlId ?? null) &&
+          cleanMenuXmlId === (st.lastSentContextMenuXmlId ?? null) &&
           now - st.lastSentContextAt < 800
         ) {
           return true;
@@ -812,14 +842,14 @@ export const aiWsService = {
 
       // Cache the latest context and connect if the socket is closed.
       if (!isOpen()) {
-        st.pendingContextModel = { context_model, route: contextRoute };
+        st.pendingContextModel = pendingPayload;
         connect().catch(() => {});
         return false;
       }
 
       // Cache the latest context until connection_established arrives.
       if (!st.wsSessionId) {
-        st.pendingContextModel = { context_model, route: contextRoute };
+        st.pendingContextModel = pendingPayload;
         return false;
       }
 
@@ -828,7 +858,7 @@ export const aiWsService = {
       try {
         sid = st.wsSessionId || (await waitWsSessionId(2500));
       } catch (e) {
-        st.pendingContextModel = { context_model, route: contextRoute };
+        st.pendingContextModel = pendingPayload;
         return false;
       }
 
@@ -837,6 +867,9 @@ export const aiWsService = {
         session_id: sid,
         context_model,
         route: contextRoute || null,
+        ...(cleanViewType ? { view_type: cleanViewType } : {}),
+        ...(cleanActionXmlId ? { action_xml_id: cleanActionXmlId } : {}),
+        ...(cleanMenuXmlId ? { menu_xml_id: cleanMenuXmlId } : {}),
         context: { installed_modules: await getInstalledModules() },
         timestamp: new Date().toISOString(),
       };
@@ -899,12 +932,17 @@ export const aiWsService = {
 
       st.lastSentContextModel = context_model;
       st.lastSentContextRoute = contextRoute;
+      st.lastSentContextViewType = cleanViewType;
+      st.lastSentContextActionXmlId = cleanActionXmlId;
+      st.lastSentContextMenuXmlId = cleanMenuXmlId;
       st.lastSentContextAt = now;
       st.lastLiveContextState = {
         model: context_model,
-        view_type: transition ? "form" : null,
+        view_type: transition ? "form" : cleanViewType,
         record_name: transition?.to?.record_name || null,
         route: contextRoute || null,
+        action_xml_id: cleanActionXmlId,
+        menu_xml_id: cleanMenuXmlId,
       };
 
       if (transition) {

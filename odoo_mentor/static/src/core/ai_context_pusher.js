@@ -2,6 +2,7 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
+import { extractScreenSignatureFromRuntime } from "./screen_signature";
 
 function extractModelFromHash() {
   const hash = window.location.hash || "";
@@ -57,20 +58,35 @@ export const aiContextPushService = {
 
     const aiWs = env.services.ai_ws;
     const router = env.services.router;
+    const actionService = env.services.action;
+    const menuService = env.services.menu;
+    const contextService = env.services.context_service;
 
     let lastKey = null;
 
     const emit = () => {
-      const model = extractModelFromHash();
+      const sig = extractScreenSignatureFromRuntime({
+        controller: actionService?.currentController,
+        menuService,
+        contextService,
+        router,
+      });
+      const model = extractModelFromHash() || sig.model;
       if (!model) return;
       const route = getCurrentRouteFromDom();
-      const key = `${model}__${route}`;
+      const key = `${model}__${route}__${sig.view_type || ""}__${sig.action_xml_id || ""}__${sig.menu_xml_id || ""}`;
 
       if (key === lastKey) return;
       lastKey = key;
 
       console.log("[ai_ctx] route model:", model, route);
-      aiWs?.sendLiveContext?.({ context_model: model, route });
+      aiWs?.sendLiveContext?.({
+        context_model: model,
+        route,
+        view_type: sig.view_type,
+        action_xml_id: sig.action_xml_id,
+        menu_xml_id: sig.menu_xml_id,
+      });
     };
 
     // Emit initial context on load.

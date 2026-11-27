@@ -2,6 +2,7 @@
 /** @odoo-module **/
 
 import { normalizePersistentRecordId } from "./record_id";
+import { cleanXmlId } from "./screen_signature";
 
 function compactState(state = {}) {
   return {
@@ -9,6 +10,8 @@ function compactState(state = {}) {
     view_type: state.view_type || state.view || null,
     res_id: normalizePersistentRecordId(state.res_id ?? state.resId),
     record_name: state.record_name || state.recordName || null,
+    action_xml_id: cleanXmlId(state.action_xml_id ?? state.actionXmlId),
+    menu_xml_id: cleanXmlId(state.menu_xml_id ?? state.menuXmlId),
   };
 }
 
@@ -74,13 +77,28 @@ export function buildRecordOpenedTransition({ from = {}, to = {} } = {}) {
 export function buildViewChangedTransition({ from = {}, to = {} } = {}) {
   const fromState = compactState(from);
   const toState = compactState(to);
-  if (!toState.view_type || fromState.view_type === toState.view_type) return null;
+  if (!toState.view_type) return null;
 
-  return transition(
-    "view_changed",
-    { model: fromState.model, view_type: fromState.view_type },
-    { model: toState.model, view_type: toState.view_type }
-  );
+  const sameView = fromState.view_type === toState.view_type;
+  const sameModel = fromState.model === toState.model;
+  const sameAction = fromState.action_xml_id === toState.action_xml_id;
+  const sameMenu = fromState.menu_xml_id === toState.menu_xml_id;
+  if (sameView && sameModel && sameAction && sameMenu) return null;
+
+  const fromPayload = {
+    model: fromState.model,
+    view_type: fromState.view_type,
+    ...(fromState.action_xml_id ? { action_xml_id: fromState.action_xml_id } : {}),
+    ...(fromState.menu_xml_id ? { menu_xml_id: fromState.menu_xml_id } : {}),
+  };
+  const toPayload = {
+    model: toState.model,
+    view_type: toState.view_type,
+    ...(toState.action_xml_id ? { action_xml_id: toState.action_xml_id } : {}),
+    ...(toState.menu_xml_id ? { menu_xml_id: toState.menu_xml_id } : {}),
+  };
+
+  return transition("view_changed", fromPayload, toPayload);
 }
 
 export function buildRouteChangedTransition({ from_route, to_route, state = {} } = {}) {

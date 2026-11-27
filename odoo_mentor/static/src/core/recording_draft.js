@@ -1,5 +1,7 @@
 /** @odoo-module **/
 
+import { cleanXmlId, normalizeTargetScreen } from "./screen_signature";
+
 const SENSITIVE_FIELD_RE =
     /(?:^|[._-])(password|passwd|pwd|secret|token|api[_-]?key|credential|private[_-]?key|access[_-]?key|auth[_-]?key|otp|pin)(?:$|[._-])/i;
 
@@ -860,9 +862,59 @@ export function buildListSelectionInstruction({ minSelected = 1, selectAll = fal
     return count === 1 ? "Select 1 record" : `Select ${count} records`;
 }
 
+export function isNavigationDraftStep(step = null, normalized = null) {
+    if (step?.target_hint?.menu_role === "dropdown_toggle") {
+        return false;
+    }
+    const targetKey = trimText(
+        step?.target?.target_key || normalized?.meta?.target_name || "",
+        240
+    ).toLowerCase();
+    if (
+        normalized?.type === "menu_clicked" ||
+        normalized?.meta?.navigation_kind === "breadcrumb_back" ||
+        targetKey.startsWith("menu.") ||
+        targetKey.startsWith("breadcrumb.") ||
+        targetKey.startsWith("btn.back-to-")
+    ) {
+        return true;
+    }
+    return false;
+}
+
+export function buildNavigationTargetScreen(step = null, { screen = null, normalized = null } = {}) {
+    const rawTargetKey = trimText(
+        step?.target?.target_key || normalized?.meta?.target_name || "",
+        240
+    );
+    const derivedMenuXmlId = rawTargetKey.toLowerCase().startsWith("menu.")
+        ? cleanXmlId(rawTargetKey.slice(5))
+        : cleanXmlId(step?.target_hint?.xmlid);
+    const base = normalizeTargetScreen(screen) || {
+        model: null,
+        view_type: null,
+        action_xml_id: null,
+        menu_xml_id: null,
+    };
+    return normalizeTargetScreen({
+        model: base.model,
+        view_type: base.view_type,
+        action_xml_id: base.action_xml_id,
+        menu_xml_id: base.menu_xml_id || derivedMenuXmlId,
+    });
+}
+
 export function buildDraftStepFromEvent(
     normalized,
-    { id = null, el = null, module = null, moduleRootXmlid = null, nav = null, selector = null } = {}
+    {
+        id = null,
+        el = null,
+        module = null,
+        moduleRootXmlid = null,
+        nav = null,
+        selector = null,
+        targetScreen = null,
+    } = {}
 ) {
     if (!normalized) return null;
     if (isRecorderUiElement(el)) return null;
@@ -973,6 +1025,15 @@ export function buildDraftStepFromEvent(
     const targetHint = buildStepTargetHint(normalized, { el, selector });
     if (targetHint) {
         step.target_hint = targetHint;
+    }
+    if (isNavigationDraftStep(step, normalized)) {
+        const resolvedTargetScreen = buildNavigationTargetScreen(step, {
+            screen: targetScreen,
+            normalized,
+        });
+        if (resolvedTargetScreen) {
+            step.target.target_screen = resolvedTargetScreen;
+        }
     }
     if (nav && typeof nav === "object") {
         step.nav = nav;
@@ -1776,6 +1837,7 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
             if (!instruction) return null;
             const targetKey = trimText(step?.target?.target_key || "", 240) || null;
             const minSelected = normalizeMinSelected(step?.target?.min_selected);
+            const targetScreen = normalizeTargetScreen(step?.target?.target_screen);
             const item = {
                 id: step.id || generateUuid(),
                 instruction,
@@ -1785,6 +1847,7 @@ export function buildRecordingDraftPayload({ recordingId, title, module, steps }
                     field: trimText(step?.target?.field || "", 240) || null,
                     target_key: targetKey,
                     ...(minSelected ? { min_selected: minSelected } : {}),
+                    ...(targetScreen ? { target_screen: targetScreen } : {}),
                 },
             };
             const label = trimText(step?.target_hint?.label || step?.label || "", 120);
@@ -1828,6 +1891,7 @@ export function hydrateDraftForEditing(draft) {
             const field = trimText(step?.target?.field || "", 240) || null;
             const targetKey = trimText(step?.target?.target_key || "", 240) || null;
             const minSelected = normalizeMinSelected(step?.target?.min_selected);
+            const targetScreen = normalizeTargetScreen(step?.target?.target_screen);
             const label = trimText(step.label || step?.target_hint?.label || "", 120) || null;
 
             let targetHint = null;
@@ -1887,6 +1951,7 @@ export function hydrateDraftForEditing(draft) {
                     field,
                     target_key: targetKey,
                     ...(minSelected ? { min_selected: minSelected } : {}),
+                    ...(targetScreen ? { target_screen: targetScreen } : {}),
                 },
             };
             if (targetHint) {
@@ -1919,6 +1984,7 @@ export function buildPolishDraftPayload({ title = "", module = "", steps = [] } 
             if (!id || !instruction) return null;
             const action = normalizeStepAction(step?.target?.action);
             const minSelected = normalizeMinSelected(step?.target?.min_selected);
+            const targetScreen = normalizeTargetScreen(step?.target?.target_screen);
             const item = {
                 id,
                 instruction,
@@ -1928,6 +1994,7 @@ export function buildPolishDraftPayload({ title = "", module = "", steps = [] } 
                     field: trimText(step?.target?.field || "", 240) || null,
                     target_key: trimText(step?.target?.target_key || "", 240) || null,
                     ...(minSelected ? { min_selected: minSelected } : {}),
+                    ...(targetScreen ? { target_screen: targetScreen } : {}),
                 },
             };
             const label = trimText(step?.target_hint?.label || "", 120);
@@ -2104,6 +2171,7 @@ export function sanitizePersistedRecordingSession(
                 if (!id || !instruction) return null;
                 const action = normalizeStepAction(step.target?.action);
                 const minSelected = normalizeMinSelected(step.target?.min_selected);
+                const targetScreen = normalizeTargetScreen(step.target?.target_screen);
                 const cleanStep = {
                     id,
                     instruction,
@@ -2113,6 +2181,7 @@ export function sanitizePersistedRecordingSession(
                         field: trimText(step.target?.field || "", 240) || null,
                         target_key: trimText(step.target?.target_key || "", 240) || null,
                         ...(minSelected ? { min_selected: minSelected } : {}),
+                        ...(targetScreen ? { target_screen: targetScreen } : {}),
                     },
                     is_optional: step.is_optional === true,
                     optional_group: trimText(step.optional_group || "", 64) || null,
