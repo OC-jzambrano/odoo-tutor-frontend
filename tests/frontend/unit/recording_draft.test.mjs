@@ -10,12 +10,15 @@ import {
     buildStepLocateActionRequest,
     buildStepNavSnapshot,
     buildStepTargetHint,
+    captureDeletedStepEntries,
     checkDryRunToggleAlreadySatisfied,
     clearPersistedRecordingSession,
     DEFAULT_ODOO_MODULE_OPTIONS,
     detectOptionalBlockSuggestions,
+    extractExerciseExplorerModules,
     extractModuleFromApp,
     extractNavigateToModule,
+    filterExercisesForExplorer,
     findAppForModule,
     getNextIndexAfterSkip,
     getOptionalBlockRange,
@@ -24,6 +27,8 @@ import {
     getStepExpectedChecked,
     humanizeTechnicalKey,
     hydrateDraftForEditing,
+    insertOrMergeRecordedStep,
+    insertStepsAt,
     isElementRequiredField,
     isModuleEntryNavigationEvent,
     isRecorderUiElement,
@@ -31,11 +36,17 @@ import {
     isTechnicalKey,
     loadPersistedRecordingSession,
     matchDryRunStepIndex,
+    moveStepByOffset,
+    moveStepToIndex,
+    normalizeExerciseExplorerItem,
     readElementCheckedState,
     recomputeOptionalGroups,
+    reconcileDryRunAfterStepInsertion,
+    reconcileDryRunAfterStepMove,
     reconcileDryRunAfterStepRemoval,
     resolveDomHumanLabel,
     resolveExpectedCheckedState,
+    restoreDeletedStepEntries,
     savePersistedRecordingSession,
     shouldSuppressModuleGatePrompt,
 } from "../../../odoo_mentor/static/src/core/recording_draft.js";
@@ -1227,5 +1238,370 @@ describe("recording_draft helpers", () => {
         expect(getPreviousDryRunIndex(steps, 1)).toBe(0);
         expect(getPreviousDryRunIndex(steps, 2)).toBe(1);
         expect(getPreviousDryRunIndex(steps, 5)).toBe(2);
+    });
+
+    it("inserts steps at a specific index, deduplicates by id, and recomputes optional groups", () => {
+        const steps = [
+            { id: "s1", instruction: "Open Sales", is_optional: false },
+            { id: "s2", instruction: "Fill Customer", is_optional: true },
+            { id: "s3", instruction: "Confirm", is_optional: false },
+        ];
+
+        const inserted = insertStepsAt(
+            steps,
+            [{ id: "s_mid", instruction: "Fill Payment Terms", is_optional: true }],
+            1
+        );
+        expect(inserted.insertedIndex).toBe(1);
+        expect(inserted.insertedCount).toBe(1);
+        expect(inserted.steps.map((s) => s.id)).toEqual(["s1", "s_mid", "s2", "s3"]);
+        // Consecutive optional steps s_mid + s2 should form an optional group
+        expect(inserted.steps[1].optional_group).toBeTruthy();
+        expect(inserted.steps[1].optional_group).toBe(inserted.steps[2].optional_group);
+
+        // Duplicate id is ignored
+        const dup = insertStepsAt(inserted.steps, [{ id: "s_mid", instruction: "Dup" }], 0);
+        expect(dup.insertedCount).toBe(0);
+        expect(dup.steps.length).toBe(4);
+
+        // Null index appends to end
+        const appended = insertStepsAt(steps, [{ id: "s4", instruction: "Save" }], null);
+        expect(appended.insertedIndex).toBe(3);
+        expect(appended.steps.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
+    });
+
+    it("captures and restores deleted step entries at their exact original indices", () => {
+        const steps = [
+            { id: "s1", instruction: "Step 1" },
+            { id: "s2", instruction: "Step 2" },
+            { id: "s3", instruction: "Step 3" },
+            { id: "s4", instruction: "Step 4" },
+        ];
+        const deleted = captureDeletedStepEntries(steps, ["s4", "s2"]);
+        expect(deleted.map((e) => [e.index, e.step.id])).toEqual([
+            [1, "s2"],
+            [3, "s4"],
+        ]);
+
+        const remaining = steps.filter((s) => s.id !== "s2" && s.id !== "s4");
+        const restored = restoreDeletedStepEntries(remaining, deleted);
+        expect(restored.restoredCount).toBe(2);
+        expect(restored.steps.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
+    });
+
+    it("moves steps up/down and reconciles Dry-Run index on insert and move", () => {
+        const steps = [
+            { id: "s1", instruction: "Step 1" },
+            { id: "s2", instruction: "Step 2" },
+            { id: "s3", instruction: "Step 3" },
+        ];
+        const up = moveStepByOffset(steps, "s2", -1);
+        expect(up.moved).toBe(true);
+        expect(up.steps.map((s) => s.id)).toEqual(["s2", "s1", "s3"]);
+
+        const noop = moveStepByOffset(steps, "s1", -1);
+        expect(noop.moved).toBe(false);
+
+        const afterInsert = reconcileDryRunAfterStepInsertion(
+            { active: true, stepIndex: 1, skippedPromptStepNumber: 2 },
+            1,
+            1,
+            4
+        );
+        expect(afterInsert.stepIndex).toBe(2);
+        expect(afterInsert.skippedPromptStepNumber).toBe(3);
+
+        const afterMove = reconcileDryRunAfterStepMove({ active: true, stepIndex: 1 }, 1, 0);
+        expect(afterMove.stepIndex).toBe(0);
+
+        const dragged = moveStepToIndex(steps, "s3", 0);
+        expect(dragged.moved).toBe(true);
+        expect(dragged.fromIndex).toBe(2);
+        expect(dragged.toIndex).toBe(0);
+        expect(dragged.steps.map((s) => s.id)).toEqual(["s3", "s1", "s2"]);
+    });
+
+    it("normalizes, filters, and extracts modules for the Exercises Explorer panel", () => {
+        const items = [
+            normalizeExerciseExplorerItem({
+                exercise_id: "ex_1",
+                title: "Adjust stock with an inventory count",
+                module: "stock",
+                status: "published",
+                odoo_version: "20.0",
+                scope: "tenant",
+                read_only: false,
+                can_edit: true,
+                can_delete: true,
+                steps: [
+                    { id: "a", instruction: "Open Physical Inventory" },
+                    { id: "b", instruction: "Enter counted quantity", is_optional: true },
+                ],
+            }),
+            normalizeExerciseExplorerItem({
+                exercise_id: "ex_global_1",
+                title: "Create a vendor bill",
+                module: "account",
+                status: "published",
+                odoo_version: "20.0",
+                scope: "global",
+                read_only: true,
+                can_edit: false,
+                can_delete: false,
+                step_count: 3,
+            }),
+            normalizeExerciseExplorerItem(
+                {
+                    recording_id: "rec_2",
+                    title: "Create a sales quotation",
+                    module: "sale",
+                    review_status: "pending_review",
+                    step_count: 4,
+                },
+                { source: "draft" }
+            ),
+        ].filter(Boolean);
+
+        expect(items.length).toBe(3);
+        expect(items[0].optionalCount).toBe(1);
+        expect(items[0].version).toBe("20.0");
+        expect(items[0].scope).toBe("tenant");
+        expect(items[0].readOnly).toBe(false);
+        expect(items[0].canEdit).toBe(true);
+        expect(items[0].canDelete).toBe(true);
+        expect(items[1].scope).toBe("global");
+        expect(items[1].readOnly).toBe(true);
+        expect(items[1].canEdit).toBe(false);
+        expect(items[1].canDelete).toBe(false);
+        expect(items[2].status).toBe("pending_review");
+        expect(items[2].scope).toBe("tenant");
+        expect(items[2].readOnly).toBe(false);
+        expect(extractExerciseExplorerModules(items)).toEqual(["account", "sale", "stock"]);
+
+        expect(filterExercisesForExplorer(items, { query: "counted" }).map((x) => x.id)).toEqual([
+            "ex_1",
+        ]);
+        expect(filterExercisesForExplorer(items, { module: "sale" }).map((x) => x.id)).toEqual([
+            "rec_2",
+        ]);
+        expect(
+            filterExercisesForExplorer(items, { status: "published" }).map((x) => x.id)
+        ).toEqual(["ex_1", "ex_global_1"]);
+        expect(
+            filterExercisesForExplorer(items, { status: "all" }).map((x) => x.id)
+        ).toEqual(["ex_1", "ex_global_1", "rec_2"]);
+        expect(
+            filterExercisesForExplorer(items, { scope: "global" }).map((x) => x.id)
+        ).toEqual(["ex_global_1"]);
+        expect(
+            filterExercisesForExplorer(items, { scope: "tenant", status: "published" }).map((x) => x.id)
+        ).toEqual(["ex_1"]);
+        expect(
+            filterExercisesForExplorer(items, { scope: "all", status: "published" }).map((x) => x.id)
+        ).toEqual(["ex_1", "ex_global_1"]);
+    });
+
+    it("builds, collapses, serializes, hydrates, and dry-run matches list row selection steps", () => {
+        const nav = { breadcrumb: "Requests for Quotation" };
+        const step1 = buildDraftStepFromEvent(
+            {
+                type: "list_selection_changed",
+                label: "Select record",
+                field: null,
+                value: 1,
+                meta: {
+                    model: "purchase.order",
+                    view_type: "list",
+                    target_name: "list.select_row",
+                    selected_count: 1,
+                    selection_checked: true,
+                },
+            },
+            { id: "sel_1", nav }
+        );
+        expect(step1).toMatchObject({
+            id: "sel_1",
+            instruction: "Select 1 Requests for Quotation",
+            target: {
+                action: "select_rows",
+                model: "purchase.order",
+                field: null,
+                target_key: "list.select_rows",
+                min_selected: 1,
+            },
+        });
+        expect(step1.expected_checked).toBeUndefined();
+
+        const step2 = buildDraftStepFromEvent(
+            {
+                type: "list_selection_changed",
+                label: "Select record",
+                field: null,
+                value: 2,
+                meta: {
+                    model: "purchase.order",
+                    view_type: "list",
+                    target_name: "list.select_row",
+                    selected_count: 2,
+                    selection_checked: true,
+                },
+            },
+            { id: "sel_2", nav }
+        );
+
+        // Collapses consecutive row selections in the same model into one step preserving sel_1 id
+        const firstInsert = insertOrMergeRecordedStep([], step1);
+        expect(firstInsert.merged).toBe(false);
+        expect(firstInsert.steps).toHaveLength(1);
+
+        const secondInsert = insertOrMergeRecordedStep(firstInsert.steps, step2);
+        expect(secondInsert.merged).toBe(true);
+        expect(secondInsert.steps).toHaveLength(1);
+        expect(secondInsert.steps[0]).toMatchObject({
+            id: "sel_1",
+            instruction: "Select 2 Requests for Quotation",
+            target: {
+                action: "select_rows",
+                model: "purchase.order",
+                field: null,
+                target_key: "list.select_rows",
+                min_selected: 2,
+            },
+        });
+
+        // Unchecking to 0 selected produces null
+        expect(
+            buildDraftStepFromEvent({
+                type: "list_selection_changed",
+                meta: {
+                    model: "purchase.order",
+                    target_name: "list.select_row",
+                    selected_count: 0,
+                },
+            })
+        ).toBeNull();
+
+        // Dry-Run only advances when selected_count >= min_selected
+        expect(
+            matchDryRunStepIndex(secondInsert.steps, 0, {
+                type: "list_selection_changed",
+                meta: {
+                    model: "purchase.order",
+                    target_name: "list.select_row",
+                    selected_count: 1,
+                },
+            })
+        ).toBeNull();
+        expect(
+            matchDryRunStepIndex(secondInsert.steps, 0, {
+                type: "list_selection_changed",
+                meta: {
+                    model: "purchase.order",
+                    target_name: "list.select_row",
+                    selected_count: 2,
+                },
+            })
+        ).toEqual({
+            matchedIndex: 0,
+            nextIndex: 1,
+            skippedOptionalCount: 0,
+        });
+
+        // Draft payload & hydration preserve action: "select_rows" and min_selected: 2
+        const payload = buildRecordingDraftPayload({
+            recordingId: "rec-rfq-merge",
+            title: "Merge two RFQs",
+            module: "purchase",
+            steps: secondInsert.steps,
+        });
+        expect(payload.steps[0].target).toEqual({
+            action: "select_rows",
+            model: "purchase.order",
+            field: null,
+            target_key: "list.select_rows",
+            min_selected: 2,
+        });
+        const hydrated = hydrateDraftForEditing(payload);
+        expect(hydrated.steps[0].target).toEqual({
+            action: "select_rows",
+            model: "purchase.order",
+            field: null,
+            target_key: "list.select_rows",
+            min_selected: 2,
+        });
+    });
+
+    it("builds canonical breadcrumb return steps and matches both breadcrumb and menu navigation in Dry-Run", () => {
+        const step = buildDraftStepFromEvent(
+            {
+                type: "link_clicked",
+                label: "Requests for Quotation",
+                field: null,
+                meta: {
+                    model: "purchase.order",
+                    view_type: "form",
+                    target_name: "breadcrumb.requests-for-quotation",
+                    navigation_kind: "breadcrumb_back",
+                    breadcrumb_label: "Requests for Quotation",
+                },
+            },
+            { id: "bc_1" }
+        );
+        expect(step).toMatchObject({
+            id: "bc_1",
+            instruction: "Return to Requests for Quotation",
+            target: {
+                action: "click",
+                model: "purchase.order",
+                field: null,
+                target_key: "breadcrumb.requests-for-quotation",
+            },
+        });
+
+        // Matches breadcrumb click
+        expect(
+            matchDryRunStepIndex([step], 0, {
+                type: "link_clicked",
+                label: "Requests for Quotation",
+                meta: {
+                    model: "purchase.order",
+                    target_name: "breadcrumb.requests-for-quotation",
+                    navigation_kind: "breadcrumb_back",
+                },
+            })
+        ).toEqual({ matchedIndex: 0, nextIndex: 1, skippedOptionalCount: 0 });
+
+        // Also matches returning via top menu with matching label
+        expect(
+            matchDryRunStepIndex([step], 0, {
+                type: "menu_clicked",
+                label: "Requests for Quotation",
+                meta: { model: "purchase.order", target_name: "menu.purchase.menu_purchase_rfq" },
+            })
+        ).toEqual({ matchedIndex: 0, nextIndex: 1, skippedOptionalCount: 0 });
+
+        // Backwards-compatible with legacy recorded btn.back-to-* steps
+        const legacyStep = {
+            id: "legacy_bc",
+            instruction: 'Click Back to "Requests for Quotation"',
+            target: {
+                action: "click",
+                model: "purchase.order",
+                field: null,
+                target_key: "btn.back-to-requests-for-quotation",
+            },
+            target_hint: { label: 'Back to "Requests for Quotation"' },
+        };
+        expect(
+            matchDryRunStepIndex([legacyStep], 0, {
+                type: "link_clicked",
+                label: "Requests for Quotation",
+                meta: {
+                    model: "purchase.order",
+                    target_name: "breadcrumb.requests-for-quotation",
+                    navigation_kind: "breadcrumb_back",
+                },
+            })
+        ).toEqual({ matchedIndex: 0, nextIndex: 1, skippedOptionalCount: 0 });
     });
 });

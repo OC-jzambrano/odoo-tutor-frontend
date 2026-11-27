@@ -280,6 +280,23 @@ class AiChatController(http.Controller):
         base_path = f"{api_base}/odoo/installations/{installation_id}/recording-drafts"
         return None, (base_path, headers)
 
+    def _exercises_proxy_context(self, required_group="odoo_mentor.group_odoo_tutor_expert"):
+        err, ctx = self._recording_proxy_context(required_group)
+        if err:
+            return err, None
+        base_path, headers = ctx
+        exercises_base = base_path.rsplit("/recording-drafts", 1)[0] + "/exercises"
+        return None, (exercises_base, headers)
+
+    @staticmethod
+    def _sanitize_exercise_id(raw_id):
+        value = str(raw_id or "").strip()
+        if not value or len(value) > 128:
+            return None
+        if not all(ch.isalnum() or ch in {"_", "-", ".", ":"} for ch in value):
+            return None
+        return value
+
     @staticmethod
     def _proxy_backend_response(response):
         try:
@@ -377,7 +394,7 @@ class AiChatController(http.Controller):
     def _strip_rejected_draft_step_fields(draft, error_text):
         steps = draft.get("steps")
         if not isinstance(steps, list):
-            return None
+            return None, []
         lower = (error_text or "").lower()
         drop_keys = set()
         if "label" in lower:
@@ -395,8 +412,8 @@ class AiChatController(http.Controller):
             else:
                 stripped_steps.append(step)
         if not changed:
-            return None
-        return {**draft, "steps": stripped_steps}
+            return None, []
+        return {**draft, "steps": stripped_steps}, sorted(drop_keys)
 
     @http.route("/ai_chat/recording_drafts/save", type="jsonrpc", auth="user", methods=["POST"])
     def save_recording_draft_proxy(self, draft=None, **kwargs):
@@ -414,8 +431,9 @@ class AiChatController(http.Controller):
                 timeout=(3, 10),
                 allow_redirects=False,
             )
+            stripped_fields = []
             if response.status_code == 422 and "extra" in (response.text or "").lower():
-                fallback_draft = self._strip_rejected_draft_step_fields(draft, response.text)
+                fallback_draft, stripped_fields = self._strip_rejected_draft_step_fields(draft, response.text)
                 if fallback_draft is not None:
                     response = requests.put(
                         base_path,
@@ -424,7 +442,10 @@ class AiChatController(http.Controller):
                         timeout=(3, 10),
                         allow_redirects=False,
                     )
-            return self._proxy_backend_response(response)
+            proxied = self._proxy_backend_response(response)
+            if proxied.get("ok") and stripped_fields:
+                proxied["stripped_fields"] = stripped_fields
+            return proxied
         except requests.RequestException:
             return {"error": "Recording service is unavailable", "status": 503}
 
@@ -546,3 +567,97 @@ class AiChatController(http.Controller):
             return self._proxy_backend_response(response)
         except requests.RequestException:
             return {"error": "Recording service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/exercises/list", type="jsonrpc", auth="user", methods=["POST"])
+    def list_exercises_proxy(
+        self, q=None, module=None, status=None, version=None, scope=None, offset=0, **kwargs
+    ):
+        err, ctx = self._exercises_proxy_context("odoo_mentor.group_odoo_tutor_expert")
+        if err:
+            return err
+        base_path, headers = ctx
+        params = {"offset": max(0, int(offset or 0))}
+        if isinstance(q, str) and q.strip():
+            params["q"] = q.strip()[:120]
+        if isinstance(module, str) and module.strip():
+            params["module"] = module.strip()[:120]
+        if status in {"all", "published", "pending_review", "draft", "rejected"}:
+            params["status"] = status
+        if scope in {"tenant", "global", "all"}:
+            params["scope"] = scope
+        if isinstance(version, str) and version.strip():
+            params["version"] = version.strip()[:32]
+        try:
+            response = requests.get(
+                base_path,
+                params=params,
+                headers=headers,
+                timeout=(3, 10),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except (requests.RequestException, TypeError, ValueError):
+            return {"error": "Exercise service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/exercises/detail", type="jsonrpc", auth="user", methods=["POST"])
+    def exercise_detail_proxy(self, exercise_id=None, **kwargs):
+        err, ctx = self._exercises_proxy_context("odoo_mentor.group_odoo_tutor_expert")
+        if err:
+            return err
+        safe_id = self._sanitize_exercise_id(exercise_id)
+        if not safe_id:
+            return {"error": "Invalid exercise ID", "status": 422}
+        base_path, headers = ctx
+        try:
+            response = requests.get(
+                f"{base_path}/{safe_id}",
+                headers=headers,
+                timeout=(3, 10),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Exercise service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/exercises/update", type="jsonrpc", auth="user", methods=["POST"])
+    def update_exercise_proxy(self, exercise_id=None, draft=None, **kwargs):
+        err, ctx = self._exercises_proxy_context("odoo_mentor.group_odoo_tutor_expert")
+        if err:
+            return err
+        safe_id = self._sanitize_exercise_id(exercise_id)
+        if not safe_id:
+            return {"error": "Invalid exercise ID", "status": 422}
+        if not isinstance(draft, dict):
+            return {"error": "Exercise payload is required", "status": 422}
+        base_path, headers = ctx
+        try:
+            response = requests.put(
+                f"{base_path}/{safe_id}",
+                json=draft,
+                headers=headers,
+                timeout=(3, 15),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Exercise service is unavailable", "status": 503}
+
+    @http.route("/ai_chat/exercises/delete", type="jsonrpc", auth="user", methods=["POST"])
+    def delete_exercise_proxy(self, exercise_id=None, **kwargs):
+        err, ctx = self._exercises_proxy_context("odoo_mentor.group_odoo_tutor_expert")
+        if err:
+            return err
+        safe_id = self._sanitize_exercise_id(exercise_id)
+        if not safe_id:
+            return {"error": "Invalid exercise ID", "status": 422}
+        base_path, headers = ctx
+        try:
+            response = requests.delete(
+                f"{base_path}/{safe_id}",
+                headers=headers,
+                timeout=(3, 15),
+                allow_redirects=False,
+            )
+            return self._proxy_backend_response(response)
+        except requests.RequestException:
+            return {"error": "Exercise service is unavailable", "status": 503}

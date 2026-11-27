@@ -94,9 +94,9 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
         </div>
       </div>
       <div class="ai-sidebar-header-actions">
+        <a class="ai-sidebar-upgrade" href="https://odoo-tutor.odoo.com/pricing" target="_blank" rel="noopener noreferrer">Upgrade</a>
         <button type="button" class="btn ai-sidebar-recorder-toggle">Record an exercise</button>
         <button type="button" class="btn ai-sidebar-reset" aria-label="Reset">↻</button>
-        <button type="button" class="btn ai-sidebar-close" aria-label="Close">×</button>
       </div>
     </div>
 
@@ -152,7 +152,7 @@ function buildFixtureHtml({ theme = "light", sidebarWidth = "420px" } = {}) {
                           </div>
                         </div>
                         <div class="nlux-comp-message">
-                          <div class="nlux-markdown-container"><p>Your trial quota has finished. Get a subscription to continue.</p><div class="ai-quota-actions"><a class="ai-quota-plan-btn" href="https://odooconcept.com/pricing" target="_blank" rel="noopener noreferrer">Get a subscription</a></div></div>
+                          <div class="nlux-markdown-container"><p>Your trial quota has finished. Get a subscription to continue.</p><div class="ai-quota-actions"><a class="ai-quota-plan-btn" href="https://odoo-tutor.odoo.com/pricing" target="_blank" rel="noopener noreferrer">Get a subscription</a></div></div>
                         </div>
                       </div>
                     </div>
@@ -210,7 +210,7 @@ function buildFloatingBubbleHtml({ viewportWidth = 1280, viewportHeight = 760 } 
       <div class="ai-owl-quota-actions" role="group" aria-label="Subscription actions">
         <a
           class="ai-owl-quota-plan-btn"
-          href="https://odooconcept.com/pricing"
+          href="https://odoo-tutor.odoo.com/pricing"
           target="_blank"
           rel="noopener noreferrer"
         >Get a subscription</a>
@@ -440,6 +440,7 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
           <div class="o_ai_recorder_left">
             <span class="o_ai_rec_title">Recorder</span>
           </div>
+          <div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-dark">Record</button><button class="btn btn-sm btn-outline-secondary">Review</button></div></div>
         </div>
         <div class="o_ai_recorder_meta d-flex flex-column gap-2">
           <div>
@@ -458,15 +459,18 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
             <span class="val">694dd5de-0c7f-4c68</span>
           </div>
         </div>
+        <div class="o_ai_recorder_capture_actions"><button class="btn btn-sm btn-success">✓ Finish capture</button><button class="btn btn-sm btn-secondary">Ⅱ Pause</button><button class="btn btn-sm btn-danger">Discard</button></div>
+        <div class="o_ai_recorder_controls"><button class="btn btn-sm btn-outline-secondary">⌖ Pick element</button></div>
         <div class="o_ai_recorder_feed">
           <div class="d-flex justify-content-between align-items-center gap-2 mb-1 flex-wrap" style="justify-content: space-between; align-items: center; flex-wrap: wrap;">
             <div class="d-flex align-items-center gap-2 flex-wrap" style="align-items: center; flex-wrap: wrap;">
               <div class="o_ai_rec_feed_title" style="margin-bottom: 0;">Generated steps</div>
               <span class="o_ai_rec_suspect_count_pill" data-testid="recorder-suspect-count">⚠ 2 possible extra steps</span>
             </div>
-            <div class="d-flex gap-1 align-items-center flex-wrap" style="gap: 4px; align-items: center;">
+            <div class="o_ai_recorder_draft_actions">
               <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_polish_btn" data-testid="recorder-polish-btn" style="border-radius: 6px; padding: 2px 8px; font-size: 12px;">✨ Polish with AI</button>
               <button type="button" class="btn btn-sm btn-outline-primary" style="border: 1px solid #3b82f6; border-radius: 6px; padding: 2px 8px; font-size: 12px; color: ${isDark ? '#93c5fd' : '#1d4ed8'};">▶ Test exercise</button>
+              <button class="btn btn-sm btn-success">Save for later review</button>
             </div>
           </div>
           <div class="o_ai_rec_polish_banner is-loading d-flex align-items-center gap-2 mb-2" style="align-items: center; gap: 6px; margin-bottom: 8px;">
@@ -488,10 +492,11 @@ function buildRecorderPanelHtml({ theme = "light", sidebarWidth = "420px" } = {}
                 <span class="o_ai_rec_dry_run_current_dot" aria-hidden="true"></span>
                 Current Dry-Run step
               </div>
-              <div class="d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
+              <div class="o_ai_rec_step_row d-flex gap-1 align-items-center" style="gap: 4px; align-items: center;">
                 <input type="checkbox" class="o_ai_rec_step_checkbox" checked />
                 <span class="o_ai_rec_step_num">1</span>
-                <input type="text" class="form-control form-control-sm" value="Open Accounting" />
+                <input type="text" class="form-control form-control-sm o_ai_rec_step_input" value="Open Accounting" />
+                <button class="o_ai_rec_optional_pill">Optional</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary o_ai_rec_locate_btn" data-testid="recorder-locate-btn" title="Locate element on screen" style="border: 1px solid #94a3b8; border-radius: 4px; color: ${isDark ? '#cbd5e1' : '#475569'};">⌖</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" title="Remove step" style="border: 1px solid #ef4444; border-radius: 4px; padding: 0.25rem 0.45rem; line-height: 1; color: #ef4444;">×</button>
               </div>
@@ -673,6 +678,21 @@ const SCENARIOS = [
     sidebarWidth: "420px",
   },
   {
+    name: "recorder-panel-mobile", kind: "recorder", theme: "light", viewport: { width: 320, height: 760 }, sidebarWidth: "320px",
+  },
+  {
+    name: "recorder-steps-mobile", kind: "recorder", theme: "light", viewport: { width: 320, height: 1200 }, sidebarWidth: "320px",
+  },
+  {
+    name: "recorder-review-dark", kind: "recorder", review: true, theme: "dark", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
+  },
+  {
+    name: "recorder-exercises-light", kind: "recorder", exercises: true, theme: "light", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
+  },
+  {
+    name: "recorder-exercises-dark", kind: "recorder", exercises: true, theme: "dark", viewport: { width: 1280, height: 760 }, sidebarWidth: "420px",
+  },
+  {
     name: "recorder-panel-dark",
     kind: "recorder",
     theme: "dark",
@@ -712,6 +732,17 @@ async function run() {
               ? buildRecorderPanelHtml(scenario)
               : buildFixtureHtml(scenario);
       await page.setContent(html, { waitUntil: "load" });
+      if (scenario.review) {
+        await page.evaluate(() => {
+          const panel = document.querySelector('.o_ai_recorder_panel');
+          panel.innerHTML = `<div class="o_ai_recorder_header"><div class="o_ai_recorder_left"><span class="o_ai_rec_title">Recorder</span></div><div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-outline-secondary">Record</button><button class="btn btn-sm btn-dark">Review</button></div></div></div><div class="o_ai_rec_review d-flex flex-column gap-2"><div class="d-flex justify-content-between align-items-center"><strong>Pending drafts</strong><button class="btn btn-sm btn-outline-secondary">Refresh</button></div><button class="btn btn-sm btn-outline-secondary o_ai_rec_review_item">Create a sales quotation · Sales <span>2 steps</span></button><div class="o_ai_rec_review_detail"><strong>Draft details</strong><p>Sales · Pending review</p><ol><li>Open Sales</li><li>Create a quotation</li></ol><input class="form-control" placeholder="Review comment (optional)"><div class="o_ai_rec_review_actions d-flex gap-2 flex-wrap"><button class="btn btn-sm btn-success">Approve</button><button class="btn btn-sm btn-outline-primary">Edit</button><button class="btn btn-sm btn-outline-danger">Reject</button></div></div></div>`;
+        });
+      } else if (scenario.exercises) {
+        await page.evaluate(() => {
+          const panel = document.querySelector('.o_ai_recorder_panel');
+          panel.innerHTML = `<div class="o_ai_recorder_header"><div class="o_ai_recorder_left"><span class="o_ai_rec_title">Recorder</span></div><div class="o_ai_recorder_right"><div class="o_ai_recorder_tabs"><button class="btn btn-sm btn-outline-secondary">Record</button><button class="btn btn-sm btn-outline-secondary">Review</button><button class="btn btn-sm btn-dark">Exercises</button></div></div></div><div class="o_ai_rec_explorer d-flex flex-column gap-2"><div class="d-flex justify-content-between align-items-center gap-2"><strong>Exercises</strong><button type="button" class="btn btn-sm btn-outline-secondary">Refresh</button></div><div class="o_ai_rec_explorer_filters d-flex flex-column gap-2"><div class="o_ai_rec_scope_tabs" role="tablist"><button type="button" role="tab" class="o_ai_rec_scope_tab">My exercises</button><button type="button" role="tab" class="o_ai_rec_scope_tab">General catalog</button><button type="button" role="tab" class="o_ai_rec_scope_tab is-active" aria-selected="true">All</button></div><input type="text" class="form-control form-control-sm" placeholder="Search by title, module, or step..." /><div class="d-flex align-items-center gap-1 flex-wrap"><button type="button" class="o_ai_rec_filter_pill is-active">All apps</button><button type="button" class="o_ai_rec_filter_pill">sale</button><button type="button" class="o_ai_rec_filter_pill">stock</button></div><select class="form-select form-select-sm" data-testid="explorer-status-select"><option value="published" selected>Published</option><option value="all">All statuses</option><option value="pending_review">Pending review</option><option value="draft">Draft</option><option value="rejected">Rejected</option></select></div><div class="o_ai_rec_explorer_list d-flex flex-column gap-2"><div class="o_ai_rec_ex_card"><div class="o_ai_rec_ex_card_main"><div class="o_ai_rec_ex_title">Adjust stock with an inventory count</div><div class="o_ai_rec_ex_meta d-flex align-items-center gap-1 flex-wrap"><span class="o_ai_rec_ex_chip">stock</span><span class="o_ai_rec_ex_chip">v20.0</span><span class="o_ai_rec_ex_status is-published">Published</span><span class="small text-muted ms-auto">4 steps</span></div></div><div class="o_ai_rec_ex_actions d-flex align-items-center gap-1 flex-wrap mt-2"><button type="button" class="btn btn-sm btn-outline-primary py-0 px-2">Edit</button><button type="button" class="btn btn-sm btn-outline-danger py-0 px-2">Delete</button></div></div><div class="o_ai_rec_ex_card is-selected is-readonly"><div class="o_ai_rec_ex_card_main"><div class="o_ai_rec_ex_title">Create a sales quotation</div><div class="o_ai_rec_ex_meta d-flex align-items-center gap-1 flex-wrap"><span class="o_ai_rec_ex_chip">sale</span><span class="o_ai_rec_ex_chip">v20.0</span><span class="o_ai_rec_ex_status is-published">Published</span><span class="o_ai_rec_ex_readonly_badge">Read-only</span><span class="small text-muted ms-auto">3 steps</span></div></div><div class="o_ai_rec_ex_actions d-flex align-items-center gap-1 flex-wrap mt-2"><button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2">Hide steps</button></div><div class="o_ai_rec_ex_detail mt-2 pt-2"><ol class="ps-3 mb-0 small"><li>Open Sales</li><li>Click New</li><li>Select a customer and click Save</li></ol></div></div></div></div>`;
+        });
+      }
       await page.waitForTimeout(300);
 
       const screenshotPath = path.join(OUT_DIR, `${scenario.name}.png`);
@@ -777,7 +808,10 @@ async function run() {
         metrics = await page.evaluate(() => {
           const sidebar = document.querySelector("#offcanvasAiSidebar");
           const select = document.querySelector('[data-testid="recorder-module-select"]');
-          const selectRect = select.getBoundingClientRect();
+          const reviewItem = document.querySelector(".o_ai_rec_review_item");
+          const explorerScopeTabs = document.querySelector(".o_ai_rec_scope_tabs");
+          const measured = select || reviewItem || explorerScopeTabs;
+          const selectRect = measured.getBoundingClientRect();
           const sidebarRect = sidebar.getBoundingClientRect();
           return {
             quotaBtn: {
@@ -786,10 +820,10 @@ async function run() {
               whiteSpace: "normal",
               height: Math.round(selectRect.height),
               width: Math.round(selectRect.width),
-              fitsBubble: select.options.length > 5,
+              fitsBubble: select ? select.options.length > 5 : selectRect.width > 0,
               fitsSidebar: selectRect.right <= sidebarRect.right + 1,
             },
-            optionCount: select.options.length,
+            optionCount: select ? select.options.length : null,
             horizontalOverflow: sidebar.scrollWidth > sidebar.clientWidth + 1,
           };
         });

@@ -509,4 +509,179 @@ describe("DOM event normalization", () => {
     expect(event.field).toBe("purchase");
     expect(event.meta.target_name).toBe("purchase");
   });
+
+  it("normalizes kanban and form New buttons to kanban.create and form.create", () => {
+    const kanbanBtn = makeElement({
+      tagName: "BUTTON",
+      text: "New",
+      className: "btn btn-primary o-kanban-button-new",
+    });
+    const kanbanEvent = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: kanbanBtn },
+      context: { model: "crm.lead", view_type: "kanban" },
+    });
+    expect(kanbanEvent.type).toBe("button_clicked");
+    expect(kanbanEvent.meta.target_name).toBe("kanban.create");
+    expect(kanbanEvent.label).toBe("kanban.create");
+
+    const formBtn = makeElement({
+      tagName: "BUTTON",
+      text: "New",
+      className: "btn btn-outline-primary o_form_button_create",
+    });
+    const formEvent = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: formBtn },
+      context: { model: "crm.lead", view_type: "form" },
+    });
+    expect(formEvent.type).toBe("button_clicked");
+    expect(formEvent.meta.target_name).toBe("form.create");
+    expect(formEvent.label).toBe("form.create");
+  });
+
+  it("normalizes list row checkboxes semantically, ignores ephemeral checkbox-comp IDs, and counts selected rows", () => {
+    const cb1 = makeElement({
+      tagName: "INPUT",
+      id: "checkbox-comp-53",
+      attrs: { type: "checkbox" },
+    });
+    cb1.checked = true;
+    const cb2 = makeElement({
+      tagName: "INPUT",
+      id: "checkbox-comp-54",
+      attrs: { type: "checkbox" },
+    });
+    cb2.checked = true;
+    const cb3 = makeElement({
+      tagName: "INPUT",
+      id: "checkbox-comp-55",
+      attrs: { type: "checkbox" },
+    });
+    cb3.checked = false;
+
+    const table = {
+      querySelectorAll: (sel) =>
+        sel.includes("o_list_record_selector") ? [cb1, cb2, cb3] : [],
+    };
+    const td = {
+      closest: (sel) => (sel.includes("table") ? table : null),
+      querySelector: () => cb2,
+    };
+    const wrapperDiv = makeElement({
+      tagName: "DIV",
+      className: "o-checkbox form-check",
+      closestMap: {
+        "td.o_list_record_selector": td,
+      },
+    });
+    cb2.closest = (sel) =>
+      sel.includes("td.o_list_record_selector") ? td : null;
+
+    // Clicking the input directly (already toggled to checked=true by browser)
+    const inputEvt = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: cb2 },
+      context: { model: "purchase.order", view_type: "list" },
+    });
+    expect(inputEvt.type).toBe("list_selection_changed");
+    expect(inputEvt.field).toBeNull();
+    expect(inputEvt.value).toBe(2);
+    expect(inputEvt.meta.target_name).toBe("list.select_row");
+    expect(inputEvt.meta.model).toBe("purchase.order");
+    expect(inputEvt.meta.view_type).toBe("list");
+    expect(inputEvt.meta.selected_count).toBe(2);
+    expect(inputEvt.meta.total_rows).toBe(3);
+    expect(inputEvt.dom.id).toBeNull();
+    expect(inputEvt.dom.selector).toBe("td.o_list_record_selector input[type='checkbox']");
+
+    // Clicking the wrapper div before OWL toggles cb2 from false -> true
+    cb2.checked = false;
+    const divEvt = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: wrapperDiv },
+      context: { model: "purchase.order", view_type: "list" },
+    });
+    expect(divEvt.type).toBe("list_selection_changed");
+    expect(divEvt.meta.target_name).toBe("list.select_row");
+    expect(divEvt.meta.selected_count).toBe(2);
+    expect(divEvt.meta.selection_checked).toBe(true);
+  });
+
+  it("normalizes header select-all checkbox in list view", () => {
+    const cb1 = { checked: false };
+    const cb2 = { checked: false };
+    const headerCb = makeElement({
+      tagName: "INPUT",
+      id: "checkbox-comp-1",
+      attrs: { type: "checkbox" },
+    });
+    headerCb.checked = true;
+    const table = {
+      querySelectorAll: () => [cb1, cb2],
+    };
+    const th = {
+      closest: (sel) => (sel.includes("table") ? table : null),
+      querySelector: () => headerCb,
+    };
+    headerCb.closest = (sel) =>
+      sel.includes("th.o_list_record_selector") ? th : null;
+
+    const evt = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: headerCb },
+      context: { model: "purchase.order", view_type: "list" },
+    });
+    expect(evt.type).toBe("list_selection_changed");
+    expect(evt.meta.target_name).toBe("list.select_all");
+    expect(evt.meta.selected_count).toBe(2);
+    expect(evt.dom.id).toBeNull();
+  });
+
+  it("normalizes desktop and mobile breadcrumb clicks with clean labels and canonical target_name", () => {
+    const breadcrumbLink = makeElement({
+      tagName: "A",
+      text: "Requests for Quotation",
+      attrs: {
+        href: "/odoo/purchase",
+        "data-tooltip": 'Back to "Requests for Quotation"',
+        title: 'Back to "Requests for Quotation"',
+      },
+    });
+    breadcrumbLink.closest = (sel) =>
+      sel.includes("breadcrumb-item") || sel.includes("a") ? breadcrumbLink : null;
+
+    const desktopEvt = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: breadcrumbLink },
+      context: { model: "purchase.order", view_type: "form" },
+    });
+
+    expect(desktopEvt.type).toBe("link_clicked");
+    expect(desktopEvt.label).toBe("Requests for Quotation");
+    expect(desktopEvt.meta.target_name).toBe("breadcrumb.requests-for-quotation");
+    expect(desktopEvt.meta.navigation_kind).toBe("breadcrumb_back");
+    expect(desktopEvt.meta.breadcrumb_label).toBe("Requests for Quotation");
+
+    // Mobile icon-only .o_back_button in Spanish strips tooltip prefix + quotes
+    const mobileBack = makeElement({
+      tagName: "BUTTON",
+      text: "",
+      className: "o_back_button btn",
+      attrs: { title: 'Volver a "Solicitudes de presupuesto"' },
+    });
+    mobileBack.closest = (sel) =>
+      sel.includes(".o_back_button") || sel.includes("button") ? mobileBack : null;
+
+    const mobileEvt = normalizeDomEvent({
+      domEventType: "click",
+      originalEvent: { target: mobileBack },
+      context: { model: "purchase.order", view_type: "form" },
+    });
+
+    expect(mobileEvt.type).toBe("link_clicked");
+    expect(mobileEvt.label).toBe("Solicitudes de presupuesto");
+    expect(mobileEvt.meta.target_name).toBe("breadcrumb.solicitudes-de-presupuesto");
+    expect(mobileEvt.meta.navigation_kind).toBe("breadcrumb_back");
+  });
 });
