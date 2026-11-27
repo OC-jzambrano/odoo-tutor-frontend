@@ -13,10 +13,15 @@ spotlights, and contextual hints directly inside your Odoo workspace.
 Try it out by sending the chatbot a message like this:
 -------------------------------
 - How to configure task dependencies in Odoo Project?
+- How to view and filter all tasks by stage and assignee in Odoo Project?
 - How to create a sales quotation from scratch for a new B2B customer?
+- How to configure a customer with separate delivery and invoice addresses?
 - How to configure purchase warnings on products?
+- How to merge two RFQs into one purchase order?
 - How to create a replenishment rule?
+- How to adjust stock with an inventory count?
 - How to configure and manage activities in Odoo CRM?
+- How to manually create an opportunity in Odoo CRM?
 
 Watch the full 1080p HD demo video: https://youtu.be/Ki0tSjDGM0k
 """,
@@ -51,6 +56,6 @@ Watch the full 1080p HD demo video: https://youtu.be/Ki0tSjDGM0k
     "application": True,
     "auto_install": False,
     "license": "OPL-1",
-    "price": 0.0,
+    "price": 9.0,
     "currency": "EUR",
 }
